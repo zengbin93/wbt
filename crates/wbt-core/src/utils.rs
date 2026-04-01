@@ -18,7 +18,12 @@ pub trait RoundToNthDigit {
 
 impl RoundToNthDigit for f64 {
     fn round_to_nth_digit(&self, nth: usize) -> f64 {
-        let scale = 10_f64.powi(nth as i32);
+        let scale = match nth {
+            2 => 100.0,
+            3 => 1000.0,
+            4 => 10000.0,
+            _ => 10_f64.powi(nth as i32),
+        };
         (self * scale).round() / scale
     }
     fn round_to_2_digit(&self) -> f64 { self.round_to_nth_digit(2) }
