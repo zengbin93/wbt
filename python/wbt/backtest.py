@@ -20,17 +20,6 @@ class WeightBacktest:
     ) -> None:
         """持仓权重回测
 
-        初始化函数逻辑：
-
-        1. 将传入的kwargs保存在实例变量self.kwargs中。
-        2. 复制传入的dfw到实例变量self.dfw。
-        3. 检查self.dfw中是否存在空值，如果存在则抛出ValueError异常，并提示"dfw 中存在空值，请先处理"。
-        4. 设置实例变量self.digits为传入的digits值。
-        5. 从kwargs中获取'fee_rate'参数的值，默认为0.0002，并将其保存在实例变量self.fee_rate中。
-        6. 将self.dfw中的 weight 列转换为浮点型，并保留self.digits位小数。
-        7. 提取self.dfw中的唯一交易标的符号，并将其保存在实例变量self.symbols中。
-        8. 执行backtest()方法进行回测，并将结果保存在实例变量self.results中。
-
         :param dfw: pd.DataFrame, columns = ['dt', 'symbol', 'weight', 'price'], 持仓权重数据，其中
 
             dt      为K线结束时间，必须是连续的交易时间序列，不允许有时间断层
@@ -50,10 +39,10 @@ class WeightBacktest:
             ===================  ========  ========  =======
 
         :param digits: int, 权重列保留小数位数
-        :param weight_type: str, default 'ts'，持仓权重类别，可选值包括：'ts'、'cs'，分别表示时序策略、截面策略
-        :param yearly_days: int, default 252，年化交易日数量
         :param fee_rate: float, default 0.0002，单边交易成本，包括手续费与冲击成本
-        :param n_jobs: int, default 4，并行计算的进程数
+        :param n_jobs: int, default 1，并行计算的线程数
+        :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
+        :param yearly_days: int, default 252，年化交易日数量
         """
         if dfw['weight'].dtype != 'float':
             dfw['weight'] = dfw['weight'].astype(float)
@@ -176,23 +165,32 @@ class WeightBacktest:
         """
         return arrow_bytes_to_pd_df(self._inner.alpha())
 
+    def _pivot_daily_return(self, values_col: str) -> pd.DataFrame:
+        df = self.dailys.copy()
+        dfv = pd.pivot_table(df, index="date", columns="symbol", values=values_col)
+        if self.weight_type == "ts":
+            dfv["total"] = dfv.mean(axis=1)
+        elif self.weight_type == "cs":
+            dfv["total"] = dfv.sum(axis=1)
+        else:
+            raise ValueError(f"weight_type {self.weight_type} not supported")
+        return dfv.reset_index(drop=False)
+
+    def _compute_stats(self, df: pd.DataFrame, column: str) -> dict:
+        stats = daily_performance(df[column].to_numpy(), yearly_days=self.yearly_days)
+        stats["开始日期"] = df["date"].min().strftime("%Y-%m-%d")
+        stats["结束日期"] = df["date"].max().strftime("%Y-%m-%d")
+        return stats
+
     @property
     def alpha_stats(self) -> dict:
         """策略超额收益统计"""
-        alpha_df = self.alpha
-        stats = daily_performance(alpha_df["超额"].to_numpy(), yearly_days=self.yearly_days)
-        stats["开始日期"] = alpha_df["date"].min().strftime("%Y-%m-%d")
-        stats["结束日期"] = alpha_df["date"].max().strftime("%Y-%m-%d")
-        return stats
+        return self._compute_stats(self.alpha, "超额")
 
     @property
     def bench_stats(self) -> dict:
         """基准收益统计"""
-        alpha_df = self.alpha
-        stats = daily_performance(alpha_df["基准"].to_numpy(), yearly_days=self.yearly_days)
-        stats["开始日期"] = alpha_df["date"].min().strftime("%Y-%m-%d")
-        stats["结束日期"] = alpha_df["date"].max().strftime("%Y-%m-%d")
-        return stats
+        return self._compute_stats(self.alpha, "基准")
 
     @property
     def long_daily_return(self):
@@ -209,34 +207,12 @@ class WeightBacktest:
         2017-01-07   0           0            0            0
         ==========  ==========  ===========  ===========  ============
         """
-        df = self.dailys.copy()
-        dfv = pd.pivot_table(df, index="date", columns="symbol", values="long_return")
-
-        if self.weight_type == "ts":
-            dfv["total"] = dfv.mean(axis=1)
-        elif self.weight_type == "cs":
-            dfv["total"] = dfv.sum(axis=1)
-        else:
-            raise ValueError(f"weight_type {self.weight_type} not supported")
-
-        dfv = dfv.reset_index(drop=False)
-        return dfv
+        return self._pivot_daily_return("long_return")
 
     @property
     def short_daily_return(self):
         """空头每日收益率"""
-        df = self.dailys.copy()
-        dfv = pd.pivot_table(df, index="date", columns="symbol", values="short_return")
-
-        if self.weight_type == "ts":
-            dfv["total"] = dfv.mean(axis=1)
-        elif self.weight_type == "cs":
-            dfv["total"] = dfv.sum(axis=1)
-        else:
-            raise ValueError(f"weight_type {self.weight_type} not supported")
-
-        dfv = dfv.reset_index(drop=False)
-        return dfv
+        return self._pivot_daily_return("short_return")
 
     @property
     def long_stats(self):
@@ -263,20 +239,12 @@ class WeightBacktest:
             '开始日期': '2017-01-03',
             '结束日期': '2023-07-31'}
         """
-        df = self.long_daily_return.copy()
-        stats = daily_performance(df["total"].to_numpy(), yearly_days=self.yearly_days)
-        stats["开始日期"] = df["date"].min().strftime("%Y-%m-%d")
-        stats["结束日期"] = df["date"].max().strftime("%Y-%m-%d")
-        return stats
+        return self._compute_stats(self.long_daily_return, "total")
 
     @property
     def short_stats(self):
         """空头收益统计"""
-        df = self.short_daily_return.copy()
-        stats = daily_performance(df["total"].to_numpy(), yearly_days=self.yearly_days)
-        stats["开始日期"] = df["date"].min().strftime("%Y-%m-%d")
-        stats["结束日期"] = df["date"].max().strftime("%Y-%m-%d")
-        return stats
+        return self._compute_stats(self.short_daily_return, "total")
 
     @property
     def pairs(self) -> pd.DataFrame:
