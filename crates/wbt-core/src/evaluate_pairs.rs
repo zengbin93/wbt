@@ -60,6 +60,51 @@ impl Default for EvaluatePairs {
     }
 }
 
+/// Compute break-even point from sorted (profit, count) pairs.
+/// Returns the fraction of trades needed to cover losses.
+fn compute_break_even_point(profit_count_pairs: &mut Vec<(f64, f64)>, trade_count: f64) -> f64 {
+    profit_count_pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut sum = 0.0;
+    let mut seen = 0.0;
+    let mut break_even_point = 1.0;
+    let mut found = false;
+
+    for (p, c) in profit_count_pairs.iter() {
+        if *c <= 0.0 { continue; }
+        if !found {
+            if *p <= 0.0 {
+                sum += p * c;
+                seen += c;
+                if sum >= 0.0 {
+                    break_even_point = seen / trade_count;
+                    found = true;
+                }
+            } else {
+                let need = -sum / p;
+                let mut k = need.ceil();
+                if k < 1.0 { k = 1.0; }
+                if k > *c { k = *c; }
+                sum += p * k;
+                seen += k;
+                if sum >= 0.0 {
+                    break_even_point = seen / trade_count;
+                    found = true;
+                }
+                if k < *c {
+                    sum += p * (*c - k);
+                    seen += *c - k;
+                }
+            }
+        } else {
+            sum += p * c;
+            seen += c;
+        }
+    }
+
+    if sum <= 0.0 { 1.0 } else { break_even_point }
+}
+
 /// 评估交易对性能 — 从 PairsSoA 直接读取（零 DataFrame 构建）
 pub fn evaluate_pairs_soa(
     pairs: &PairsSoA,
@@ -129,55 +174,7 @@ pub fn evaluate_pairs_soa(
     };
     let win_rate = win_trade_count / trade_count;
 
-    // Break-even point (排序后遍历)
-    profit_count_pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-
-    let mut sum = 0.0;
-    let mut seen = 0.0;
-    let mut break_even_point = 1.0;
-    let mut found = false;
-
-    for (p, c) in &profit_count_pairs {
-        if *c <= 0.0 {
-            continue;
-        }
-        if !found {
-            if *p <= 0.0 {
-                sum += p * c;
-                seen += c;
-                if sum >= 0.0 {
-                    break_even_point = seen / trade_count;
-                    found = true;
-                }
-            } else {
-                let need = -sum / p;
-                let mut k = need.ceil();
-                if k < 1.0 {
-                    k = 1.0;
-                }
-                if k > *c {
-                    k = *c;
-                }
-                sum += p * k;
-                seen += k;
-                if sum >= 0.0 {
-                    break_even_point = seen / trade_count;
-                    found = true;
-                }
-                if k < *c {
-                    sum += p * (*c - k);
-                    seen += *c - k;
-                }
-            }
-        } else {
-            sum += p * c;
-            seen += c;
-        }
-    }
-
-    if sum <= 0.0 {
-        break_even_point = 1.0;
-    }
+    let break_even_point = compute_break_even_point(&mut profit_count_pairs, trade_count);
 
     let total_profit_loss_ratio = if sum_loss == 0.0 {
         0.0
@@ -193,8 +190,8 @@ pub fn evaluate_pairs_soa(
     Ok(EvaluatePairs {
         trade_direction: trade_dir,
         trade_count: trade_count as usize,
-        total_profit: sum.round_to_2_digit(),
-        single_trade_profit: (sum / trade_count).round_to_2_digit(),
+        total_profit: (sum_win + sum_loss).round_to_2_digit(),
+        single_trade_profit: ((sum_win + sum_loss) / trade_count).round_to_2_digit(),
         win_trade_count: win_trade_count as usize,
         sum_win: sum_win.round_to_2_digit(),
         win_one: win_one.round_to_4_digit(),
