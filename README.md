@@ -8,7 +8,7 @@ High-performance position-weighted backtesting engine, written in Rust with Pyth
 
 **wbt** (Weight Back Test) is a standalone library for backtesting trading strategies based on position weights. It computes daily P&L attribution, trade pair matching (FIFO), and comprehensive performance statistics — all powered by a zero-copy, cache-friendly Rust core with rayon-based parallelism.
 
-- **Rust crate** (`wbt-core`): pure Rust library, no Python dependency
+- **Rust crate** (`wbt`): pure Rust library with core engine
 - **Python package** (`wbt`): PyO3 bindings + pandas-friendly API via Arrow IPC
 
 ## Installation
@@ -28,7 +28,7 @@ maturin develop --release
 ```toml
 # Cargo.toml
 [dependencies]
-wbt-core = { path = "path/to/wbt/crates/wbt-core" }
+wbt = "0.1"
 ```
 
 ## Quick Start
@@ -59,7 +59,7 @@ wb.pairs          # DataFrame: all matched trade pairs (FIFO)
 ### Rust
 
 ```rust
-use wbt_core::{WeightBacktest, WeightType};
+use wbt::core::{WeightBacktest, WeightType};
 use polars::prelude::*;
 
 let dfw: DataFrame = /* build your DataFrame with [dt, symbol, weight, price] */;
@@ -109,18 +109,18 @@ println!("Sharpe: {}", report.stats.daily_performance.sharpe_ratio);
 
 ```
 wbt/
-├── crates/wbt-core/    # Pure Rust library
-│   └── src/
-│       ├── lib.rs                # WeightBacktest struct & public API
-│       ├── native_engine.rs      # Zero-copy parallel engine (rayon)
-│       ├── daily_performance.rs  # Sharpe, Calmar, drawdown, etc.
-│       ├── evaluate_pairs.rs     # Trade pair statistics
-│       ├── backtest.rs           # Orchestration & alpha computation
-│       ├── report.rs             # Report structs & JSON serialization
-│       ├── trade_dir.rs          # Trade direction & action enums
-│       ├── errors.rs             # Error types
-│       └── utils.rs              # WeightType, rounding, quantile
-├── src/lib.rs          # PyO3 bindings (Arrow IPC in/out)
+├── src/
+│   ├── lib.rs              # PyO3 bindings (Arrow IPC in/out)
+│   └── core/               # Pure Rust engine
+│       ├── mod.rs           # WeightBacktest struct & public API
+│       ├── native_engine.rs # Zero-copy parallel engine (rayon)
+│       ├── daily_performance.rs # Sharpe, Calmar, drawdown, etc.
+│       ├── evaluate_pairs.rs    # Trade pair statistics
+│       ├── backtest.rs      # Orchestration & alpha computation
+│       ├── report.rs        # Report structs & JSON serialization
+│       ├── trade_dir.rs     # Trade direction & action enums
+│       ├── errors.rs        # Error types
+│       └── utils.rs         # WeightType, rounding, quantile
 └── python/wbt/         # Python API wrapper
     ├── backtest.py     # WeightBacktest class (pandas-friendly)
     └── _df_convert.py  # Arrow <-> pandas conversion
