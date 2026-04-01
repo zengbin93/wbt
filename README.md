@@ -116,7 +116,6 @@ wbt/
 │       ├── daily_performance.rs  # Sharpe, Calmar, drawdown, etc.
 │       ├── evaluate_pairs.rs     # Trade pair statistics
 │       ├── backtest.rs           # Orchestration & alpha computation
-│       ├── calc_symbol.rs        # Per-symbol daily & pair calculation
 │       ├── report.rs             # Report structs & JSON serialization
 │       ├── trade_dir.rs          # Trade direction & action enums
 │       ├── errors.rs             # Error types
@@ -126,6 +125,49 @@ wbt/
     ├── backtest.py     # WeightBacktest class (pandas-friendly)
     └── _df_convert.py  # Arrow <-> pandas conversion
 ```
+
+### Benchmark
+
+Tested on China A-share daily data (2017-01 to 2025-04), Apple M-series, 8 threads, release build with LTO:
+
+| Dataset | Rows | Symbols | Time | Throughput |
+|---------|------|---------|------|------------|
+| Full A-share daily | 8,440,404 | 5,351 | **0.63s** | 13.4M rows/s |
+
+Outputs produced in a single pass:
+
+| Output | Size | Description |
+|--------|------|-------------|
+| `dailys` | 8,435,053 rows × 15 cols | Per-symbol daily attribution |
+| `pairs` | 942,679 rows × 11 cols | FIFO-matched trade pairs |
+| `daily_return` | 2,023 rows | Equal-weight portfolio daily return |
+| `alpha` | 2,023 rows × 4 cols | Strategy vs. benchmark excess return |
+| `stats` | 29 metrics | Sharpe, Calmar, drawdown, win rate, etc. |
+
+<details>
+<summary>Sample <code>stats</code> output (click to expand)</summary>
+
+```python
+{
+  "开始日期": "2016-12-27",       "结束日期": "2025-04-28",
+  "绝对收益": 0.4431,             "年化": 0.0552,
+  "夏普": 0.345,                  "最大回撤": 0.2234,
+  "卡玛": 0.2471,                 "日胜率": 0.5136,
+  "日盈亏比": 1.0219,             "日赢面": 0.0384,
+  "年化波动率": 0.16,              "下行波动率": 0.1167,
+  "非零覆盖": 0.9802,             "盈亏平衡点": 0.9975,
+  "新高间隔": 542.0,              "新高占比": 0.0277,
+  "回撤风险": 1.3963,             "回归年度回报率": 0.0395,
+  "长度调整平均最大回撤": 0.9516,   "交易胜率": 0.2697,
+  "单笔收益": 17.51,              "持仓K线数": 9.79,
+  "多头占比": 0.4611,             "空头占比": 0.5269,
+  "与基准相关性": -0.2835,         "与基准空头相关性": -0.374,
+  "波动比": 0.6665,               "与基准波动相关性": 0.1974,
+  "品种数量": 5351
+}
+```
+
+</details>
 
 ### Performance Design
 
