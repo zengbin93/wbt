@@ -77,7 +77,8 @@ pub struct DailysSoA {
 impl DailysSoA {
     /// 按需构建 DataFrame（仅在 Python 端调用 .dailys() 时触发）
     pub fn to_dataframe(&self) -> Result<DataFrame, WbtError> {
-        let sym_strs: Vec<&str> = self.sym_ids
+        let sym_strs: Vec<&str> = self
+            .sym_ids
             .iter()
             .map(|&id| self.symbol_dict[id as usize].as_str())
             .collect();
@@ -158,7 +159,8 @@ impl PairsSoA {
             let c_dt = DateTime::from_timestamp(c_secs, c_nano).unwrap_or_default();
             hold_days.push((c_dt - o_dt).num_days());
         }
-        let sym_strs: Vec<&str> = self.sym_ids
+        let sym_strs: Vec<&str> = self
+            .sym_ids
             .iter()
             .map(|&id| self.symbol_dict[id as usize].as_str())
             .collect();
@@ -360,7 +362,7 @@ impl DailysBuilder {
         if n == 0 {
             return;
         }
-        self.sym.extend(std::iter::repeat(sym_id).take(n));
+        self.sym.extend(std::iter::repeat_n(sym_id, n));
         self.date.extend_from_slice(&s.date_ticks);
         self.n1b.extend_from_slice(&s.n1b);
         self.edge.extend_from_slice(&s.edge);
@@ -412,7 +414,7 @@ impl PairsBuilder {
         if n == 0 {
             return;
         }
-        self.sym.extend(std::iter::repeat(sym_id).take(n));
+        self.sym.extend(std::iter::repeat_n(sym_id, n));
         self.dirs.extend_from_slice(&p.dirs);
         self.open_dts.extend_from_slice(&p.open_dts);
         self.close_dts.extend_from_slice(&p.close_dts);
@@ -466,7 +468,11 @@ impl NativeEngine {
         let price_ca = price_col.rechunk();
         let price_slice = price_ca.cont_slice().unwrap();
 
-        let sym_id_col = dfw.column("sym_id")?.as_materialized_series().u32()?.rechunk();
+        let sym_id_col = dfw
+            .column("sym_id")?
+            .as_materialized_series()
+            .u32()?
+            .rechunk();
         let sym_id_slice = sym_id_col.cont_slice().unwrap();
 
         // O(N) 极速扫描切片分界点

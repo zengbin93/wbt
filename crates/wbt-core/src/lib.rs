@@ -32,11 +32,7 @@ pub struct WeightBacktest {
 
 impl WeightBacktest {
     /// 创建持仓权重回测对象
-    pub fn new(
-        dfw: DataFrame,
-        digits: i64,
-        fee_rate: Option<f64>,
-    ) -> Result<Self, WbtError> {
+    pub fn new(dfw: DataFrame, digits: i64, fee_rate: Option<f64>) -> Result<Self, WbtError> {
         // dt列格式转换
         let mut dfw = Self::convert_datetime(dfw).context("Failed to convert datetime")?;
         // weight列格式处理
@@ -84,10 +80,22 @@ impl WeightBacktest {
 
             DataFrame::new(vec![
                 Column::new("sym_id".into(), sym_id_vals),
-                dfw.column("dt")?.as_materialized_series().take(&perm_idx)?.into_column(),
-                dfw.column("weight")?.as_materialized_series().take(&perm_idx)?.into_column(),
-                dfw.column("price")?.as_materialized_series().take(&perm_idx)?.into_column(),
-                dfw.column("symbol")?.as_materialized_series().take(&perm_idx)?.into_column(),
+                dfw.column("dt")?
+                    .as_materialized_series()
+                    .take(&perm_idx)?
+                    .into_column(),
+                dfw.column("weight")?
+                    .as_materialized_series()
+                    .take(&perm_idx)?
+                    .into_column(),
+                dfw.column("price")?
+                    .as_materialized_series()
+                    .take(&perm_idx)?
+                    .into_column(),
+                dfw.column("symbol")?
+                    .as_materialized_series()
+                    .take(&perm_idx)?
+                    .into_column(),
             ])?
         };
 
@@ -129,9 +137,7 @@ impl WeightBacktest {
             let df = self
                 .dailys_soa
                 .as_ref()
-                .ok_or_else(|| {
-                    WbtError::NoneValue("dailys_soa not computed yet".into())
-                })?
+                .ok_or_else(|| WbtError::NoneValue("dailys_soa not computed yet".into()))?
                 .to_dataframe()?;
             self.dailys_cache = Some(df);
         }
@@ -217,12 +223,9 @@ impl WeightBacktest {
         let dt_type = dt_col.dtype().clone();
 
         match &dt_type {
-            DataType::Datetime(TimeUnit::Nanoseconds, _) => {
-                Ok(Self::sort_by_dt(df)?)
-            }
+            DataType::Datetime(TimeUnit::Nanoseconds, _) => Ok(Self::sort_by_dt(df)?),
             DataType::Datetime(TimeUnit::Milliseconds, _) => {
-                let dt_cast = dt_col
-                    .cast(&DataType::Datetime(TimeUnit::Milliseconds, None))?;
+                let dt_cast = dt_col.cast(&DataType::Datetime(TimeUnit::Milliseconds, None))?;
                 let _ = df.replace("dt", dt_cast)?;
                 Ok(Self::sort_by_dt(df)?)
             }
@@ -259,9 +262,7 @@ impl WeightBacktest {
 
                 Ok(df)
             }
-            _ => {
-                return Err(anyhow::anyhow!("Unsupported datetime type: {:?}", dt_type).into());
-            }
+            _ => Err(anyhow::anyhow!("Unsupported datetime type: {:?}", dt_type).into()),
         }
     }
 
@@ -277,7 +278,6 @@ impl WeightBacktest {
         let _ = df.replace("weight", rounded.into_series())?;
         Ok(())
     }
-
 }
 
 #[cfg(test)]

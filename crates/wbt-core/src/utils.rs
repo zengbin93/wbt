@@ -26,9 +26,15 @@ impl RoundToNthDigit for f64 {
         };
         (self * scale).round() / scale
     }
-    fn round_to_2_digit(&self) -> f64 { self.round_to_nth_digit(2) }
-    fn round_to_3_digit(&self) -> f64 { self.round_to_nth_digit(3) }
-    fn round_to_4_digit(&self) -> f64 { self.round_to_nth_digit(4) }
+    fn round_to_2_digit(&self) -> f64 {
+        self.round_to_nth_digit(2)
+    }
+    fn round_to_3_digit(&self) -> f64 {
+        self.round_to_nth_digit(3)
+    }
+    fn round_to_4_digit(&self) -> f64 {
+        self.round_to_nth_digit(4)
+    }
 }
 
 /// 将 YYYYMMDD 整数 date_key 转换为 NaiveDate
@@ -80,7 +86,13 @@ pub(crate) fn std_inline(xs: &[f64]) -> f64 {
 }
 
 pub fn min_max(x: f64, min_val: f64, max_val: f64) -> f64 {
-    if x < min_val { min_val } else if x > max_val { max_val } else { x }
+    if x < min_val {
+        min_val
+    } else if x > max_val {
+        max_val
+    } else {
+        x
+    }
 }
 
 pub trait Quantile {
@@ -89,16 +101,23 @@ pub trait Quantile {
 
 impl Quantile for [f64] {
     fn quantile(&self, q: f64) -> Option<f64> {
-        if !(0.0..=1.0).contains(&q) { return None; }
+        if !(0.0..=1.0).contains(&q) {
+            return None;
+        }
         let n = self.len();
-        if n == 0 { return None; }
+        if n == 0 {
+            return None;
+        }
         let mut sorted = self.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let pos = q * (n as f64 - 1.0);
         let lower = pos.floor() as usize;
         let upper = pos.ceil() as usize;
         let fraction = pos - lower as f64;
-        if lower == upper { Some(sorted[lower]) }
-        else { Some(sorted[lower] + fraction * (sorted[upper] - sorted[lower])) }
+        if lower == upper {
+            Some(sorted[lower])
+        } else {
+            Some(sorted[lower] + fraction * (sorted[upper] - sorted[lower]))
+        }
     }
 }
