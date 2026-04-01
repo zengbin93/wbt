@@ -1,7 +1,9 @@
 use crate::core::daily_performance::daily_performance;
 use crate::core::native_engine::{DailyTotals, DailysSoA, PairsSoA};
 use crate::core::trade_dir::TradeDir;
-use crate::core::utils::{RoundToNthDigit, date_key_to_naive_date, pearson_corr_inline, std_inline};
+use crate::core::utils::{
+    RoundToNthDigit, date_key_to_naive_date, pearson_corr_inline, std_inline,
+};
 use crate::core::{
     WeightBacktest,
     errors::WbtError,
