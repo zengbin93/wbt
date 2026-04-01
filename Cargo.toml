@@ -5,10 +5,13 @@ members = ["crates/wbt-core"]
 name = "wbt"
 version = "0.1.0"
 edition = "2024"
+description = "Weight-based backtesting engine for quantitative trading"
+license = "MIT"
+repository = "https://github.com/zengbin93/wbt"
 
 [lib]
-name = "_wbt"
-crate-type = ["cdylib"]
+name = "wbt"
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 wbt-core = { path = "crates/wbt-core" }
