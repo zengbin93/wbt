@@ -1,5 +1,5 @@
-use crate::errors::WbtError;
-use crate::utils::{RoundToNthDigit, min_max};
+use crate::core::errors::WbtError;
+use crate::core::utils::{RoundToNthDigit, min_max};
 use serde::Serialize;
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-use crate::native_engine::{DailysSoA, PairsSoA};
+use crate::core::native_engine::{DailysSoA, PairsSoA};
 use anyhow::Context;
 use errors::WbtError;
 use polars::prelude::*;
