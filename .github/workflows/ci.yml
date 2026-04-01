@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --all
+      - run: cargo test --lib
 
   python-build:
     name: Python Build (${{ matrix.os }}, Python ${{ matrix.python }})

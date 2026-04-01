@@ -1,8 +1,8 @@
-use crate::daily_performance::daily_performance;
-use crate::native_engine::{DailyTotals, DailysSoA, PairsSoA};
-use crate::trade_dir::TradeDir;
-use crate::utils::{RoundToNthDigit, date_key_to_naive_date, pearson_corr_inline, std_inline};
-use crate::{
+use crate::core::daily_performance::daily_performance;
+use crate::core::native_engine::{DailyTotals, DailysSoA, PairsSoA};
+use crate::core::trade_dir::TradeDir;
+use crate::core::utils::{RoundToNthDigit, date_key_to_naive_date, pearson_corr_inline, std_inline};
+use crate::core::{
     WeightBacktest,
     errors::WbtError,
     evaluate_pairs::evaluate_pairs_soa,
@@ -130,7 +130,7 @@ impl WeightBacktest {
     > {
         let symbols: Vec<String> = self.symbols.iter().map(|s| s.to_string()).collect();
         let weight_type_is_ts = matches!(weight_type, WeightType::TS);
-        crate::native_engine::NativeEngine::process_all(
+        crate::core::native_engine::NativeEngine::process_all(
             &self.dfw,
             &symbols,
             self.digits,

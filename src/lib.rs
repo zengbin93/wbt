@@ -1,3 +1,5 @@
+pub mod core;
+
 use std::io::Cursor;
 use std::str::FromStr;
 
@@ -6,7 +8,7 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyBytesMethods, PyDict};
 
-use wbt_core::{WeightBacktest, WeightType};
+use crate::core::{WeightBacktest, WeightType};
 
 // ---------------------------------------------------------------------------
 // Arrow IPC <-> Polars DataFrame helpers
@@ -177,7 +179,7 @@ pub fn daily_performance<'py>(
     let daily_returns = daily_returns
         .as_slice()
         .map_err(|e| PyException::new_err(e.to_string()))?;
-    let dp = wbt_core::daily_performance::daily_performance(daily_returns, yearly_days)
+    let dp = crate::core::daily_performance::daily_performance(daily_returns, yearly_days)
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
     let py_dict = PyDict::new(py);
