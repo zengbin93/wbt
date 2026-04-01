@@ -163,7 +163,7 @@ impl WeightBacktest {
             .date_keys
             .iter()
             .map(|dk| {
-                let nd = backtest::date_key_to_naive_date(*dk);
+                let nd = utils::date_key_to_naive_date(*dk);
                 let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
                 (nd - epoch).num_days() as i32
             })
