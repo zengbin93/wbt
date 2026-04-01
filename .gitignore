@@ -209,3 +209,4 @@ __marimo__/
 # Rust
 /target/
 Cargo.lock
+python/wbt/lib_wbt.dylib.dSYM/
