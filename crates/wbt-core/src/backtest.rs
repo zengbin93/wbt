@@ -1,3 +1,7 @@
+use crate::daily_performance::daily_performance;
+use crate::native_engine::{DailyTotals, DailysSoA, PairsSoA};
+use crate::trade_dir::TradeDir;
+use crate::utils::{RoundToNthDigit, date_key_to_naive_date, pearson_corr_inline, std_inline};
 use crate::{
     WeightBacktest,
     errors::WbtError,
@@ -5,11 +9,7 @@ use crate::{
     report::{Report, StatsReport, SymbolsReport},
     utils::WeightType,
 };
-use crate::native_engine::{DailyTotals, DailysSoA, PairsSoA};
-use crate::trade_dir::TradeDir;
 use anyhow::Context;
-use crate::utils::{pearson_corr_inline, std_inline, RoundToNthDigit, date_key_to_naive_date};
-use crate::daily_performance::daily_performance;
 use polars::prelude::*;
 
 impl WeightBacktest {

@@ -62,7 +62,7 @@ impl Default for EvaluatePairs {
 
 /// Compute break-even point from sorted (profit, count) pairs.
 /// Returns the fraction of trades needed to cover losses.
-fn compute_break_even_point(profit_count_pairs: &mut Vec<(f64, f64)>, trade_count: f64) -> f64 {
+fn compute_break_even_point(profit_count_pairs: &mut [(f64, f64)], trade_count: f64) -> f64 {
     profit_count_pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut sum = 0.0;
@@ -71,7 +71,9 @@ fn compute_break_even_point(profit_count_pairs: &mut Vec<(f64, f64)>, trade_coun
     let mut found = false;
 
     for (p, c) in profit_count_pairs.iter() {
-        if *c <= 0.0 { continue; }
+        if *c <= 0.0 {
+            continue;
+        }
         if !found {
             if *p <= 0.0 {
                 sum += p * c;
@@ -83,8 +85,12 @@ fn compute_break_even_point(profit_count_pairs: &mut Vec<(f64, f64)>, trade_coun
             } else {
                 let need = -sum / p;
                 let mut k = need.ceil();
-                if k < 1.0 { k = 1.0; }
-                if k > *c { k = *c; }
+                if k < 1.0 {
+                    k = 1.0;
+                }
+                if k > *c {
+                    k = *c;
+                }
                 sum += p * k;
                 seen += k;
                 if sum >= 0.0 {
@@ -131,10 +137,10 @@ pub fn evaluate_pairs_soa(
 
     for i in 0..n {
         // 方向过滤
-        if let Some(filter_str) = dir_filter {
-            if pairs.dirs[i] != filter_str {
-                continue;
-            }
+        if let Some(filter_str) = dir_filter
+            && pairs.dirs[i] != filter_str
+        {
+            continue;
         }
 
         let p = pairs.profit_bps[i];

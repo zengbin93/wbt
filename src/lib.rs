@@ -54,8 +54,8 @@ impl PyWeightBacktest {
         let df = pyarrow_to_df(data)?;
         let weight_type = WeightType::from_str(weight_type).unwrap_or(WeightType::TS);
 
-        let mut inner =
-            WeightBacktest::new(df, digits, fee_rate).map_err(|e| PyException::new_err(e.to_string()))?;
+        let mut inner = WeightBacktest::new(df, digits, fee_rate)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
         py.allow_threads(|| {
             inner
                 .backtest(n_jobs, weight_type, yearly_days)
