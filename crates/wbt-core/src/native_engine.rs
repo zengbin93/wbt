@@ -5,14 +5,24 @@ use chrono::Datelike;
 use polars::prelude::*;
 use rayon::prelude::*;
 
-/// 极速纳秒/微秒/毫秒时间戳 -> 整数 YYYYMMDD 的转换 (仅用于冷路径)
+/// Sparse day-index array capacity (~164 years from epoch)
+const DAY_INDEX_CAPACITY: usize = 60_000;
+/// Offset to shift days-since-epoch into non-negative index space
+const DAY_INDEX_OFFSET: i64 = 10_000;
+
 #[inline(always)]
-pub fn dt_to_date_key_fast(dt_val: i64, tu: TimeUnit) -> i32 {
-    let secs = match tu {
+fn dt_val_to_secs(dt_val: i64, tu: TimeUnit) -> i64 {
+    match tu {
         TimeUnit::Nanoseconds => dt_val / 1_000_000_000,
         TimeUnit::Microseconds => dt_val / 1_000_000,
         TimeUnit::Milliseconds => dt_val / 1_000,
-    };
+    }
+}
+
+/// 极速纳秒/微秒/毫秒时间戳 -> 整数 YYYYMMDD 的转换 (仅用于冷路径)
+#[inline(always)]
+pub fn dt_to_date_key_fast(dt_val: i64, tu: TimeUnit) -> i32 {
+    let secs = dt_val_to_secs(dt_val, tu);
     let dt = chrono::DateTime::from_timestamp(secs, 0)
         .unwrap_or_default()
         .naive_utc();
@@ -20,26 +30,10 @@ pub fn dt_to_date_key_fast(dt_val: i64, tu: TimeUnit) -> i32 {
     d.year() * 10000 + d.month() as i32 * 100 + d.day() as i32
 }
 
-/// 极速纯整数日序号 — 零 chrono 开销，用于热循环日边界检测
-#[inline(always)]
-pub fn dt_to_day_ordinal(dt_val: i64, tu: TimeUnit) -> i32 {
-    let secs = match tu {
-        TimeUnit::Nanoseconds => dt_val / 1_000_000_000,
-        TimeUnit::Microseconds => dt_val / 1_000_000,
-        TimeUnit::Milliseconds => dt_val / 1_000,
-    };
-    (secs / 86400) as i32
-}
-
-/// 极速计算距离 1970-01-01 的绝对天数（用于数组全量映射 O(1)）
+/// 极速计算距离 1970-01-01 的绝对天数（用于日边界检测和数组全量映射 O(1)）
 #[inline(always)]
 pub fn dt_to_days_since_epoch(dt_val: i64, tu: TimeUnit) -> i32 {
-    let secs = match tu {
-        TimeUnit::Nanoseconds => dt_val / 1_000_000_000,
-        TimeUnit::Microseconds => dt_val / 1_000_000,
-        TimeUnit::Milliseconds => dt_val / 1_000,
-    };
-    (secs / 86400) as i32
+    (dt_val_to_secs(dt_val, tu) / 86400) as i32
 }
 
 /// 内联聚合的每日等权收益数据
@@ -322,6 +316,115 @@ impl SymbolPairsSoA {
     }
 }
 
+struct DailysBuilder {
+    sym: Vec<u32>,
+    date: Vec<i64>,
+    n1b: Vec<f64>,
+    edge: Vec<f64>,
+    ret: Vec<f64>,
+    cost: Vec<f64>,
+    turnover: Vec<f64>,
+    long_edge: Vec<f64>,
+    short_edge: Vec<f64>,
+    long_cost: Vec<f64>,
+    short_cost: Vec<f64>,
+    long_turnover: Vec<f64>,
+    short_turnover: Vec<f64>,
+    long_return: Vec<f64>,
+    short_return: Vec<f64>,
+}
+
+impl DailysBuilder {
+    fn with_capacity(cap: usize) -> Self {
+        Self {
+            sym: Vec::with_capacity(cap),
+            date: Vec::with_capacity(cap),
+            n1b: Vec::with_capacity(cap),
+            edge: Vec::with_capacity(cap),
+            ret: Vec::with_capacity(cap),
+            cost: Vec::with_capacity(cap),
+            turnover: Vec::with_capacity(cap),
+            long_edge: Vec::with_capacity(cap),
+            short_edge: Vec::with_capacity(cap),
+            long_cost: Vec::with_capacity(cap),
+            short_cost: Vec::with_capacity(cap),
+            long_turnover: Vec::with_capacity(cap),
+            short_turnover: Vec::with_capacity(cap),
+            long_return: Vec::with_capacity(cap),
+            short_return: Vec::with_capacity(cap),
+        }
+    }
+
+    fn extend(&mut self, sym_id: u32, s: &SymbolDailysSoA) {
+        let n = s.date_ticks.len();
+        if n == 0 {
+            return;
+        }
+        self.sym.extend(std::iter::repeat(sym_id).take(n));
+        self.date.extend_from_slice(&s.date_ticks);
+        self.n1b.extend_from_slice(&s.n1b);
+        self.edge.extend_from_slice(&s.edge);
+        self.ret.extend_from_slice(&s.ret);
+        self.cost.extend_from_slice(&s.cost);
+        self.turnover.extend_from_slice(&s.turnover);
+        self.long_edge.extend_from_slice(&s.long_edge);
+        self.short_edge.extend_from_slice(&s.short_edge);
+        self.long_cost.extend_from_slice(&s.long_cost);
+        self.short_cost.extend_from_slice(&s.short_cost);
+        self.long_turnover.extend_from_slice(&s.long_turnover);
+        self.short_turnover.extend_from_slice(&s.short_turnover);
+        self.long_return.extend_from_slice(&s.long_return);
+        self.short_return.extend_from_slice(&s.short_return);
+    }
+}
+
+struct PairsBuilder {
+    sym: Vec<u32>,
+    dirs: Vec<&'static str>,
+    open_dts: Vec<i64>,
+    close_dts: Vec<i64>,
+    open_prices: Vec<f64>,
+    close_prices: Vec<f64>,
+    hold_bars: Vec<i64>,
+    event_seqs: Vec<&'static str>,
+    profit_bps: Vec<f64>,
+    counts: Vec<i64>,
+}
+
+impl PairsBuilder {
+    fn with_capacity(cap: usize) -> Self {
+        Self {
+            sym: Vec::with_capacity(cap),
+            dirs: Vec::with_capacity(cap),
+            open_dts: Vec::with_capacity(cap),
+            close_dts: Vec::with_capacity(cap),
+            open_prices: Vec::with_capacity(cap),
+            close_prices: Vec::with_capacity(cap),
+            hold_bars: Vec::with_capacity(cap),
+            event_seqs: Vec::with_capacity(cap),
+            profit_bps: Vec::with_capacity(cap),
+            counts: Vec::with_capacity(cap),
+        }
+    }
+
+    fn extend(&mut self, sym_id: u32, p: &SymbolPairsSoA) {
+        let n = p.dirs.len();
+        if n == 0 {
+            return;
+        }
+        self.sym.extend(std::iter::repeat(sym_id).take(n));
+        self.dirs.extend_from_slice(&p.dirs);
+        self.open_dts.extend_from_slice(&p.open_dts);
+        self.close_dts.extend_from_slice(&p.close_dts);
+        self.open_prices.extend_from_slice(&p.open_prices);
+        self.close_prices.extend_from_slice(&p.close_prices);
+        self.hold_bars.extend_from_slice(&p.hold_bars);
+        self.event_seqs.extend_from_slice(&p.event_seqs);
+        self.profit_bps.extend_from_slice(&p.profit_bps);
+        self.counts.extend_from_slice(&p.counts);
+    }
+}
+
 pub struct NativeEngine;
 
 impl NativeEngine {
@@ -412,39 +515,14 @@ impl NativeEngine {
             .map(|(_, _, p)| p.dirs.len())
             .sum::<usize>();
 
-        let mut d_sym = Vec::with_capacity(total_dailys);
-        let mut d_date = Vec::with_capacity(total_dailys);
-        let mut d_n1b = Vec::with_capacity(total_dailys);
-        let mut d_edge = Vec::with_capacity(total_dailys);
-        let mut d_return = Vec::with_capacity(total_dailys);
-        let mut d_cost = Vec::with_capacity(total_dailys);
-        let mut d_turnover = Vec::with_capacity(total_dailys);
-        let mut d_long_edge = Vec::with_capacity(total_dailys);
-        let mut d_short_edge = Vec::with_capacity(total_dailys);
-        let mut d_long_cost = Vec::with_capacity(total_dailys);
-        let mut d_short_cost = Vec::with_capacity(total_dailys);
-        let mut d_long_turnover = Vec::with_capacity(total_dailys);
-        let mut d_short_turnover = Vec::with_capacity(total_dailys);
-        let mut d_long_return = Vec::with_capacity(total_dailys);
-        let mut d_short_return = Vec::with_capacity(total_dailys);
+        let mut dailys_builder = DailysBuilder::with_capacity(total_dailys);
+        let mut pairs_builder = PairsBuilder::with_capacity(total_pairs);
 
-        let mut p_sym = Vec::with_capacity(total_pairs);
-        let mut p_dirs = Vec::with_capacity(total_pairs);
-        let mut p_open_dts = Vec::with_capacity(total_pairs);
-        let mut p_close_dts = Vec::with_capacity(total_pairs);
-        let mut p_open_prices = Vec::with_capacity(total_pairs);
-        let mut p_close_prices = Vec::with_capacity(total_pairs);
-        let mut p_hold_bars = Vec::with_capacity(total_pairs);
-        let mut p_event_seqs = Vec::with_capacity(total_pairs);
-        let mut p_profit_bps = Vec::with_capacity(total_pairs);
-        let mut p_counts = Vec::with_capacity(total_pairs);
-
-        const MAX_DAYS: usize = 60000;
-        let mut global_sum_by_day = vec![0.0f64; MAX_DAYS];
-        let mut global_n1b_by_day = vec![0.0f64; MAX_DAYS];
-        let mut global_active_by_day = vec![0u32; MAX_DAYS];
+        let mut global_sum_by_day = vec![0.0f64; DAY_INDEX_CAPACITY];
+        let mut global_n1b_by_day = vec![0.0f64; DAY_INDEX_CAPACITY];
+        let mut global_active_by_day = vec![0u32; DAY_INDEX_CAPACITY];
         let mut min_abs_day = 50000i32;
-        let mut max_abs_day = -10000i32;
+        let mut max_abs_day = -(DAY_INDEX_OFFSET as i32);
         let mut total_long_count = 0u64;
         let mut total_short_count = 0u64;
         let mut total_weight_rows = 0u64;
@@ -453,24 +531,7 @@ impl NativeEngine {
 
         for (sym_id, d, p) in processed {
             let n_daily = d.date_ticks.len();
-            let valid_n = n_daily;
-            if valid_n > 0 {
-                d_sym.extend(std::iter::repeat(sym_id).take(valid_n));
-                d_date.extend_from_slice(&d.date_ticks[0..]);
-                d_n1b.extend_from_slice(&d.n1b[0..]);
-                d_edge.extend_from_slice(&d.edge[0..]);
-                d_return.extend_from_slice(&d.ret[0..]);
-                d_cost.extend_from_slice(&d.cost[0..]);
-                d_turnover.extend_from_slice(&d.turnover[0..]);
-                d_long_edge.extend_from_slice(&d.long_edge[0..]);
-                d_short_edge.extend_from_slice(&d.short_edge[0..]);
-                d_long_cost.extend_from_slice(&d.long_cost[0..]);
-                d_short_cost.extend_from_slice(&d.short_cost[0..]);
-                d_long_turnover.extend_from_slice(&d.long_turnover[0..]);
-                d_short_turnover.extend_from_slice(&d.short_turnover[0..]);
-                d_long_return.extend_from_slice(&d.long_return[0..]);
-                d_short_return.extend_from_slice(&d.short_return[0..]);
-            }
+            dailys_builder.extend(sym_id, &d);
 
             for i in 0..n_daily {
                 let ticks = d.date_ticks[i];
@@ -478,8 +539,8 @@ impl NativeEngine {
                 let n1b_val = d.n1b[i];
 
                 let abs_day = dt_to_days_since_epoch(ticks, time_unit);
-                let idx_signed = abs_day as i64 + 10000;
-                if idx_signed >= 0 && (idx_signed as usize) < MAX_DAYS {
+                let idx_signed = abs_day as i64 + DAY_INDEX_OFFSET;
+                if idx_signed >= 0 && (idx_signed as usize) < DAY_INDEX_CAPACITY {
                     let idx = idx_signed as usize;
                     global_sum_by_day[idx] += ret;
                     global_n1b_by_day[idx] += n1b_val;
@@ -493,17 +554,7 @@ impl NativeEngine {
                 }
             }
 
-            let n_pairs = p.dirs.len();
-            p_sym.extend(std::iter::repeat(sym_id).take(n_pairs));
-            p_dirs.extend_from_slice(&p.dirs);
-            p_open_dts.extend_from_slice(&p.open_dts);
-            p_close_dts.extend_from_slice(&p.close_dts);
-            p_open_prices.extend_from_slice(&p.open_prices);
-            p_close_prices.extend_from_slice(&p.close_prices);
-            p_hold_bars.extend_from_slice(&p.hold_bars);
-            p_event_seqs.extend_from_slice(&p.event_seqs);
-            p_profit_bps.extend_from_slice(&p.profit_bps);
-            p_counts.extend_from_slice(&p.counts);
+            pairs_builder.extend(sym_id, &p);
 
             reports.push(SymbolsReport {
                 symbol: symbol_dict[sym_id as usize].clone(),
@@ -531,7 +582,7 @@ impl NativeEngine {
 
         if min_abs_day <= max_abs_day {
             for ad in min_abs_day..=max_abs_day {
-                let idx = ad as usize + 10000;
+                let idx = ad as usize + DAY_INDEX_OFFSET as usize;
                 let cnt = global_active_by_day[idx];
                 if cnt > 0 {
                     let raw_sum = global_sum_by_day[idx];
@@ -570,36 +621,36 @@ impl NativeEngine {
         };
 
         let dailys_soa = DailysSoA {
-            sym_ids: d_sym,
-            date_ticks: d_date,
-            n1b: d_n1b,
-            edge: d_edge,
-            ret: d_return,
-            cost: d_cost,
-            turnover: d_turnover,
-            long_edge: d_long_edge,
-            short_edge: d_short_edge,
-            long_cost: d_long_cost,
-            short_cost: d_short_cost,
-            long_turnover: d_long_turnover,
-            short_turnover: d_short_turnover,
-            long_return: d_long_return,
-            short_return: d_short_return,
+            sym_ids: dailys_builder.sym,
+            date_ticks: dailys_builder.date,
+            n1b: dailys_builder.n1b,
+            edge: dailys_builder.edge,
+            ret: dailys_builder.ret,
+            cost: dailys_builder.cost,
+            turnover: dailys_builder.turnover,
+            long_edge: dailys_builder.long_edge,
+            short_edge: dailys_builder.short_edge,
+            long_cost: dailys_builder.long_cost,
+            short_cost: dailys_builder.short_cost,
+            long_turnover: dailys_builder.long_turnover,
+            short_turnover: dailys_builder.short_turnover,
+            long_return: dailys_builder.long_return,
+            short_return: dailys_builder.short_return,
             time_unit,
             symbol_dict: symbol_dict.clone(),
         };
 
         let pairs_soa = PairsSoA {
-            sym_ids: p_sym,
-            dirs: p_dirs,
-            open_dts: p_open_dts,
-            close_dts: p_close_dts,
-            open_prices: p_open_prices,
-            close_prices: p_close_prices,
-            hold_bars: p_hold_bars,
-            event_seqs: p_event_seqs,
-            profit_bps: p_profit_bps,
-            counts: p_counts,
+            sym_ids: pairs_builder.sym,
+            dirs: pairs_builder.dirs,
+            open_dts: pairs_builder.open_dts,
+            close_dts: pairs_builder.close_dts,
+            open_prices: pairs_builder.open_prices,
+            close_prices: pairs_builder.close_prices,
+            hold_bars: pairs_builder.hold_bars,
+            event_seqs: pairs_builder.event_seqs,
+            profit_bps: pairs_builder.profit_bps,
+            counts: pairs_builder.counts,
             time_unit,
             symbol_dict: symbol_dict.clone(),
         };
@@ -639,7 +690,7 @@ impl NativeEngine {
             0.0
         };
         let mut pending_price = p_slice[0];
-        let mut pending_date_key = dt_to_day_ordinal(pending_dt_ticks, tu);
+        let mut pending_date_key = dt_to_days_since_epoch(pending_dt_ticks, tu);
 
         let mut pending_turnover = 0.0;
         let mut pending_cost = 0.0;
@@ -718,7 +769,7 @@ impl NativeEngine {
             let long_ret = long_edge - pending_long_cost;
             let short_ret = short_edge - pending_short_cost;
 
-            let curr_date_key = dt_to_day_ordinal(dt, tu);
+            let curr_date_key = dt_to_days_since_epoch(dt, tu);
 
             if pending_date_key != active_date_key {
                 d.date_ticks.push(active_dt_ticks);
