@@ -210,3 +210,4 @@ __marimo__/
 /target/
 Cargo.lock
 python/wbt/lib_wbt.dylib.dSYM/
+wbt.code-workspace
