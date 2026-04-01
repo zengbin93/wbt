@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-polars = { workspace = true, features = ["lazy", "dtype-datetime", "dtype-date", "round_series", "cov"] }
+polars = { workspace = true, features = ["lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings"] }
 rayon = "1.10"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
