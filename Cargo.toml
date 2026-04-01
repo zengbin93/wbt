@@ -1,0 +1,20 @@
+[workspace]
+members = ["crates/wbt-core"]
+
+[package]
+name = "wbt"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "_wbt"
+crate-type = ["cdylib"]
+
+[dependencies]
+wbt-core = { path = "crates/wbt-core" }
+pyo3 = { version = "0.25", features = ["extension-module"] }
+numpy = "0.25"
+polars = { version = "0.46", default-features = false, features = ["ipc"] }
+
+[workspace.dependencies]
+polars = { version = "0.46", default-features = false }
