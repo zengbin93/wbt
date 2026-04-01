@@ -8,7 +8,7 @@
 
 **wbt**（Weight Back Test）是一个独立的策略持仓权重回测库。基于持仓权重序列，计算每日盈亏归因、交易对撮合（FIFO）及全面的绩效统计指标。底层采用零拷贝、缓存友好的 Rust 引擎，配合 rayon 实现多品种并行计算。
 
-- **Rust crate**（`wbt-core`）：纯 Rust 库，无 Python 依赖
+- **Rust crate**（`wbt`）：纯 Rust 引擎库
 - **Python 包**（`wbt`）：通过 PyO3 绑定 + Arrow IPC 提供 pandas 友好的 API
 
 ## 安装
@@ -28,7 +28,7 @@ maturin develop --release
 ```toml
 # Cargo.toml
 [dependencies]
-wbt-core = { path = "path/to/wbt/crates/wbt-core" }
+wbt = "0.1"
 ```
 
 ## 快速开始
@@ -59,7 +59,7 @@ wb.pairs          # DataFrame: 全部 FIFO 撮合交易对
 ### Rust
 
 ```rust
-use wbt_core::{WeightBacktest, WeightType};
+use wbt::core::{WeightBacktest, WeightType};
 use polars::prelude::*;
 
 let dfw: DataFrame = /* 构建包含 [dt, symbol, weight, price] 的 DataFrame */;
@@ -109,18 +109,18 @@ println!("夏普比率: {}", report.stats.daily_performance.sharpe_ratio);
 
 ```
 wbt/
-├── crates/wbt-core/    # 纯 Rust 库
-│   └── src/
-│       ├── lib.rs                # WeightBacktest 结构体与公开 API
-│       ├── native_engine.rs      # 零拷贝并行引擎（rayon）
-│       ├── daily_performance.rs  # 夏普、卡玛、回撤等绩效指标
-│       ├── evaluate_pairs.rs     # 交易对统计评估
-│       ├── backtest.rs           # 回测编排与 Alpha 计算
-│       ├── report.rs             # 报告结构体与 JSON 序列化
-│       ├── trade_dir.rs          # 交易方向与动作枚举
-│       ├── errors.rs             # 错误类型
-│       └── utils.rs              # WeightType、四舍五入、分位数
-├── src/lib.rs          # PyO3 绑定（Arrow IPC 输入输出）
+├── src/
+│   ├── lib.rs              # PyO3 绑定（Arrow IPC 输入输出）
+│   └── core/               # 纯 Rust 引擎
+│       ├── mod.rs           # WeightBacktest 结构体与公开 API
+│       ├── native_engine.rs # 零拷贝并行引擎（rayon）
+│       ├── daily_performance.rs # 夏普、卡玛、回撤等绩效指标
+│       ├── evaluate_pairs.rs    # 交易对统计评估
+│       ├── backtest.rs      # 回测编排与 Alpha 计算
+│       ├── report.rs        # 报告结构体与 JSON 序列化
+│       ├── trade_dir.rs     # 交易方向与动作枚举
+│       ├── errors.rs        # 错误类型
+│       └── utils.rs         # WeightType、四舍五入、分位数
 └── python/wbt/         # Python API 封装层
     ├── backtest.py     # WeightBacktest 类（pandas 友好）
     └── _df_convert.py  # Arrow <-> pandas 转换
