@@ -5,7 +5,6 @@ use polars::prelude::*;
 use report::Report;
 
 mod backtest;
-mod calc_symbol;
 pub mod daily_performance;
 pub mod errors;
 mod evaluate_pairs;
@@ -293,64 +292,6 @@ impl WeightBacktest {
         Ok(())
     }
 
-    /// 计算策略的统计指标
-    pub fn calc_stats_by_alpha(&mut self) -> Result<(f64, f64, f64, f64), WbtError> {
-        let alpha = self.alpha().collect()?;
-
-        let strategy_std = alpha.column("策略")?.as_materialized_series().f64()?.std(0).unwrap_or(0.0);
-        let benchmark_std = alpha.column("基准")?.as_materialized_series().f64()?.std(0).unwrap_or(0.0);
-
-        let volatility_ratio = if benchmark_std > 0.0 {
-            strategy_std / benchmark_std
-        } else {
-            0.0
-        };
-
-        let result = alpha
-            .clone()
-            .lazy()
-            .with_column(pearson_corr(col("策略"), col("基准").abs()).alias("与基准波动相关性"))
-            .with_column(pearson_corr(col("策略"), col("基准")).alias("与基准相关性"))
-            .collect()?;
-
-        let relevance_volatility = result
-            .column("与基准波动相关性")?.as_materialized_series()
-            .f64()?
-            .get(0)
-            .unwrap_or(0.0);
-        let relevance = result.column("与基准相关性")?.as_materialized_series().f64()?.get(0).unwrap_or(0.0);
-
-        let relevance_short = alpha
-            .lazy()
-            .filter(col("基准").lt(lit(0)))
-            .select([pearson_corr(col("策略"), col("基准")).alias("空头相关性")])
-            .collect()?
-            .column("空头相关性")?.as_materialized_series()
-            .f64()?
-            .get(0)
-            .unwrap_or(0.0);
-
-        Ok((
-            volatility_ratio,
-            relevance_volatility,
-            relevance,
-            relevance_short,
-        ))
-    }
-
-    /// 计算 Alpha 收益率
-    pub fn alpha(&mut self) -> LazyFrame {
-        let df = self.dailys_df().unwrap();
-        df.clone()
-            .lazy()
-            .group_by([col("date")])
-            .agg([
-                (col("return").mean() - col("n1b").mean()).alias("超额"),
-                col("return").mean().alias("策略"),
-                col("n1b").mean().alias("基准"),
-            ])
-            .sort(["date"], Default::default())
-    }
 }
 
 #[cfg(test)]
