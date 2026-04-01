@@ -2,6 +2,8 @@
 
 High-performance position-weighted backtesting engine, written in Rust with Python bindings.
 
+[中文文档](README_CN.md)
+
 ## Overview
 
 **wbt** (Weight Back Test) is a standalone library for backtesting trading strategies based on position weights. It computes daily P&L attribution, trade pair matching (FIFO), and comprehensive performance statistics — all powered by a zero-copy, cache-friendly Rust core with rayon-based parallelism.
