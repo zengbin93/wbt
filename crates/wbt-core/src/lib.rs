@@ -201,6 +201,16 @@ impl WeightBacktest {
         Ok(unique_symbols)
     }
 
+    fn sort_by_dt(df: DataFrame) -> Result<DataFrame, WbtError> {
+        df.lazy()
+            .sort(
+                ["dt"],
+                SortMultipleOptions::default().with_order_descending(false),
+            )
+            .collect()
+            .map_err(|e| anyhow::anyhow!("Failed to sort by dt: {e}").into())
+    }
+
     /// 将 DataFrame 中的 `dt` 列转换为 datetime 格式
     pub(crate) fn convert_datetime(mut df: DataFrame) -> Result<DataFrame, WbtError> {
         let dt_col = df.column("dt")?.as_materialized_series().clone();
@@ -208,29 +218,13 @@ impl WeightBacktest {
 
         match &dt_type {
             DataType::Datetime(TimeUnit::Nanoseconds, _) => {
-                let df = df
-                    .lazy()
-                    .sort(
-                        ["dt"],
-                        SortMultipleOptions::default().with_order_descending(false),
-                    )
-                    .collect()
-                    .context("Failed to sort by dt (Nanoseconds)")?;
-                Ok(df)
+                Ok(Self::sort_by_dt(df)?)
             }
             DataType::Datetime(TimeUnit::Milliseconds, _) => {
                 let dt_cast = dt_col
                     .cast(&DataType::Datetime(TimeUnit::Milliseconds, None))?;
                 let _ = df.replace("dt", dt_cast)?;
-                let df = df
-                    .lazy()
-                    .sort(
-                        ["dt"],
-                        SortMultipleOptions::default().with_order_descending(false),
-                    )
-                    .collect()
-                    .context("Failed to sort by dt (Milliseconds)")?;
-                Ok(df)
+                Ok(Self::sort_by_dt(df)?)
             }
             DataType::Int64 => {
                 let parsed_col = dt_col
@@ -240,15 +234,7 @@ impl WeightBacktest {
                 let dt_s = Series::from_iter(parsed_col)
                     .cast(&DataType::Datetime(TimeUnit::Milliseconds, None))?;
                 let _ = df.replace("dt", dt_s)?;
-                let df = df
-                    .lazy()
-                    .sort(
-                        ["dt"],
-                        SortMultipleOptions::default().with_order_descending(false),
-                    )
-                    .collect()
-                    .context("Failed to sort by dt (Int64)")?;
-                Ok(df)
+                Ok(Self::sort_by_dt(df)?)
             }
             DataType::String => {
                 let df = df
