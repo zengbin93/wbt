@@ -18,3 +18,9 @@ polars = { version = "0.46", default-features = false, features = ["ipc"] }
 
 [workspace.dependencies]
 polars = { version = "0.46", default-features = false }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = "symbols"
