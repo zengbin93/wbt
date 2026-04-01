@@ -77,11 +77,11 @@ pub struct DailysSoA {
 impl DailysSoA {
     /// 按需构建 DataFrame（仅在 Python 端调用 .dailys() 时触发）
     pub fn to_dataframe(&self) -> Result<DataFrame, WbtError> {
-        let mut sym_builder = StringChunkedBuilder::new(PlSmallStr::from("symbol"), self.sym_ids.len());
-        for &id in &self.sym_ids {
-            sym_builder.append_value(&self.symbol_dict[id as usize]);
-        }
-        let sym_series = sym_builder.finish().into_series();
+        let sym_strs: Vec<&str> = self.sym_ids
+            .iter()
+            .map(|&id| self.symbol_dict[id as usize].as_str())
+            .collect();
+        let sym_series = Series::new("symbol".into(), &sym_strs);
 
         let date_as_days: Vec<i32> = self
             .date_ticks
@@ -158,11 +158,11 @@ impl PairsSoA {
             let c_dt = DateTime::from_timestamp(c_secs, c_nano).unwrap_or_default();
             hold_days.push((c_dt - o_dt).num_days());
         }
-        let mut sym_builder = StringChunkedBuilder::new(PlSmallStr::from("symbol"), self.sym_ids.len());
-        for &id in &self.sym_ids {
-            sym_builder.append_value(&self.symbol_dict[id as usize]);
-        }
-        let sym_series = sym_builder.finish().into_series();
+        let sym_strs: Vec<&str> = self.sym_ids
+            .iter()
+            .map(|&id| self.symbol_dict[id as usize].as_str())
+            .collect();
+        let sym_series = Series::new("symbol".into(), &sym_strs);
 
         let open_dt_series = Series::new("开仓时间".into(), &self.open_dts)
             .cast(&DataType::Datetime(self.time_unit, None))

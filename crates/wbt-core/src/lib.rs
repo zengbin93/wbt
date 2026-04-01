@@ -159,12 +159,12 @@ impl WeightBacktest {
         let dt = &report.daily_totals;
         let n = dt.strategy_means.len();
 
+        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
         let dr_dates: Vec<i32> = dt
             .date_keys
             .iter()
             .map(|dk| {
                 let nd = utils::date_key_to_naive_date(*dk);
-                let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
                 (nd - epoch).num_days() as i32
             })
             .collect();
