@@ -218,3 +218,4 @@ __marimo__/
 Cargo.lock
 python/wbt/lib_wbt.dylib.dSYM/
 wbt.code-workspace
+.idea/
