@@ -6,6 +6,9 @@ pub enum WbtError {
     #[error("expected value for {0}, got None")]
     NoneValue(String),
 
+    #[error("io: {0}")]
+    Io(String),
+
     #[error("polars: {0}")]
     Polars(#[from] PolarsError),
 

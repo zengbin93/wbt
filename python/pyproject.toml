@@ -9,10 +9,11 @@ description = "Weight-based backtesting engine for quantitative trading"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["numpy", "pandas", "pyarrow"]
+dependencies = ["numpy", "pandas", "pyarrow", "polars"]
 
 [project.optional-dependencies]
 dev = ["basedpyright", "maturin>=1.0,<2.0", "pytest", "ruff"]
+plot = ["plotly"]
 
 [project.urls]
 Homepage = "https://github.com/zengbin93/wbt"

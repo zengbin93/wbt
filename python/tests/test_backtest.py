@@ -5,35 +5,31 @@ import pytest
 
 from wbt import WeightBacktest
 
-STATS_KEYS_29 = [
+STATS_KEYS_25 = [
     "开始日期",
     "结束日期",
     "绝对收益",
-    "年化",
-    "夏普",
-    "最大回撤",
-    "卡玛",
+    "年化收益",
+    "夏普比率",
+    "卡玛比率",
+    "新高占比",
+    "单笔盈亏比",
+    "单笔收益",
     "日胜率",
-    "日盈亏比",
-    "日赢面",
+    "周胜率",
+    "月胜率",
+    "季胜率",
+    "年胜率",
+    "最大回撤",
     "年化波动率",
     "下行波动率",
-    "非零覆盖",
-    "盈亏平衡点",
     "新高间隔",
-    "新高占比",
-    "回撤风险",
-    "回归年度回报率",
-    "长度调整平均最大回撤",
-    "交易胜率",
-    "单笔收益",
+    "交易次数",
+    "年化交易次数",
     "持仓K线数",
+    "交易胜率",
     "多头占比",
     "空头占比",
-    "与基准相关性",
-    "与基准空头相关性",
-    "波动比",
-    "与基准波动相关性",
     "品种数量",
 ]
 
@@ -74,8 +70,8 @@ class TestStats:
     def test_stats_keys(self, wb: WeightBacktest) -> None:
         stats = wb.stats
         assert isinstance(stats, dict)
-        assert len(stats) == 29
-        for key in STATS_KEYS_29:
+        assert len(stats) == 25
+        for key in STATS_KEYS_25:
             assert key in stats, f"missing key: {key}"
 
     def test_stats_date_format(self, wb: WeightBacktest) -> None:
@@ -93,6 +89,10 @@ class TestStats:
         assert 0 <= stats["交易胜率"] <= 1.0
         assert stats["最大回撤"] >= 0
         assert stats["年化波动率"] >= 0
+        # Verify new key names exist
+        assert "年化收益" in stats
+        assert "夏普比率" in stats
+        assert "卡玛比率" in stats
 
 
 class TestSymbolDict:
@@ -212,10 +212,47 @@ class TestLongShortReturns:
         assert "total" in df.columns
 
     def test_long_stats(self, wb: WeightBacktest) -> None:
-        assert isinstance(wb.long_stats, dict)
+        stats = wb.long_stats
+        assert isinstance(stats, dict)
+        assert "年化收益" in stats
+        assert "夏普比率" in stats
+        assert "交易次数" in stats
 
     def test_short_stats(self, wb: WeightBacktest) -> None:
-        assert isinstance(wb.short_stats, dict)
+        stats = wb.short_stats
+        assert isinstance(stats, dict)
+        assert "年化收益" in stats
+        assert "夏普比率" in stats
+
+
+class TestSegmentStats:
+    """验证分段统计功能。"""
+
+    def test_segment_stats_default(self, wb: WeightBacktest) -> None:
+        stats = wb.segment_stats()
+        assert isinstance(stats, dict)
+        assert "年化收益" in stats
+        assert "交易次数" in stats
+
+    def test_segment_stats_long(self, wb: WeightBacktest) -> None:
+        stats = wb.segment_stats(kind="多头")
+        assert isinstance(stats, dict)
+        assert "年化收益" in stats
+
+    def test_segment_stats_short(self, wb: WeightBacktest) -> None:
+        stats = wb.segment_stats(kind="空头")
+        assert isinstance(stats, dict)
+        assert "年化收益" in stats
+
+
+class TestLongAlphaStats:
+    """验证波动率调整后的多头超额收益统计。"""
+
+    def test_long_alpha_stats(self, wb: WeightBacktest) -> None:
+        stats = wb.long_alpha_stats
+        assert isinstance(stats, dict)
+        assert "年化收益" in stats
+        assert "夏普比率" in stats
 
 
 class TestSymbolMethods:

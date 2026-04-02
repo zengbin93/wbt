@@ -3,6 +3,7 @@ use anyhow::Context;
 use errors::WbtError;
 use polars::prelude::*;
 use report::Report;
+use std::path::Path;
 
 mod backtest;
 pub mod daily_performance;
@@ -119,6 +120,58 @@ impl WeightBacktest {
             yearly_days: 252,
         };
         Ok(wb)
+    }
+
+    /// 从文件读取数据并创建回测对象
+    ///
+    /// 支持格式: .csv, .parquet, .feather/.arrow (IPC)
+    /// 必须包含列: dt, symbol, weight, price
+    pub fn from_file(path: &str, digits: i64, fee_rate: Option<f64>) -> Result<Self, WbtError> {
+        let p = Path::new(path);
+        let ext = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let df = match ext.as_str() {
+            "csv" => CsvReader::new(
+                std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?,
+            )
+            .finish()
+            .map_err(WbtError::Polars)?,
+            "parquet" => {
+                let file =
+                    std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?;
+                ParquetReader::new(file)
+                    .finish()
+                    .map_err(WbtError::Polars)?
+            }
+            "feather" | "arrow" => {
+                let file =
+                    std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?;
+                IpcReader::new(file).finish().map_err(WbtError::Polars)?
+            }
+            _ => {
+                return Err(WbtError::Io(format!(
+                    "Unsupported file format: '{}'. Supported: csv, parquet, feather, arrow",
+                    ext
+                )));
+            }
+        };
+
+        // Validate required columns
+        let required = ["dt", "symbol", "weight", "price"];
+        for col in required {
+            if df.column(col).is_err() {
+                return Err(WbtError::Io(format!(
+                    "Missing required column '{}' in file '{}'",
+                    col, path
+                )));
+            }
+        }
+
+        Self::new(df, digits, fee_rate)
     }
 
     /// 执行回测并计算性能指标
@@ -487,6 +540,51 @@ mod tests {
             .get(0)
             .unwrap();
         assert_eq!(w, 0.0);
+    }
+
+    // --- from_file ---
+    #[test]
+    fn from_file_csv() {
+        let dir = std::env::temp_dir().join("wbt_test_from_file");
+        std::fs::create_dir_all(&dir).unwrap();
+        let csv_path = dir.join("test.csv");
+        let csv_content = "dt,symbol,weight,price\n\
+            2024-01-01 09:30:00,SYM_A,0.5,100.0\n\
+            2024-01-02 09:30:00,SYM_A,-0.3,101.0\n\
+            2024-01-01 09:30:00,SYM_B,0.2,50.0\n\
+            2024-01-02 09:30:00,SYM_B,0.0,51.0\n";
+        std::fs::write(&csv_path, csv_content).unwrap();
+
+        let wb = WeightBacktest::from_file(csv_path.to_str().unwrap(), 2, None).unwrap();
+        assert_eq!(wb.symbols.len(), 2);
+        assert!(wb.symbols.contains(&std::sync::Arc::from("SYM_A")));
+        assert!(wb.symbols.contains(&std::sync::Arc::from("SYM_B")));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_file_missing_column() {
+        let dir = std::env::temp_dir().join("wbt_test_missing_col");
+        std::fs::create_dir_all(&dir).unwrap();
+        let csv_path = dir.join("bad.csv");
+        std::fs::write(&csv_path, "dt,symbol,weight\n2024-01-01,A,0.5\n").unwrap();
+
+        let result = WeightBacktest::from_file(csv_path.to_str().unwrap(), 2, None);
+        assert!(result.is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_file_unsupported_ext() {
+        let result = WeightBacktest::from_file("/tmp/test.xlsx", 2, None);
+        assert!(result.is_err());
+        let err_msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => unreachable!(),
+        };
+        assert!(err_msg.contains("Unsupported"));
     }
 
     // --- unique_symbols sorted ---

@@ -1,6 +1,10 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 import pandas as pd
 
-from wbt._df_convert import arrow_bytes_to_pd_df, pandas_to_arrow_bytes
+from wbt._df_convert import arrow_bytes_to_pd_df, pandas_to_arrow_bytes, polars_to_arrow_bytes
 from wbt._wbt import PyWeightBacktest, daily_performance
 
 
@@ -12,7 +16,7 @@ class WeightBacktest:
 
     def __init__(
         self,
-        dfw: pd.DataFrame,
+        data: pd.DataFrame | str | Path,
         digits: int = 2,
         fee_rate: float = 0.0002,
         n_jobs: int = 1,
@@ -21,14 +25,12 @@ class WeightBacktest:
     ) -> None:
         """持仓权重回测
 
-        :param dfw: pd.DataFrame, columns = ['dt', 'symbol', 'weight', 'price'], 持仓权重数据，其中
+        :param data: 持仓权重数据，支持以下类型：
+            - pd.DataFrame: columns = ['dt', 'symbol', 'weight', 'price']
+            - polars.DataFrame / polars.LazyFrame: 同上列
+            - str / Path: 文件路径（支持 .csv, .parquet, .feather, .arrow）
 
-            dt      为K线结束时间，必须是连续的交易时间序列，不允许有时间断层
-            symbol  为合约代码，
-            weight  为K线结束时间对应的持仓权重，品种之间的权重是独立的，不会互相影响
-            price   为结束时间对应的交易价格，可以是当前K线的收盘价，或者下一根K线的开盘价，或者未来N根K线的TWAP、VWAP等
-
-            数据样例如下：
+            DataFrame 数据样例如下：
             ===================  ========  ========  =======
             dt                   symbol      weight    price
             ===================  ========  ========  =======
@@ -45,31 +47,52 @@ class WeightBacktest:
         :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
         :param yearly_days: int, default 252，年化交易日数量
         """
-        if dfw["weight"].dtype != "float":
-            dfw["weight"] = dfw["weight"].astype(float)
-        if dfw.isnull().sum().sum() > 0:
-            raise ValueError(f"dfw 中存在空值，请先处理; 具体数据：\n{dfw[dfw.isnull().T.any().T]}")
-
-        dfw = dfw[["dt", "symbol", "weight", "price"]].copy()
-        dfw["weight"] = dfw["weight"].astype("float").round(digits)
-
-        # 保存实例变量，与 Python 原版一致
-        self.dfw = dfw.copy()
         self.digits = digits
         self.fee_rate = fee_rate
         self.weight_type = weight_type
         self.yearly_days = yearly_days
-        self.symbols = list(dfw["symbol"].unique().tolist())
 
-        data = pandas_to_arrow_bytes(dfw)
-        self._inner: PyWeightBacktest = PyWeightBacktest.from_arrow(
-            data,
-            digits,
-            fee_rate,
-            n_jobs,
-            weight_type,
-            yearly_days,
-        )
+        # Type dispatch
+        if isinstance(data, (str, Path)):
+            # File path — delegate entirely to Rust
+            self.dfw = None
+            self._inner: PyWeightBacktest = PyWeightBacktest.from_file(
+                str(data), digits, fee_rate, n_jobs, weight_type, yearly_days
+            )
+            self.symbols = self._inner.symbol_dict()
+        else:
+            # Try polars types first
+            try:
+                import polars as pl
+
+                if isinstance(data, (pl.DataFrame, pl.LazyFrame)):
+                    self.dfw = None
+                    arrow_data = polars_to_arrow_bytes(data)
+                    self._inner = PyWeightBacktest.from_arrow(
+                        arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days
+                    )
+                    self.symbols = self._inner.symbol_dict()
+                    return
+            except ImportError:
+                pass
+
+            # pd.DataFrame path
+            dfw = data
+            if dfw["weight"].dtype != "float":
+                dfw["weight"] = dfw["weight"].astype(float)
+            if dfw.isnull().sum().sum() > 0:
+                raise ValueError(f"dfw 中存在空值，请先处理; 具体数据：\n{dfw[dfw.isnull().T.any().T]}")
+
+            dfw = dfw[["dt", "symbol", "weight", "price"]].copy()
+            dfw["weight"] = dfw["weight"].astype("float").round(digits)
+
+            self.dfw = dfw.copy()
+            self.symbols = list(dfw["symbol"].unique().tolist())
+
+            arrow_data = pandas_to_arrow_bytes(dfw)
+            self._inner = PyWeightBacktest.from_arrow(
+                arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days
+            )
 
     def get_top_symbols(self, n: int = 1, kind: str = "profit") -> list:
         """获取回测赚钱/亏钱最多的前n个品种
@@ -216,36 +239,29 @@ class WeightBacktest:
         return self._pivot_daily_return("short_return")
 
     @property
-    def long_stats(self):
-        """多头收益统计
-
-        输出样例如下：
-            {'绝对收益': 0.5073,
-            '年化': 0.0679,
-            '夏普': 1.0786,
-            '最大回撤': 0.0721,
-            '卡玛': 0.9418,
-            '日胜率': 0.5276,
-            '日盈亏比': 1.1263,
-            '日赢面': 0.1218,
-            '年化波动率': 0.063,
-            '下行波动率': 0.0478,
-            '非零覆盖': 0.9421,
-            '盈亏平衡点': 0.9819,
-            '新高间隔': 222.0,
-            '新高占比': 0.0728,
-            '回撤风险': 1.1444,
-            '回归年度回报率': 0.0745,
-            '长度调整平均最大回撤': 0.2595,
-            '开始日期': '2017-01-03',
-            '结束日期': '2023-07-31'}
-        """
-        return self._compute_stats(self.long_daily_return, "total")
+    def long_stats(self) -> dict:
+        """多头收益统计（从 Rust 端计算）"""
+        return self._inner.long_stats()
 
     @property
-    def short_stats(self):
-        """空头收益统计"""
-        return self._compute_stats(self.short_daily_return, "total")
+    def short_stats(self) -> dict:
+        """空头收益统计（从 Rust 端计算）"""
+        return self._inner.short_stats()
+
+    def segment_stats(self, sdt: int | None = None, edt: int | None = None, kind: str = "多空") -> dict:
+        """分段统计
+
+        :param sdt: int | None, 开始日期 date_key (YYYYMMDD 格式整数)，None 表示从头开始
+        :param edt: int | None, 结束日期 date_key，None 表示到末尾
+        :param kind: str, "多空" | "多头" | "空头"
+        :return: dict, 统计指标
+        """
+        return self._inner.segment_stats(sdt, edt, kind)
+
+    @property
+    def long_alpha_stats(self) -> dict:
+        """波动率调整后的多头超额收益统计"""
+        return self._inner.long_alpha_stats()
 
     @property
     def pairs(self) -> pd.DataFrame:

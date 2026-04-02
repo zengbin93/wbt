@@ -18,7 +18,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 pyo3 = { version = "0.25", features = ["extension-module"] }
 numpy = "0.25"
-polars = { version = "0.46", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings"] }
+polars = { version = "0.46", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings", "parquet", "csv"] }
 rayon = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"

@@ -7,11 +7,21 @@ class PyWeightBacktest:
     def from_arrow(
         cls,
         data: bytes,
-        digits: int,
-        fee_rate: float,
-        n_jobs: int,
-        weight_type: str,
-        yearly_days: int,
+        digits: int = 2,
+        fee_rate: float | None = 0.0002,
+        n_jobs: int | None = 4,
+        weight_type: str = "ts",
+        yearly_days: int = 252,
+    ) -> PyWeightBacktest: ...
+    @classmethod
+    def from_file(
+        cls,
+        path: str,
+        digits: int = 2,
+        fee_rate: float | None = 0.0002,
+        n_jobs: int | None = 4,
+        weight_type: str = "ts",
+        yearly_days: int = 252,
     ) -> PyWeightBacktest: ...
     def stats(self) -> dict[str, Any]: ...
     def symbol_dict(self) -> list[str]: ...
@@ -19,5 +29,14 @@ class PyWeightBacktest:
     def dailys(self) -> bytes: ...
     def alpha(self) -> bytes: ...
     def pairs(self) -> bytes: ...
+    def long_stats(self) -> dict[str, Any]: ...
+    def short_stats(self) -> dict[str, Any]: ...
+    def segment_stats(
+        self,
+        sdt: int | None = None,
+        edt: int | None = None,
+        kind: str = "多空",
+    ) -> dict[str, Any]: ...
+    def long_alpha_stats(self) -> dict[str, Any]: ...
 
 def daily_performance(returns: Any, yearly_days: int = 252) -> dict[str, Any]: ...

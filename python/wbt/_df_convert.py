@@ -27,6 +27,19 @@ def pandas_to_arrow_bytes(df: pd.DataFrame | pd.Series) -> bytes:
     return sink.getvalue().to_pybytes()
 
 
+def polars_to_arrow_bytes(df) -> bytes:
+    """将 Polars DataFrame / LazyFrame 转换为 Arrow IPC 字节流"""
+    import polars as pl
+
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
+    table = df.to_arrow()
+    sink = pa.BufferOutputStream()
+    with ipc.new_file(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().to_pybytes()
+
+
 def arrow_bytes_to_pd_df(arrow_bytes: bytes) -> pd.DataFrame:
     """
     将 Arrow 字节流转换回 Pandas DataFrame

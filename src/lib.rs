@@ -1,5 +1,6 @@
 pub mod core;
 
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::str::FromStr;
 
@@ -7,6 +8,7 @@ use polars::prelude::*;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyBytesMethods, PyDict};
+use serde_json::Value;
 
 use crate::core::{WeightBacktest, WeightType};
 
@@ -27,6 +29,35 @@ fn df_to_pyarrow(dataframe: &mut DataFrame) -> PyResult<Vec<u8>> {
         .finish(dataframe)
         .map_err(|e| PyException::new_err(e.to_string()))?;
     Ok(buffer.into_inner())
+}
+
+// ---------------------------------------------------------------------------
+// HashMap<String, Value> -> PyDict helper
+// ---------------------------------------------------------------------------
+
+fn hashmap_to_pydict<'py>(
+    py: Python<'py>,
+    map: &HashMap<String, Value>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    for (k, v) in map {
+        match v {
+            Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    dict.set_item(k, i)?;
+                } else if let Some(u) = n.as_u64() {
+                    dict.set_item(k, u)?;
+                } else if let Some(f) = n.as_f64() {
+                    dict.set_item(k, f)?;
+                }
+            }
+            Value::String(s) => {
+                dict.set_item(k, s)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(dict)
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +187,28 @@ impl PyWeightBacktest {
         }
     }
 
+    #[staticmethod]
+    #[pyo3(signature = (path, digits=2, fee_rate=Some(0.0002), n_jobs=Some(4), weight_type="ts", yearly_days=252))]
+    fn from_file<'py>(
+        py: Python<'py>,
+        path: &str,
+        digits: i64,
+        fee_rate: Option<f64>,
+        n_jobs: Option<usize>,
+        weight_type: &str,
+        yearly_days: usize,
+    ) -> PyResult<Self> {
+        let weight_type_enum = WeightType::from_str(weight_type).unwrap_or(WeightType::TS);
+        let mut inner = WeightBacktest::from_file(path, digits, fee_rate)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        py.allow_threads(|| {
+            inner
+                .backtest(n_jobs, weight_type_enum, yearly_days)
+                .map_err(|e| PyException::new_err(e.to_string()))
+        })?;
+        Ok(Self { inner })
+    }
+
     #[pyo3(text_signature = "($self)")]
     fn symbol_dict(&self) -> PyResult<Vec<String>> {
         if let Some(ref report) = self.inner.report {
@@ -163,6 +216,45 @@ impl PyWeightBacktest {
         } else {
             Err(PyException::new_err("Report not found"))
         }
+    }
+
+    fn long_stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        if let Some(ref report) = self.inner.report {
+            hashmap_to_pydict(py, &report.long_stats)
+        } else {
+            Err(PyException::new_err("Report not found"))
+        }
+    }
+
+    fn short_stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        if let Some(ref report) = self.inner.report {
+            hashmap_to_pydict(py, &report.short_stats)
+        } else {
+            Err(PyException::new_err("Report not found"))
+        }
+    }
+
+    #[pyo3(signature = (sdt=None, edt=None, kind="多空"))]
+    fn segment_stats<'py>(
+        &self,
+        py: Python<'py>,
+        sdt: Option<i32>,
+        edt: Option<i32>,
+        kind: &str,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let map = self
+            .inner
+            .segment_stats(sdt, edt, kind)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        hashmap_to_pydict(py, &map)
+    }
+
+    fn long_alpha_stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let map = self
+            .inner
+            .long_alpha_stats()
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        hashmap_to_pydict(py, &map)
     }
 }
 
