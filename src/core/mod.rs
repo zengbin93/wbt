@@ -314,16 +314,32 @@ mod tests {
 
     #[test]
     fn test_round_weight() {
+        // Input weights: [0.511, 0.0, -0.25, 0.0, 0.0]
+        // round_weight rounds to 4 decimal places: all already ≤ 4 digits, so unchanged
         let mut df = raw_example_data();
         WeightBacktest::round_weight(&mut df).unwrap();
-        println!("{df:?}");
+        let weights: Vec<f64> = df
+            .column("weight")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
+        assert_eq!(weights, vec![0.511, 0.0, -0.25, 0.0, 0.0]);
     }
 
     #[test]
     fn test_convert_datetime() {
+        // Input: string dates like "2019-01-02 09:01:00"
+        // Should be converted to Datetime type and sorted
         let df = raw_example_data();
         let df = WeightBacktest::convert_datetime(df).unwrap();
-        println!("{df:?}");
+        assert!(matches!(
+            df.column("dt").unwrap().dtype(),
+            DataType::Datetime(_, _)
+        ));
+        assert_eq!(df.height(), 5);
     }
 
     #[test]

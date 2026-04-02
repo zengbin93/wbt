@@ -186,21 +186,54 @@ mod tests {
         let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
 
-        assert!(wb.report.is_some());
         let report = wb.report.as_ref().unwrap();
-        assert!(!report.symbol_dict.is_empty());
-        assert!(!report.daily_return.is_empty());
+        // 2 symbols
+        assert_eq!(report.symbol_dict.len(), 2);
+        assert!(report.symbol_dict.contains(&"SYM_A".to_string()));
+        assert!(report.symbol_dict.contains(&"SYM_B".to_string()));
+        assert_eq!(report.stats.symbols_count, 2);
 
+        // long_rate + short_rate should be <= 1.0 and >= 0.0
+        assert!(report.stats.long_rate >= 0.0 && report.stats.long_rate <= 1.0);
+        assert!(report.stats.short_rate >= 0.0 && report.stats.short_rate <= 1.0);
+
+        // daily_return should have date + total columns, rows = number of unique trading days
+        assert_eq!(report.daily_return.width(), 2);
+        assert!(report.daily_return.height() > 0);
+        // total column values should sum to absolute_return (within rounding)
+        let total_sum: f64 = report
+            .daily_return
+            .column("total")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .sum()
+            .unwrap();
+        let abs_ret = report.stats.daily_performance.absolute_return;
+        assert!(
+            (total_sum - abs_ret).abs() < 0.01,
+            "daily total sum {total_sum} should ≈ absolute_return {abs_ret}"
+        );
+
+        // dailys_df should have 15 columns and rows = days * symbols
         let dailys = wb.dailys_df().unwrap();
+        assert_eq!(dailys.width(), 15);
         assert!(dailys.height() > 0);
-        assert!(dailys.column("symbol").is_ok());
-        assert!(dailys.column("return").is_ok());
 
+        // alpha should have 4 columns and same rows as daily_return
         let alpha = wb.alpha_df().unwrap();
-        assert!(alpha.column("date").is_ok());
-        assert!(alpha.column("超额").is_ok());
-        assert!(alpha.column("策略").is_ok());
-        assert!(alpha.column("基准").is_ok());
+        assert_eq!(alpha.width(), 4);
+        // alpha excess = strategy - benchmark
+        let excess: Vec<f64> = alpha.column("超额").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
+        let strategy: Vec<f64> = alpha.column("策略").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
+        let benchmark: Vec<f64> = alpha.column("基准").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
+        for i in 0..excess.len() {
+            assert!(
+                (excess[i] - (strategy[i] - benchmark[i])).abs() < 1e-10,
+                "alpha excess[{i}] should equal strategy - benchmark"
+            );
+        }
     }
 
     #[test]
@@ -208,7 +241,10 @@ mod tests {
         let df = make_test_dataframe();
         let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
         wb.backtest(Some(1), WeightType::CS, 252).unwrap();
-        assert!(wb.report.is_some());
+        let report = wb.report.as_ref().unwrap();
+        assert_eq!(report.stats.symbols_count, 2);
+        // CS mode: total = sum (not mean), so daily values should differ from TS
+        assert!(report.daily_return.height() > 0);
     }
 
     #[test]

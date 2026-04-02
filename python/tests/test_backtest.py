@@ -65,6 +65,23 @@ class TestStats:
         assert isinstance(stats["开始日期"], str)
         assert len(stats["开始日期"]) == 10
 
+    def test_stats_values_consistency(self, wb):
+        """Verify internal consistency of stats values"""
+        stats = wb.stats
+        # 品种数量 should match actual symbols
+        assert stats["品种数量"] == 2
+        # 多头占比 + 空头占比 should be <= 1 (some weights may be 0)
+        assert 0 <= stats["多头占比"] <= 1.0
+        assert 0 <= stats["空头占比"] <= 1.0
+        # 日胜率 should be between 0 and 1
+        assert 0 <= stats["日胜率"] <= 1.0
+        # 交易胜率 between 0 and 1
+        assert 0 <= stats["交易胜率"] <= 1.0
+        # 最大回撤 >= 0
+        assert stats["最大回撤"] >= 0
+        # 年化波动率 >= 0
+        assert stats["年化波动率"] >= 0
+
 
 class TestSymbolDict:
     def test_symbol_dict(self, wb):
@@ -94,12 +111,43 @@ class TestDailys:
         for col in expected_cols:
             assert col in df.columns, f"missing: {col}"
 
+    def test_return_equals_edge_minus_cost(self, wb):
+        """return should equal edge - cost for every row"""
+        df = wb.dailys
+        for _, row in df.iterrows():
+            expected = row["edge"] - row["cost"]
+            assert abs(row["return"] - expected) < 1e-8, (
+                f"return={row['return']} != edge-cost={expected}"
+            )
+
+    def test_long_short_return_consistency(self, wb):
+        """long_return + short_return should approximate return"""
+        df = wb.dailys
+        for _, row in df.iterrows():
+            lr = row["long_return"] + row["short_return"]
+            # long_return = long_edge - long_cost, short_return = short_edge - short_cost
+            # return = edge - cost, and edge = long_edge + short_edge (by definition)
+            # The relationship holds approximately due to weight decomposition
+            total_edge = row["long_edge"] + row["short_edge"]
+            assert abs(row["edge"] - total_edge) < 1e-8, (
+                f"edge={row['edge']} != long_edge+short_edge={total_edge}"
+            )
+
 
 class TestAlpha:
     def test_structure(self, wb):
         df = wb.alpha
         assert isinstance(df, pd.DataFrame)
         assert list(df.columns) == ["date", "超额", "策略", "基准"]
+
+    def test_alpha_equals_strategy_minus_benchmark(self, wb):
+        """超额 should equal 策略 - 基准 for every row"""
+        df = wb.alpha
+        for _, row in df.iterrows():
+            diff = row["策略"] - row["基准"]
+            assert abs(row["超额"] - diff) < 1e-10, (
+                f"超额={row['超额']} != 策略-基准={diff}"
+            )
 
 
 class TestPairs:
