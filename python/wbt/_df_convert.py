@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.ipc as ipc
-from typing import Union
 
-def pandas_to_arrow_bytes(df: Union[pd.DataFrame, pd.Series]) -> bytes:
+
+def pandas_to_arrow_bytes(df: pd.DataFrame | pd.Series) -> bytes:
     """
     将 Pandas DataFrame 转换为 Arrow 字节流
 

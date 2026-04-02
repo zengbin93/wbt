@@ -1,10 +1,15 @@
 [package]
 name = "wbt"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Weight-based backtesting engine for quantitative trading"
 license = "MIT"
 repository = "https://github.com/zengbin93/wbt"
+homepage = "https://github.com/zengbin93/wbt"
+documentation = "https://github.com/zengbin93/wbt#readme"
+readme = "README.md"
+keywords = ["backtesting", "quantitative", "trading", "finance"]
+categories = ["finance", "science"]
 
 [lib]
 name = "wbt"

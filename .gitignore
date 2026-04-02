@@ -2,7 +2,11 @@
 __pycache__/
 *.py[codz]
 *$py.class
-
+docs/superpowers/*
+!docs/superpowers/specs/
+!docs/superpowers/specs/**
+!docs/superpowers/plans/
+!docs/superpowers/plans/**
 # C extensions
 *.so
 
@@ -138,6 +142,8 @@ celerybeat.pid
 .env
 .envrc
 .venv
+python/.venv/
+.test-venv/
 env/
 venv/
 ENV/
@@ -200,6 +206,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+.worktrees/
 
 # Marimo
 marimo/_static/
