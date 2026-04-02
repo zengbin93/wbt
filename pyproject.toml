@@ -4,9 +4,17 @@ build-backend = "maturin"
 
 [project]
 name = "wbt"
-version = "0.1.1"
+dynamic = ["version"]
+description = "Weight-based backtesting engine for quantitative trading"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.9"
 dependencies = ["pandas", "pyarrow", "numpy"]
+
+[project.urls]
+Homepage = "https://github.com/zengbin93/wbt"
+Repository = "https://github.com/zengbin93/wbt"
+Documentation = "https://github.com/zengbin93/wbt#readme"
 
 [tool.maturin]
 python-source = "python"
