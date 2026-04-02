@@ -10,6 +10,7 @@ pub mod errors;
 mod evaluate_pairs;
 pub mod native_engine;
 mod report;
+pub mod period_win_rates;
 pub mod trade_dir;
 pub mod utils;
 
