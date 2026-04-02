@@ -27,14 +27,25 @@ jobs:
         python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install maturin numpy pytest
-      - run: maturin build --release --strip
-      - run: pip install --find-links target/wheels wbt
-      - run: python -c "import wbt; print('wbt imported successfully')"
-      - run: pytest tests/ -v --tb=short
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --extra dev
+        working-directory: python
+      - run: uv run maturin develop --release
+        working-directory: python
+      - run: uv run python -c "import wbt; print('wbt imported successfully')"
+        working-directory: python
+      - run: uv run pytest -v --tb=short
+        working-directory: python
+      - run: uv run ruff format --check .
+        working-directory: python
+      - run: uv run ruff check . --no-fix
+        working-directory: python
+      - run: uv run basedpyright
+        working-directory: python
 
   lint:
     name: Lint

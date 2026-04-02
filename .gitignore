@@ -142,6 +142,8 @@ celerybeat.pid
 .env
 .envrc
 .venv
+python/.venv/
+.test-venv/
 env/
 venv/
 ENV/
