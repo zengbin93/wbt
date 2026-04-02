@@ -52,3 +52,6 @@
     用 daily_performance 在多头超额上面计算指标
 
 5. python/wbt 下面新增 plotting 模块，根据 weight backtest 的输出数据格式，绘制各种可视化图表
+
+    参考 czsc 库下面的 svc 模块和 utils/plotting 模块，需要仔细甑别哪些绘图函数是针对回测场景有效的。
+    可以先统一数据格式，然后根据统一的格式来绘制图表
