@@ -320,3 +320,134 @@ pub(crate) fn daily_performance_drawdown(
         top_n_drawdown_days_sum as f64 / top_n_drawdown as f64 / yearly_days;
     (max_drawdown, length_adjusted_average_max_drawdown)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- calc_underwater ---
+    #[test]
+    fn underwater_basic() {
+        let returns = [0.1, -0.05, 0.02, -0.15, 0.03];
+        let uw = calc_underwater(&returns);
+        assert_eq!(uw.len(), 5);
+        assert!((uw[0] - 0.0).abs() < 1e-10);
+        assert!((uw[1] - (-0.05)).abs() < 1e-10);
+        assert!((uw[2] - (-0.03)).abs() < 1e-10);
+        assert!((uw[3] - (-0.18)).abs() < 1e-10);
+        assert!((uw[4] - (-0.15)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn underwater_all_positive() {
+        let returns = [0.01, 0.02, 0.03];
+        let uw = calc_underwater(&returns);
+        assert!(uw.iter().all(|&x| x == 0.0));
+    }
+
+    // --- calc_underwater_valley ---
+    #[test]
+    fn valley_finds_min() {
+        let uw = [0.0, -0.05, -0.03, -0.18, -0.15];
+        assert_eq!(calc_underwater_valley(&uw), Some(3));
+    }
+
+    #[test]
+    fn valley_all_zero() {
+        let uw = [0.0, 0.0, 0.0];
+        assert_eq!(calc_underwater_valley(&uw), None);
+    }
+
+    // --- calc_underwater_peak ---
+    #[test]
+    fn peak_before_valley() {
+        let uw = [0.0, -0.05, -0.03, -0.18, -0.15];
+        assert_eq!(calc_underwater_peak(&uw, 3), 0);
+    }
+
+    // --- calc_underwater_recovery ---
+    #[test]
+    fn recovery_finds_zero_after_valley() {
+        let uw = [0.0, -0.05, 0.0, -0.01, 0.0];
+        assert_eq!(calc_underwater_recovery(&uw, 1), Some(2));
+    }
+
+    #[test]
+    fn recovery_none_when_no_recovery() {
+        let uw = [0.0, -0.05, -0.03, -0.01, -0.02];
+        assert_eq!(calc_underwater_recovery(&uw, 1), None);
+    }
+
+    // --- daily_performance ---
+    #[test]
+    fn daily_performance_empty_returns_default() {
+        let dp = daily_performance(&[], None).unwrap();
+        assert_eq!(dp, DailyPerformance::default());
+    }
+
+    #[test]
+    fn daily_performance_all_zero_returns_default() {
+        let dp = daily_performance(&[0.0, 0.0, 0.0], None).unwrap();
+        assert_eq!(dp, DailyPerformance::default());
+    }
+
+    #[test]
+    fn daily_performance_positive_returns() {
+        // Use varying positive returns to avoid zero std
+        let returns: Vec<f64> = (0..252)
+            .map(|i| 0.001 + (i as f64) * 0.00001)
+            .collect();
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert!(dp.absolute_return > 0.0);
+        assert!(dp.annual_returns > 0.0);
+        assert!(dp.sharpe_ratio > 0.0);
+        assert_eq!(dp.max_drawdown, 0.0);
+        assert_eq!(dp.daily_win_rate, 1.0);
+    }
+
+    #[test]
+    fn daily_performance_constant_returns_default() {
+        // Constant returns have zero std => returns default
+        let returns: Vec<f64> = (0..100).map(|_| 0.001).collect();
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp, DailyPerformance::default());
+    }
+
+    #[test]
+    fn daily_performance_negative_returns() {
+        // Use varying negative returns to avoid zero std
+        let returns: Vec<f64> = (0..100)
+            .map(|i| -0.001 - (i as f64) * 0.00001)
+            .collect();
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert!(dp.absolute_return < 0.0);
+        assert!(dp.annual_returns < 0.0);
+        assert!(dp.sharpe_ratio < 0.0);
+        assert!(dp.max_drawdown > 0.0);
+    }
+
+    #[test]
+    fn daily_performance_yearly_days_affects_annualization() {
+        let returns: Vec<f64> = (0..100)
+            .map(|i| if i % 2 == 0 { 0.002 } else { -0.001 })
+            .collect();
+        let dp252 = daily_performance(&returns, Some(252)).unwrap();
+        let dp365 = daily_performance(&returns, Some(365)).unwrap();
+        assert_ne!(dp252.annual_returns, dp365.annual_returns);
+    }
+
+    // --- daily_performance_drawdown ---
+    #[test]
+    fn drawdown_all_positive() {
+        let returns: Vec<f64> = (0..50).map(|_| 0.01).collect();
+        let (max_dd, _) = daily_performance_drawdown(5, &returns, 252.0);
+        assert_eq!(max_dd, 0.0);
+    }
+
+    #[test]
+    fn drawdown_known_sequence() {
+        let returns = [0.1, -0.05, 0.1, -0.15, 0.1];
+        let (max_dd, _) = daily_performance_drawdown(5, &returns, 252.0);
+        assert!((max_dd - 0.15).abs() < 1e-10);
+    }
+}

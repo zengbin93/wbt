@@ -111,6 +111,105 @@ fn compute_break_even_point(profit_count_pairs: &mut [(f64, f64)], trade_count: 
     if sum <= 0.0 { 1.0 } else { break_even_point }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use polars::prelude::TimeUnit;
+
+    fn make_pairs(
+        profit_bps: &[f64],
+        counts: &[i64],
+        hold_bars: &[i64],
+        dirs: &[&'static str],
+    ) -> PairsSoA {
+        let n = profit_bps.len();
+        PairsSoA {
+            sym_ids: vec![0; n],
+            dirs: dirs.to_vec(),
+            open_dts: vec![0; n],
+            close_dts: vec![1000; n],
+            open_prices: vec![100.0; n],
+            close_prices: vec![101.0; n],
+            hold_bars: hold_bars.to_vec(),
+            event_seqs: vec!["开多 -> 平多"; n],
+            profit_bps: profit_bps.to_vec(),
+            counts: counts.to_vec(),
+            time_unit: TimeUnit::Milliseconds,
+            symbol_dict: vec!["SYM0".into()],
+        }
+    }
+
+    #[test]
+    fn evaluate_empty_pairs() {
+        let pairs = make_pairs(&[], &[], &[], &[]);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
+        assert_eq!(ep.trade_count, 0);
+    }
+
+    #[test]
+    fn evaluate_all_win() {
+        let pairs = make_pairs(&[100.0, 50.0], &[1, 1], &[10, 5], &["多头", "多头"]);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
+        assert_eq!(ep.trade_count, 2);
+        assert_eq!(ep.win_trade_count, 2);
+        assert_eq!(ep.loss_trade_count, 0);
+        assert_eq!(ep.win_rate, 1.0);
+    }
+
+    #[test]
+    fn evaluate_all_loss() {
+        let pairs = make_pairs(&[-100.0, -50.0], &[1, 1], &[10, 5], &["空头", "空头"]);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
+        assert_eq!(ep.trade_count, 2);
+        assert_eq!(ep.loss_trade_count, 2);
+        assert_eq!(ep.win_rate, 0.0);
+    }
+
+    #[test]
+    fn evaluate_mixed() {
+        let pairs = make_pairs(
+            &[100.0, -50.0, 200.0],
+            &[2, 1, 3],
+            &[10, 5, 20],
+            &["多头", "空头", "多头"],
+        );
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
+        assert_eq!(ep.trade_count, 6);
+        assert_eq!(ep.win_trade_count, 5);
+        assert_eq!(ep.loss_trade_count, 1);
+    }
+
+    #[test]
+    fn evaluate_direction_filter_long() {
+        let pairs = make_pairs(&[100.0, -50.0], &[1, 1], &[10, 5], &["多头", "空头"]);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::Long).unwrap();
+        assert_eq!(ep.trade_count, 1);
+        assert_eq!(ep.win_trade_count, 1);
+    }
+
+    #[test]
+    fn evaluate_direction_filter_short() {
+        let pairs = make_pairs(&[100.0, -50.0], &[1, 1], &[10, 5], &["多头", "空头"]);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::Short).unwrap();
+        assert_eq!(ep.trade_count, 1);
+        assert_eq!(ep.loss_trade_count, 1);
+    }
+
+    #[test]
+    fn break_even_all_profit() {
+        let mut pairs = vec![(100.0, 1.0), (50.0, 1.0)];
+        let bep = compute_break_even_point(&mut pairs, 2.0);
+        assert!(bep < 1.0);
+    }
+
+    #[test]
+    fn break_even_all_loss() {
+        let mut pairs = vec![(-100.0, 1.0), (-50.0, 1.0)];
+        let bep = compute_break_even_point(&mut pairs, 2.0);
+        assert_eq!(bep, 1.0);
+    }
+}
+
 /// 评估交易对性能 — 从 PairsSoA 直接读取（零 DataFrame 构建）
 pub fn evaluate_pairs_soa(
     pairs: &PairsSoA,

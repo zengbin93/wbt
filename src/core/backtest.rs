@@ -141,3 +141,109 @@ impl WeightBacktest {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_dataframe() -> DataFrame {
+        let n = 20;
+        let dates: Vec<String> = (0..10)
+            .flat_map(|d| {
+                vec![
+                    format!("2024-01-{:02} 09:30:00", d + 1),
+                    format!("2024-01-{:02} 09:30:00", d + 1),
+                ]
+            })
+            .collect();
+        let symbols: Vec<&str> = (0..10).flat_map(|_| vec!["SYM_A", "SYM_B"]).collect();
+        let weights: Vec<f64> = (0..n)
+            .map(|i| {
+                let cycle = (i / 2) as f64;
+                if i % 2 == 0 {
+                    (cycle * 0.1 - 0.2).clamp(-1.0, 1.0)
+                } else {
+                    (-cycle * 0.15 + 0.3).clamp(-1.0, 1.0)
+                }
+            })
+            .collect();
+        let prices: Vec<f64> = (0..n)
+            .map(|i| 100.0 + (i as f64) * 0.5 + ((i as f64) * 0.7).sin())
+            .collect();
+
+        df! {
+            "dt" => dates,
+            "symbol" => symbols,
+            "weight" => weights,
+            "price" => prices
+        }
+        .unwrap()
+    }
+
+    #[test]
+    fn backtest_full_flow_ts() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        assert!(wb.report.is_some());
+        let report = wb.report.as_ref().unwrap();
+        assert!(!report.symbol_dict.is_empty());
+        assert!(!report.daily_return.is_empty());
+
+        let dailys = wb.dailys_df().unwrap();
+        assert!(dailys.height() > 0);
+        assert!(dailys.column("symbol").is_ok());
+        assert!(dailys.column("return").is_ok());
+
+        let alpha = wb.alpha_df().unwrap();
+        assert!(alpha.column("date").is_ok());
+        assert!(alpha.column("超额").is_ok());
+        assert!(alpha.column("策略").is_ok());
+        assert!(alpha.column("基准").is_ok());
+    }
+
+    #[test]
+    fn backtest_full_flow_cs() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::CS, 252).unwrap();
+        assert!(wb.report.is_some());
+    }
+
+    #[test]
+    fn backtest_ts_vs_cs_differ() {
+        let df1 = make_test_dataframe();
+        let df2 = make_test_dataframe();
+        let mut wb_ts = WeightBacktest::new(df1, 2, Some(0.0002)).unwrap();
+        let mut wb_cs = WeightBacktest::new(df2, 2, Some(0.0002)).unwrap();
+        wb_ts.backtest(Some(1), WeightType::TS, 252).unwrap();
+        wb_cs.backtest(Some(1), WeightType::CS, 252).unwrap();
+        let ts_total = &wb_ts.report.as_ref().unwrap().daily_return;
+        let cs_total = &wb_cs.report.as_ref().unwrap().daily_return;
+        assert_ne!(
+            ts_total
+                .column("total")
+                .unwrap()
+                .as_materialized_series()
+                .f64()
+                .unwrap()
+                .sum(),
+            cs_total
+                .column("total")
+                .unwrap()
+                .as_materialized_series()
+                .f64()
+                .unwrap()
+                .sum(),
+        );
+    }
+
+    #[test]
+    fn backtest_pairs_df() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+        let _ = wb.pairs_df().unwrap();
+    }
+}

@@ -70,4 +70,86 @@ mod tests {
         let action = TradeAction::first_create(0);
         assert_eq!(action, None);
     }
+
+    // --- TradeDir Display/FromStr ---
+    #[test]
+    fn trade_dir_display_from_str() {
+        assert_eq!(TradeDir::Long.to_string(), "多头");
+        assert_eq!(TradeDir::Short.to_string(), "空头");
+        assert_eq!(TradeDir::LongShort.to_string(), "多空");
+        assert_eq!("多头".parse::<TradeDir>().unwrap(), TradeDir::Long);
+        assert_eq!("空头".parse::<TradeDir>().unwrap(), TradeDir::Short);
+        assert_eq!("多空".parse::<TradeDir>().unwrap(), TradeDir::LongShort);
+    }
+
+    // --- TradeAction Display/FromStr ---
+    #[test]
+    fn trade_action_display_from_str() {
+        assert_eq!(TradeAction::OpenLong.to_string(), "开多");
+        assert_eq!(TradeAction::OpenShort.to_string(), "开空");
+        assert_eq!(TradeAction::CloseLong.to_string(), "平多");
+        assert_eq!(TradeAction::CloseShort.to_string(), "平空");
+        assert_eq!(
+            "开多".parse::<TradeAction>().unwrap(),
+            TradeAction::OpenLong
+        );
+        assert_eq!(
+            "开空".parse::<TradeAction>().unwrap(),
+            TradeAction::OpenShort
+        );
+        assert_eq!(
+            "平多".parse::<TradeAction>().unwrap(),
+            TradeAction::CloseLong
+        );
+        assert_eq!(
+            "平空".parse::<TradeAction>().unwrap(),
+            TradeAction::CloseShort
+        );
+    }
+
+    // --- first_create edge cases ---
+    #[test]
+    fn first_create_large_volumes() {
+        assert_eq!(
+            TradeAction::first_create(i64::MAX),
+            Some(TradeAction::OpenLong)
+        );
+        assert_eq!(
+            TradeAction::first_create(i64::MIN),
+            Some(TradeAction::OpenShort)
+        );
+    }
+
+    // --- get_event_seq ---
+    #[test]
+    fn get_event_seq_valid_combos() {
+        assert_eq!(
+            TradeAction::OpenLong.get_event_seq(TradeAction::CloseShort),
+            OP_OPEN_LONG_CLOSE_SHORT
+        );
+        assert_eq!(
+            TradeAction::OpenLong.get_event_seq(TradeAction::CloseLong),
+            OP_OPEN_LONG_CLOSE_LONG
+        );
+        assert_eq!(
+            TradeAction::OpenShort.get_event_seq(TradeAction::CloseShort),
+            OP_OPEN_SHORT_CLOSE_SHORT
+        );
+        assert_eq!(
+            TradeAction::OpenShort.get_event_seq(TradeAction::CloseLong),
+            OP_OPEN_SHORT_CLOSE_LONG
+        );
+    }
+
+    #[test]
+    fn get_event_seq_invalid_combos() {
+        assert_eq!(
+            TradeAction::CloseLong.get_event_seq(TradeAction::OpenLong),
+            OP_UNKNOWN
+        );
+        assert_eq!(
+            TradeAction::OpenLong.get_event_seq(TradeAction::OpenLong),
+            OP_UNKNOWN
+        );
+    }
 }

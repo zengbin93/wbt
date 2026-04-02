@@ -121,3 +121,169 @@ impl Quantile for [f64] {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- WeightType ---
+    #[test]
+    fn weight_type_from_str() {
+        assert_eq!("ts".parse::<WeightType>().unwrap(), WeightType::TS);
+        assert_eq!("cs".parse::<WeightType>().unwrap(), WeightType::CS);
+        assert!("invalid".parse::<WeightType>().is_err());
+    }
+
+    #[test]
+    fn weight_type_display() {
+        assert_eq!(WeightType::TS.to_string(), "ts");
+        assert_eq!(WeightType::CS.to_string(), "cs");
+    }
+
+    // --- RoundToNthDigit ---
+    #[test]
+    fn round_to_nth_digit_basic() {
+        assert_eq!(1.2345f64.round_to_nth_digit(2), 1.23);
+        assert_eq!(1.2355f64.round_to_nth_digit(2), 1.24);
+        assert_eq!(1.2345f64.round_to_nth_digit(3), 1.235);
+        assert_eq!(1.2345f64.round_to_nth_digit(4), 1.2345);
+        assert_eq!(1.2345f64.round_to_nth_digit(0), 1.0);
+        assert_eq!(1.5f64.round_to_nth_digit(0), 2.0);
+    }
+
+    #[test]
+    fn round_to_nth_digit_negative() {
+        assert_eq!((-1.2345f64).round_to_nth_digit(2), -1.23);
+        assert_eq!((-1.2355f64).round_to_nth_digit(2), -1.24);
+    }
+
+    #[test]
+    fn round_to_nth_digit_zero() {
+        assert_eq!(0.0f64.round_to_nth_digit(2), 0.0);
+    }
+
+    #[test]
+    fn round_to_2_3_4_digit() {
+        assert_eq!(1.2345f64.round_to_2_digit(), 1.23);
+        assert_eq!(1.2345f64.round_to_3_digit(), 1.235);
+        assert_eq!(1.23456f64.round_to_4_digit(), 1.2346);
+    }
+
+    // --- Quantile ---
+    #[test]
+    fn quantile_empty() {
+        let v: Vec<f64> = vec![];
+        assert_eq!(v.quantile(0.5), None);
+    }
+
+    #[test]
+    fn quantile_single() {
+        assert_eq!([42.0].quantile(0.0), Some(42.0));
+        assert_eq!([42.0].quantile(0.5), Some(42.0));
+        assert_eq!([42.0].quantile(1.0), Some(42.0));
+    }
+
+    #[test]
+    fn quantile_sorted() {
+        let v = [1.0, 2.0, 3.0, 4.0, 5.0];
+        assert_eq!(v.quantile(0.0), Some(1.0));
+        assert_eq!(v.quantile(1.0), Some(5.0));
+        assert_eq!(v.quantile(0.5), Some(3.0));
+        assert_eq!(v.quantile(0.25), Some(2.0));
+    }
+
+    #[test]
+    fn quantile_unsorted() {
+        let v = [5.0, 1.0, 3.0, 2.0, 4.0];
+        assert_eq!(v.quantile(0.5), Some(3.0));
+    }
+
+    #[test]
+    fn quantile_out_of_range() {
+        let v = [1.0, 2.0];
+        assert_eq!(v.quantile(-0.1), None);
+        assert_eq!(v.quantile(1.1), None);
+    }
+
+    // --- date_key_to_naive_date ---
+    #[test]
+    fn date_key_known_dates() {
+        assert_eq!(
+            date_key_to_naive_date(20250101),
+            NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()
+        );
+        assert_eq!(
+            date_key_to_naive_date(19700101),
+            NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()
+        );
+        assert_eq!(
+            date_key_to_naive_date(20001231),
+            NaiveDate::from_ymd_opt(2000, 12, 31).unwrap()
+        );
+    }
+
+    // --- pearson_corr_inline ---
+    #[test]
+    fn pearson_perfect_positive() {
+        let xs = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let ys = [2.0, 4.0, 6.0, 8.0, 10.0];
+        assert!((pearson_corr_inline(&xs, &ys) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn pearson_perfect_negative() {
+        let xs = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let ys = [10.0, 8.0, 6.0, 4.0, 2.0];
+        assert!((pearson_corr_inline(&xs, &ys) + 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn pearson_constant_returns_zero() {
+        let xs = [3.0, 3.0, 3.0];
+        let ys = [1.0, 2.0, 3.0];
+        assert_eq!(pearson_corr_inline(&xs, &ys), 0.0);
+    }
+
+    #[test]
+    fn pearson_single_element() {
+        assert_eq!(pearson_corr_inline(&[1.0], &[2.0]), 0.0);
+    }
+
+    // --- std_inline ---
+    #[test]
+    fn std_all_same() {
+        assert_eq!(std_inline(&[5.0, 5.0, 5.0]), 0.0);
+    }
+
+    #[test]
+    fn std_known_values() {
+        let result = std_inline(&[1.0, 2.0, 3.0]);
+        assert!((result - (2.0_f64 / 3.0).sqrt()).abs() < 1e-10);
+    }
+
+    #[test]
+    fn std_empty() {
+        assert_eq!(std_inline(&[]), 0.0);
+    }
+
+    #[test]
+    fn std_single() {
+        assert_eq!(std_inline(&[42.0]), 0.0);
+    }
+
+    // --- min_max ---
+    #[test]
+    fn min_max_in_range() {
+        assert_eq!(min_max(5.0, 0.0, 10.0), 5.0);
+    }
+
+    #[test]
+    fn min_max_below() {
+        assert_eq!(min_max(-1.0, 0.0, 10.0), 0.0);
+    }
+
+    #[test]
+    fn min_max_above() {
+        assert_eq!(min_max(15.0, 0.0, 10.0), 10.0);
+    }
+}

@@ -332,4 +332,108 @@ mod tests {
         let symbols = WeightBacktest::unique_symbols(&df).unwrap();
         assert_eq!(symbols, vec![Arc::from("DLi9001")]);
     }
+
+    // --- WeightBacktest::new ---
+    #[test]
+    fn new_valid_dataframe() {
+        let df = raw_example_data();
+        let wb = WeightBacktest::new(df, 2, None).unwrap();
+        assert_eq!(wb.fee_rate, 0.0002);
+        assert_eq!(wb.digits, 2);
+        assert!(!wb.symbols.is_empty());
+    }
+
+    #[test]
+    fn new_custom_fee_rate() {
+        let df = raw_example_data();
+        let wb = WeightBacktest::new(df, 2, Some(0.001)).unwrap();
+        assert_eq!(wb.fee_rate, 0.001);
+    }
+
+    #[test]
+    fn new_missing_column() {
+        let df = df! {
+            "dt" => &["2019-01-02 09:01:00"],
+            "symbol" => &["A"],
+            "weight" => &[0.5_f64]
+        }
+        .unwrap();
+        assert!(WeightBacktest::new(df, 2, None).is_err());
+    }
+
+    // --- convert_datetime with Int64 ---
+    #[test]
+    fn convert_datetime_int64() {
+        let df = df! {
+            "dt" => &[1546398060_i64, 1546484520_i64],
+            "symbol" => &["A", "A"],
+            "weight" => &[0.5_f64, -0.5],
+            "price" => &[100.0, 101.0]
+        }
+        .unwrap();
+        let result = WeightBacktest::convert_datetime(df);
+        assert!(result.is_ok());
+        let df = result.unwrap();
+        assert!(matches!(
+            df.column("dt").unwrap().dtype(),
+            DataType::Datetime(_, _)
+        ));
+    }
+
+    // --- round_weight edge cases ---
+    #[test]
+    fn round_weight_precision() {
+        let mut df = df! {
+            "dt" => &["2019-01-02 09:01:00"],
+            "symbol" => &["A"],
+            "weight" => &[0.12345678_f64],
+            "price" => &[100.0]
+        }
+        .unwrap();
+        WeightBacktest::round_weight(&mut df).unwrap();
+        let w = df
+            .column("weight")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .get(0)
+            .unwrap();
+        assert_eq!(w, 0.1235);
+    }
+
+    #[test]
+    fn round_weight_zero() {
+        let mut df = df! {
+            "dt" => &["2019-01-02 09:01:00"],
+            "symbol" => &["A"],
+            "weight" => &[0.0_f64],
+            "price" => &[100.0]
+        }
+        .unwrap();
+        WeightBacktest::round_weight(&mut df).unwrap();
+        let w = df
+            .column("weight")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .get(0)
+            .unwrap();
+        assert_eq!(w, 0.0);
+    }
+
+    // --- unique_symbols sorted ---
+    #[test]
+    fn unique_symbols_sorted_order() {
+        let df = df! {
+            "dt" => &["2019-01-02", "2019-01-02", "2019-01-02"],
+            "symbol" => &["C", "A", "B"],
+            "weight" => &[0.1, 0.2, 0.3],
+            "price" => &[1.0, 2.0, 3.0]
+        }
+        .unwrap();
+        let syms = WeightBacktest::unique_symbols(&df).unwrap();
+        assert_eq!(syms, vec![Arc::from("A"), Arc::from("B"), Arc::from("C")]);
+    }
 }

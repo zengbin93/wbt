@@ -1075,4 +1075,137 @@ mod tests {
             }
         }
     }
+
+    // --- dt_to_days_since_epoch ---
+    #[test]
+    fn days_since_epoch_known_date() {
+        let secs = 1_735_689_600_i64; // 2025-01-01
+        let expected_days = (secs / 86400) as i32;
+        assert_eq!(
+            dt_to_days_since_epoch(secs * 1000, TimeUnit::Milliseconds),
+            expected_days
+        );
+        assert_eq!(
+            dt_to_days_since_epoch(secs * 1_000_000, TimeUnit::Microseconds),
+            expected_days
+        );
+        assert_eq!(
+            dt_to_days_since_epoch(secs * 1_000_000_000, TimeUnit::Nanoseconds),
+            expected_days
+        );
+    }
+
+    // --- LotsSoA ---
+    #[test]
+    fn lots_soa_push_and_state() {
+        let mut lots = LotsSoA::new(4);
+        assert_eq!(lots.head, 0);
+
+        lots.push(true, 1000, 1, 100.0, 5, TradeAction::OpenLong);
+        assert_eq!(lots.head, 1);
+        assert!(lots.is_long[0]);
+        assert_eq!(lots.volume[0], 5);
+        assert_eq!(lots.action[0], TradeAction::OpenLong);
+
+        lots.push(false, 2000, 2, 200.0, 3, TradeAction::OpenShort);
+        assert_eq!(lots.head, 2);
+        assert!(!lots.is_long[1]);
+    }
+
+    #[test]
+    fn lots_soa_reuse_slots() {
+        let mut lots = LotsSoA::new(2);
+        lots.push(true, 1000, 1, 100.0, 5, TradeAction::OpenLong);
+        lots.push(true, 2000, 2, 200.0, 3, TradeAction::OpenLong);
+        lots.head = 1;
+        lots.push(false, 3000, 3, 300.0, 7, TradeAction::OpenShort);
+        assert_eq!(lots.head, 2);
+        assert!(!lots.is_long[1]);
+        assert_eq!(lots.volume[1], 7);
+    }
+
+    // --- DailysSoA::to_dataframe ---
+    #[test]
+    fn dailys_soa_to_dataframe() {
+        let soa = DailysSoA {
+            sym_ids: vec![0, 0, 1],
+            date_ticks: vec![1_735_689_600_000, 1_735_776_000_000, 1_735_689_600_000],
+            n1b: vec![0.01, -0.02, 0.03],
+            edge: vec![0.005, -0.01, 0.015],
+            ret: vec![0.004, -0.011, 0.014],
+            cost: vec![0.001, 0.001, 0.001],
+            turnover: vec![0.5, 0.3, 0.4],
+            long_edge: vec![0.005, 0.0, 0.015],
+            short_edge: vec![0.0, -0.01, 0.0],
+            long_cost: vec![0.001, 0.0, 0.001],
+            short_cost: vec![0.0, 0.001, 0.0],
+            long_turnover: vec![0.5, 0.0, 0.4],
+            short_turnover: vec![0.0, 0.3, 0.0],
+            long_return: vec![0.004, 0.0, 0.014],
+            short_return: vec![0.0, -0.011, 0.0],
+            time_unit: TimeUnit::Milliseconds,
+            symbol_dict: vec!["A".into(), "B".into()],
+        };
+        let df = soa.to_dataframe().unwrap();
+        assert_eq!(df.height(), 3);
+        assert_eq!(df.width(), 15);
+        let expected_cols = [
+            "symbol",
+            "date",
+            "n1b",
+            "edge",
+            "return",
+            "cost",
+            "turnover",
+            "long_edge",
+            "short_edge",
+            "long_cost",
+            "short_cost",
+            "long_turnover",
+            "short_turnover",
+            "long_return",
+            "short_return",
+        ];
+        for col in expected_cols {
+            assert!(df.column(col).is_ok(), "missing column: {col}");
+        }
+    }
+
+    // --- PairsSoA::to_dataframe ---
+    #[test]
+    fn pairs_soa_to_dataframe() {
+        let soa = PairsSoA {
+            sym_ids: vec![0],
+            dirs: vec!["多头"],
+            open_dts: vec![1_735_689_600_000],
+            close_dts: vec![1_735_776_000_000],
+            open_prices: vec![100.0],
+            close_prices: vec![105.0],
+            hold_bars: vec![10],
+            event_seqs: vec!["开多 -> 平多"],
+            profit_bps: vec![500.0],
+            counts: vec![1],
+            time_unit: TimeUnit::Milliseconds,
+            symbol_dict: vec!["A".into()],
+        };
+        let df = soa.to_dataframe().unwrap();
+        assert_eq!(df.height(), 1);
+        assert_eq!(df.width(), 11);
+        let expected_cols = [
+            "symbol",
+            "交易方向",
+            "开仓时间",
+            "平仓时间",
+            "开仓价格",
+            "平仓价格",
+            "持仓K线数",
+            "事件序列",
+            "盈亏比例",
+            "持仓数量",
+            "持仓天数",
+        ];
+        for col in expected_cols {
+            assert!(df.column(col).is_ok(), "missing column: {col}");
+        }
+    }
 }
