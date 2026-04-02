@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 class PyWeightBacktest:
     @classmethod
     def from_arrow(
@@ -20,6 +19,5 @@ class PyWeightBacktest:
     def dailys(self) -> bytes: ...
     def alpha(self) -> bytes: ...
     def pairs(self) -> bytes: ...
-
 
 def daily_performance(returns: Any, yearly_days: int = 252) -> dict[str, Any]: ...

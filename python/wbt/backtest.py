@@ -1,6 +1,7 @@
 import pandas as pd
-from wbt._wbt import PyWeightBacktest, daily_performance
+
 from wbt._df_convert import arrow_bytes_to_pd_df, pandas_to_arrow_bytes
+from wbt._wbt import PyWeightBacktest, daily_performance
 
 
 class WeightBacktest:
@@ -44,13 +45,13 @@ class WeightBacktest:
         :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
         :param yearly_days: int, default 252，年化交易日数量
         """
-        if dfw['weight'].dtype != 'float':
-            dfw['weight'] = dfw['weight'].astype(float)
+        if dfw["weight"].dtype != "float":
+            dfw["weight"] = dfw["weight"].astype(float)
         if dfw.isnull().sum().sum() > 0:
             raise ValueError(f"dfw 中存在空值，请先处理; 具体数据：\n{dfw[dfw.isnull().T.any().T]}")
 
-        dfw = dfw[['dt', 'symbol', 'weight', 'price']].copy()
-        dfw['weight'] = dfw['weight'].astype('float').round(digits)
+        dfw = dfw[["dt", "symbol", "weight", "price"]].copy()
+        dfw["weight"] = dfw["weight"].astype("float").round(digits)
 
         # 保存实例变量，与 Python 原版一致
         self.dfw = dfw.copy()
@@ -58,7 +59,7 @@ class WeightBacktest:
         self.fee_rate = fee_rate
         self.weight_type = weight_type
         self.yearly_days = yearly_days
-        self.symbols = list(dfw['symbol'].unique().tolist())
+        self.symbols = list(dfw["symbol"].unique().tolist())
 
         data = pandas_to_arrow_bytes(dfw)
         self._inner: PyWeightBacktest = PyWeightBacktest.from_arrow(
@@ -80,9 +81,9 @@ class WeightBacktest:
         assert kind in ["profit", "loss"], "kind 只能为 'profit' 或 'loss'"
 
         df = self.daily_return.copy()
-        df.drop(columns=['total'], inplace=True)
-        symbol_return = df.set_index('date').sum(axis=0)
-        symbol_return = symbol_return.sort_values(ascending=not kind == "profit")
+        df.drop(columns=["total"], inplace=True)
+        symbol_return = df.set_index("date").sum(axis=0)
+        symbol_return = symbol_return.sort_values(ascending=kind != "profit")
         return symbol_return.head(n).index.tolist()
 
     @property
@@ -109,7 +110,7 @@ class WeightBacktest:
     def _map_symbols(self, df: pd.DataFrame) -> pd.DataFrame:
         """按需将 Rust 内部的整数符号映射回字符串代码。"""
         if "symbol" in df.columns and pd.api.types.is_numeric_dtype(df["symbol"]):
-            s_dict = {i: s for i, s in enumerate(self.symbol_dict)}
+            s_dict = dict(enumerate(self.symbol_dict))
             df["symbol"] = df["symbol"].map(s_dict)
         return df
 
@@ -271,7 +272,7 @@ class WeightBacktest:
                         'turnover', 'long_return', 'short_return', ...]
         """
         df = self.dailys
-        return df[df['symbol'] == symbol].copy()
+        return df[df["symbol"] == symbol].copy()
 
     def get_symbol_pairs(self, symbol: str) -> pd.DataFrame:
         """获取某个合约的开平交易记录
@@ -280,5 +281,5 @@ class WeightBacktest:
         :return: pd.DataFrame，品种的开平仓交易记录
         """
         df = self.pairs
-        symbol_col = '标的代码' if '标的代码' in df.columns else 'symbol'
+        symbol_col = "标的代码" if "标的代码" in df.columns else "symbol"
         return df[df[symbol_col] == symbol].copy()
