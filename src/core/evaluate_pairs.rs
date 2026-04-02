@@ -4,7 +4,7 @@ use crate::core::trade_dir::TradeDir;
 use crate::core::utils::RoundToNthDigit;
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct EvaluatePairs {
     /// 交易方向
     pub trade_direction: TradeDir,

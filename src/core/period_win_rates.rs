@@ -5,7 +5,7 @@ use chrono::{Datelike, NaiveDate};
 // PeriodWinRates
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct PeriodWinRates {
     pub week: f64,
     pub month: f64,

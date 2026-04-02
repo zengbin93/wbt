@@ -1,10 +1,12 @@
 use crate::core::daily_performance::DailyPerformance;
 use crate::core::evaluate_pairs::EvaluatePairs;
 use crate::core::native_engine::DailyTotals;
+use crate::core::period_win_rates::PeriodWinRates;
 use chrono::NaiveDate;
 use polars::frame::DataFrame;
 use serde::Serialize;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 /// 回测报告，包含品种报告、日收益率和统计指标
 pub struct Report {
@@ -15,6 +17,10 @@ pub struct Report {
     pub symbol_dict: Vec<String>,
     /// DailyTotals（用于 alpha_df / 延迟计算）
     pub daily_totals: DailyTotals,
+    /// 多头统计
+    pub long_stats: HashMap<String, Value>,
+    /// 空头统计
+    pub short_stats: HashMap<String, Value>,
 }
 
 /// 单个品种的报告，包含日收益率和交易对数据
@@ -26,27 +32,25 @@ pub struct SymbolsReport {
 }
 
 /// 统计指标报告，包含回测性能的各项指标
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct StatsReport {
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
     /// 单利计算日收益数据的各项指标
     pub daily_performance: DailyPerformance,
     pub evaluate_pairs: EvaluatePairs,
+    /// 周期胜率
+    pub period_win_rates: PeriodWinRates,
     /// 多头占比
     pub long_rate: f64,
     /// 空头占比
     pub short_rate: f64,
-    /// 与基准相关性
-    pub relevance: f64,
-    /// 与基准空头相关性
-    pub relevance_short: f64,
-    /// 波动比
-    pub volatility_ratio: f64,
-    /// 与基准波动相关性
-    pub relevance_volatility: f64,
     /// 品种数量
     pub symbols_count: usize,
+    /// 交易次数
+    pub trade_count: usize,
+    /// 年化交易次数
+    pub annual_trade_count: f64,
 }
 
 impl From<Report> for Value {
@@ -67,6 +71,9 @@ impl From<Report> for Value {
 
         result.insert("绩效评价".into(), val.stats.into());
 
+        result.insert("多头统计".into(), json!(val.long_stats));
+        result.insert("空头统计".into(), json!(val.short_stats));
+
         Value::Object(result)
     }
 }
@@ -75,35 +82,44 @@ impl From<StatsReport> for Value {
     fn from(val: StatsReport) -> Self {
         let dp = val.daily_performance;
         let ep = val.evaluate_pairs;
+        let pwr = val.period_win_rates;
 
-        json!({
-            "开始日期": val.start_date.to_string(),
-            "结束日期": val.end_date.to_string(),
-            "绝对收益": dp.absolute_return,
-            "年化收益": dp.annual_returns,
-            "夏普比率": dp.sharpe_ratio,
-            "最大回撤": dp.max_drawdown,
-            "卡玛比率": dp.calmar_ratio,
-            "日胜率": dp.daily_win_rate,
-            "日盈亏比": dp.daily_profit_loss_ratio,
-            "日赢面": dp.daily_win_probability,
-            "年化波动率": dp.annual_volatility,
-            "下行波动率": dp.downside_volatility,
-            "非零覆盖": dp.non_zero_coverage,
-            "盈亏平衡点": dp.break_even_point,
-            "新高间隔": dp.new_high_interval,
-            "新高占比": dp.new_high_ratio,
-            "回撤风险": dp.drawdown_risk,
-            "单笔收益": ep.single_trade_profit,
-            "持仓K线数": ep.position_k_days,
-            "多头占比": val.long_rate,
-            "空头占比": val.short_rate,
-            "与基准相关性": val.relevance,
-            "与基准空头相关性": val.relevance_short,
-            "波动比": val.volatility_ratio,
-            "与基准波动相关性": val.relevance_volatility,
-            "品种数量": val.symbols_count,
-        })
+        let mut result = serde_json::Map::new();
+
+        // 收益
+        result.insert("绝对收益".into(), json!(dp.absolute_return));
+        result.insert("年化收益".into(), json!(dp.annual_returns));
+        result.insert("夏普比率".into(), json!(dp.sharpe_ratio));
+        result.insert("卡玛比率".into(), json!(dp.calmar_ratio));
+        result.insert("新高占比".into(), json!(dp.new_high_ratio));
+        result.insert("单笔盈亏比".into(), json!(ep.single_profit_loss_ratio));
+        result.insert("单笔收益".into(), json!(ep.single_trade_profit));
+        result.insert("日胜率".into(), json!(dp.daily_win_rate));
+        result.insert("周胜率".into(), json!(pwr.week));
+        result.insert("月胜率".into(), json!(pwr.month));
+        result.insert("季胜率".into(), json!(pwr.quarter));
+        result.insert("年胜率".into(), json!(pwr.year));
+
+        // 风险
+        result.insert("最大回撤".into(), json!(dp.max_drawdown));
+        result.insert("年化波动率".into(), json!(dp.annual_volatility));
+        result.insert("下行波动率".into(), json!(dp.downside_volatility));
+        result.insert("新高间隔".into(), json!(dp.new_high_interval));
+
+        // 特质
+        result.insert("交易次数".into(), json!(val.trade_count));
+        result.insert("年化交易次数".into(), json!(val.annual_trade_count));
+        result.insert("持仓K线数".into(), json!(ep.position_k_days));
+        result.insert("交易胜率".into(), json!(ep.win_rate));
+        result.insert("多头占比".into(), json!(val.long_rate));
+        result.insert("空头占比".into(), json!(val.short_rate));
+        result.insert("品种数量".into(), json!(val.symbols_count));
+
+        // 元数据
+        result.insert("开始日期".into(), json!(val.start_date.to_string()));
+        result.insert("结束日期".into(), json!(val.end_date.to_string()));
+
+        Value::Object(result)
     }
 }
 
@@ -120,13 +136,12 @@ mod tests {
             end_date: NaiveDate::from_ymd_opt(2024, 12, 31).unwrap(),
             daily_performance: DailyPerformance::default(),
             evaluate_pairs: EvaluatePairs::default(),
+            period_win_rates: PeriodWinRates::default(),
             long_rate: 0.5,
             short_rate: 0.5,
-            relevance: 0.1,
-            relevance_short: -0.1,
-            volatility_ratio: 0.8,
-            relevance_volatility: 0.2,
             symbols_count: 3,
+            trade_count: 10,
+            annual_trade_count: 120.0,
         }
     }
 
@@ -140,6 +155,9 @@ mod tests {
         assert_eq!(obj["结束日期"], "2024-12-31");
         assert_eq!(obj["品种数量"], 3);
         assert_eq!(obj["多头占比"], 0.5);
+        assert_eq!(obj["交易次数"], 10);
+        assert_eq!(obj["年化交易次数"], 120.0);
+        assert_eq!(obj["周胜率"], 0.0);
     }
 
     #[test]
@@ -175,6 +193,8 @@ mod tests {
                 strategy_means: vec![0.01],
                 benchmark_means: vec![0.005],
             },
+            long_stats: HashMap::new(),
+            short_stats: HashMap::new(),
         };
 
         let val: Value = report.into();
@@ -183,5 +203,7 @@ mod tests {
         assert!(obj.contains_key("TEST"));
         assert!(obj.contains_key("品种等权日收益"));
         assert!(obj.contains_key("绩效评价"));
+        assert!(obj.contains_key("多头统计"));
+        assert!(obj.contains_key("空头统计"));
     }
 }

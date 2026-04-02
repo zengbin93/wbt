@@ -74,38 +74,40 @@ impl PyWeightBacktest {
 
             let dp = &stats.daily_performance;
             let ep = &stats.evaluate_pairs;
-            py_dict.set_item("开始日期", stats.start_date.to_string())?;
-            py_dict.set_item("结束日期", stats.end_date.to_string())?;
+            let pwr = &stats.period_win_rates;
+
+            // 收益
             py_dict.set_item("绝对收益", dp.absolute_return)?;
-            py_dict.set_item("年化", dp.annual_returns)?;
-            py_dict.set_item("夏普", dp.sharpe_ratio)?;
-            py_dict.set_item("最大回撤", dp.max_drawdown)?;
-            py_dict.set_item("卡玛", dp.calmar_ratio)?;
+            py_dict.set_item("年化收益", dp.annual_returns)?;
+            py_dict.set_item("夏普比率", dp.sharpe_ratio)?;
+            py_dict.set_item("卡玛比率", dp.calmar_ratio)?;
+            py_dict.set_item("新高占比", dp.new_high_ratio)?;
+            py_dict.set_item("单笔盈亏比", ep.single_profit_loss_ratio)?;
+            py_dict.set_item("单笔收益", ep.single_trade_profit)?;
             py_dict.set_item("日胜率", dp.daily_win_rate)?;
-            py_dict.set_item("日盈亏比", dp.daily_profit_loss_ratio)?;
-            py_dict.set_item("日赢面", dp.daily_win_probability)?;
+            py_dict.set_item("周胜率", pwr.week)?;
+            py_dict.set_item("月胜率", pwr.month)?;
+            py_dict.set_item("季胜率", pwr.quarter)?;
+            py_dict.set_item("年胜率", pwr.year)?;
+
+            // 风险
+            py_dict.set_item("最大回撤", dp.max_drawdown)?;
             py_dict.set_item("年化波动率", dp.annual_volatility)?;
             py_dict.set_item("下行波动率", dp.downside_volatility)?;
-            py_dict.set_item("非零覆盖", dp.non_zero_coverage)?;
-            py_dict.set_item("盈亏平衡点", dp.break_even_point)?;
             py_dict.set_item("新高间隔", dp.new_high_interval)?;
-            py_dict.set_item("新高占比", dp.new_high_ratio)?;
-            py_dict.set_item("回撤风险", dp.drawdown_risk)?;
-            py_dict.set_item("回归年度回报率", dp.annual_lin_reg_cumsum_return)?;
-            py_dict.set_item(
-                "长度调整平均最大回撤",
-                dp.length_adjusted_average_max_drawdown,
-            )?;
-            py_dict.set_item("交易胜率", ep.win_rate)?;
-            py_dict.set_item("单笔收益", ep.single_trade_profit)?;
+
+            // 特质
+            py_dict.set_item("交易次数", stats.trade_count)?;
+            py_dict.set_item("年化交易次数", stats.annual_trade_count)?;
             py_dict.set_item("持仓K线数", ep.position_k_days)?;
+            py_dict.set_item("交易胜率", ep.win_rate)?;
             py_dict.set_item("多头占比", stats.long_rate)?;
             py_dict.set_item("空头占比", stats.short_rate)?;
-            py_dict.set_item("与基准相关性", stats.relevance)?;
-            py_dict.set_item("与基准空头相关性", stats.relevance_short)?;
-            py_dict.set_item("波动比", stats.volatility_ratio)?;
-            py_dict.set_item("与基准波动相关性", stats.relevance_volatility)?;
             py_dict.set_item("品种数量", stats.symbols_count)?;
+
+            // 元数据
+            py_dict.set_item("开始日期", stats.start_date.to_string())?;
+            py_dict.set_item("结束日期", stats.end_date.to_string())?;
         }
 
         Ok(py_dict)

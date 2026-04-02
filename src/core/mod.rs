@@ -31,6 +31,8 @@ pub struct WeightBacktest {
     pairs_cache: Option<DataFrame>,
     weight_type: Option<WeightType>,
     pub report: Option<Report>,
+    /// 年化交易天数
+    pub yearly_days: usize,
 }
 
 impl WeightBacktest {
@@ -114,6 +116,7 @@ impl WeightBacktest {
             pairs_cache: None,
             weight_type: None,
             report: None,
+            yearly_days: 252,
         };
         Ok(wb)
     }

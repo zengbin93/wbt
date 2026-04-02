@@ -50,6 +50,7 @@ pub(crate) fn date_key_to_naive_date(dk: i32) -> NaiveDate {
 
 /// 纯数值 pearson 相关系数 (ddof=1，与 Polars pearson_corr ddof=1 一致)
 #[inline]
+#[allow(dead_code)]
 pub(crate) fn pearson_corr_inline(xs: &[f64], ys: &[f64]) -> f64 {
     let n = xs.len();
     if n < 2 {

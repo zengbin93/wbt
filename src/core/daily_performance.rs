@@ -52,7 +52,7 @@ pub(crate) fn calc_underwater_recovery(underwater: &[f64], valley: usize) -> Opt
 // DailyPerformance
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DailyPerformance {
     pub absolute_return: f64,
     pub annual_returns: f64,
