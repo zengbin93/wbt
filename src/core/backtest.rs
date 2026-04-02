@@ -666,9 +666,30 @@ mod tests {
         let alpha = wb.alpha_df().unwrap();
         assert_eq!(alpha.width(), 4);
         // alpha excess = strategy - benchmark
-        let excess: Vec<f64> = alpha.column("超额").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
-        let strategy: Vec<f64> = alpha.column("策略").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
-        let benchmark: Vec<f64> = alpha.column("基准").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
+        let excess: Vec<f64> = alpha
+            .column("超额")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
+        let strategy: Vec<f64> = alpha
+            .column("策略")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
+        let benchmark: Vec<f64> = alpha
+            .column("基准")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
         for i in 0..excess.len() {
             assert!(
                 (excess[i] - (strategy[i] - benchmark[i])).abs() < 1e-10,
