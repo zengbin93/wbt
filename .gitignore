@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 docs/superpowers/*
+!docs/superpowers/specs/
+!docs/superpowers/specs/**
+!docs/superpowers/plans/
+!docs/superpowers/plans/**
 # C extensions
 *.so
 
