@@ -280,6 +280,9 @@ mod tests {
         let df = make_test_dataframe();
         let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
-        let _ = wb.pairs_df().unwrap();
+        let pairs = wb.pairs_df().unwrap().unwrap();
+        assert!(pairs.height() > 0);
+        assert!(pairs.column("symbol").is_ok());
+        assert!(pairs.column("交易方向").is_ok());
     }
 }

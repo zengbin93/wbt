@@ -47,7 +47,7 @@
 
 | 函数 | 测试点 |
 |-----|--------|
-| `daily_performance()` | 空数组→ReturnsEmpty, 全零→合理默认值, 全正/全负/混合小数据集→手算对照 |
+| `daily_performance()` | 空数组→默认值, 全零→合理默认值, 全正/全负/混合小数据集→手算对照 |
 | `daily_performance_drawdown` | 已知回撤序列→手算 top-N 回撤均值和最长回撤 |
 | `calc_underwater` | 累积收益→水下曲线对照 |
 | `calc_underwater_valley/peak/recovery` | 构造有明确谷底/峰值/恢复点的序列 |
@@ -108,7 +108,7 @@
 | `daily_performance()` | 正常 numpy array→返回 dict 含 17 个 key |
 | | 全零数组→不报错 |
 | | yearly_days 参数影响年化计算 |
-| | 空数组→报错 |
+| | 空数组→返回默认值 |
 
 ### `test_backtest.py`
 

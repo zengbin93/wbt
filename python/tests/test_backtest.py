@@ -28,6 +28,34 @@ def wb(sample_dfw):
     )
 
 
+@pytest.fixture
+def contract_dfw():
+    """Deterministic data with known winners/losers and explicit open-close transitions."""
+    rows = []
+    dates = [f"2024-02-0{i} 09:30:00" for i in range(1, 5)]
+
+    sym_a_weights = [0.0, 1.0, 1.0, 0.0]
+    sym_a_prices = [100.0, 110.0, 120.0, 120.0]
+
+    sym_b_weights = [0.0, 1.0, 1.0, 0.0]
+    sym_b_prices = [100.0, 95.0, 90.0, 90.0]
+
+    for dt, weight, price in zip(dates, sym_a_weights, sym_a_prices):
+        rows.append({"dt": dt, "symbol": "SYM_A", "weight": weight, "price": price})
+
+    for dt, weight, price in zip(dates, sym_b_weights, sym_b_prices):
+        rows.append({"dt": dt, "symbol": "SYM_B", "weight": weight, "price": price})
+
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture
+def contract_wb(contract_dfw):
+    return WeightBacktest(
+        contract_dfw, digits=2, fee_rate=0.0, n_jobs=1, weight_type="ts", yearly_days=252
+    )
+
+
 STATS_KEYS_29 = [
     "开始日期", "结束日期", "绝对收益", "年化", "夏普", "最大回撤", "卡玛",
     "日胜率", "日盈亏比", "日赢面", "年化波动率", "下行波动率", "非零覆盖",
@@ -91,12 +119,16 @@ class TestSymbolDict:
 
 
 class TestDailyReturn:
-    def test_structure(self, wb):
-        dr = wb.daily_return
+    def test_structure(self, contract_wb):
+        dr = contract_wb.daily_return
         assert isinstance(dr, pd.DataFrame)
-        assert "date" in dr.columns
-        assert "total" in dr.columns
-        assert len(dr) > 0
+        assert list(dr.columns) == ["date", "SYM_A", "SYM_B", "total"]
+        assert len(dr) == 3
+
+    def test_total_matches_mean_of_symbol_returns(self, contract_wb):
+        dr = contract_wb.daily_return
+        expected_total = dr[["SYM_A", "SYM_B"]].mean(axis=1)
+        pd.testing.assert_series_equal(dr["total"], expected_total, check_names=False)
 
 
 class TestDailys:
@@ -120,17 +152,31 @@ class TestDailys:
                 f"return={row['return']} != edge-cost={expected}"
             )
 
-    def test_long_short_return_consistency(self, wb):
-        """long_return + short_return should approximate return"""
+    def test_long_short_edge_equals_edge(self, wb):
+        """edge should equal long_edge + short_edge for every row"""
         df = wb.dailys
         for _, row in df.iterrows():
-            lr = row["long_return"] + row["short_return"]
-            # long_return = long_edge - long_cost, short_return = short_edge - short_cost
-            # return = edge - cost, and edge = long_edge + short_edge (by definition)
-            # The relationship holds approximately due to weight decomposition
             total_edge = row["long_edge"] + row["short_edge"]
             assert abs(row["edge"] - total_edge) < 1e-8, (
                 f"edge={row['edge']} != long_edge+short_edge={total_edge}"
+            )
+
+    def test_long_short_cost_equals_cost(self, wb):
+        """cost should equal long_cost + short_cost for every row"""
+        df = wb.dailys
+        for _, row in df.iterrows():
+            total_cost = row["long_cost"] + row["short_cost"]
+            assert abs(row["cost"] - total_cost) < 1e-8, (
+                f"cost={row['cost']} != long_cost+short_cost={total_cost}"
+            )
+
+    def test_long_short_return_equals_return(self, wb):
+        """return should equal long_return + short_return for every row"""
+        df = wb.dailys
+        for _, row in df.iterrows():
+            total_return = row["long_return"] + row["short_return"]
+            assert abs(row["return"] - total_return) < 1e-8, (
+                f"return={row['return']} != long_return+short_return={total_return}"
             )
 
 
@@ -151,12 +197,16 @@ class TestAlpha:
 
 
 class TestPairs:
-    def test_structure(self, wb):
-        df = wb.pairs
+    def test_structure(self, contract_wb):
+        df = contract_wb.pairs
         assert isinstance(df, pd.DataFrame)
-        if len(df) > 0:
-            assert "symbol" in df.columns
-            assert "交易方向" in df.columns
+        assert len(df) > 0
+        assert "symbol" in df.columns
+        assert "交易方向" in df.columns
+
+    def test_pairs_include_both_symbols(self, contract_wb):
+        df = contract_wb.pairs
+        assert set(df["symbol"]) == {"SYM_A", "SYM_B"}
 
 
 class TestAlphaAndBenchStats:
@@ -196,25 +246,25 @@ class TestLongShortReturns:
 
 
 class TestSymbolMethods:
-    def test_get_top_symbols_profit(self, wb):
-        # daily_return from Rust only has date+total, so get_top_symbols
-        # returns empty unless per-symbol columns are present
-        result = wb.get_top_symbols(n=1, kind="profit")
-        assert isinstance(result, list)
+    def test_get_top_symbols_profit(self, contract_wb):
+        result = contract_wb.get_top_symbols(n=1, kind="profit")
+        assert result == ["SYM_A"]
 
-    def test_get_top_symbols_loss(self, wb):
-        result = wb.get_top_symbols(n=1, kind="loss")
-        assert isinstance(result, list)
+    def test_get_top_symbols_loss(self, contract_wb):
+        result = contract_wb.get_top_symbols(n=1, kind="loss")
+        assert result == ["SYM_B"]
 
-    def test_get_top_symbols_n_exceeds(self, wb):
-        result = wb.get_top_symbols(n=10, kind="profit")
-        assert isinstance(result, list)
+    def test_get_top_symbols_n_exceeds(self, contract_wb):
+        result = contract_wb.get_top_symbols(n=10, kind="profit")
+        assert result == ["SYM_A", "SYM_B"]
 
     def test_get_symbol_daily(self, wb):
         df = wb.get_symbol_daily("SYM_A")
         assert isinstance(df, pd.DataFrame)
         assert all(df["symbol"] == "SYM_A")
 
-    def test_get_symbol_pairs(self, wb):
-        df = wb.get_symbol_pairs("SYM_A")
+    def test_get_symbol_pairs(self, contract_wb):
+        df = contract_wb.get_symbol_pairs("SYM_A")
         assert isinstance(df, pd.DataFrame)
+        assert len(df) > 0
+        assert all(df["symbol"] == "SYM_A")

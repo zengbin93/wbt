@@ -37,7 +37,12 @@ class TestDailyPerformance:
     def test_empty_returns_default(self):
         returns = np.array([], dtype=np.float64)
         result = daily_performance(returns)
+        assert set(EXPECTED_KEYS) == set(result.keys())
         assert result["绝对收益"] == 0.0
+        assert result["年化"] == 0.0
+        assert result["夏普"] == 0.0
+        assert result["最大回撤"] == 0.0
+        assert result["回归年度回报率"] is None
 
     def test_yearly_days_proportional(self):
         """annual_returns = mean * yearly_days, so ratio should be 365/252"""
