@@ -1,0 +1,54 @@
+# 设计方案调整
+
+## 20260402
+
+1. WeightBacktest 中的 dfw 参数名称改成 data，同时支持三种类型的输入
+    - pd.DataFrame
+    - pl.DataFrame / pl.LazyFrame
+    - file 路径（csv/feather/parquet/xlsx 四种常见格式）
+
+2. 评估指标的优化（三大类：收益、风险、特质）
+
+    收益指标：
+
+    - 绝对收益
+    - 年化收益
+    - 夏普比率
+    - 卡玛比率
+    - 新高占比
+    - 单笔盈亏比    - 用pairs计算
+    - 单笔收益      - 用pairs计算
+    - 日胜率
+    - 周胜率
+    - 月胜率
+    - 季胜率
+    - 年胜率
+
+    风险指标：
+
+    - 最大回撤
+    - 年化波动率
+    - 下行波动率
+    - 新高间隔
+
+    特质指标：
+
+    - 年化交易次数  - 用pairs计算
+    - 持仓K线数     - 用pairs计算
+    - 交易胜率      - 用pairs计算
+    - 多头占比
+    - 空头占比
+
+    stats - 多空综合的评估指标
+    long_stats - 只看多头部分的评估指标
+    short_stats - 只看空头部分的评估指标
+
+3. 新增 segment_stats 函数
+    s = segment_stats(sdt="20170101", edt="20190101", kind="多头/空头/多空")
+    按 sdt 和 edt 分别过滤 dailys 和 pairs，然后计算出 2 种的所有指标
+
+4. 新增 long_alpha_stats 函数
+    将多头的日收益和基准的日收益，按目标年化波动率20%调整后，多头累计 - 空头累计 = 多头超额；
+    用 daily_performance 在多头超额上面计算指标
+
+5. python/wbt 下面新增 plotting 模块，根据 weight backtest 的输出数据格式，绘制各种可视化图表
