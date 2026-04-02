@@ -106,3 +106,82 @@ impl From<StatsReport> for Value {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::evaluate_pairs::EvaluatePairs;
+    use crate::core::native_engine::DailyTotals;
+    use polars::prelude::{IntoColumn, NamedFrom};
+
+    fn make_stats_report() -> StatsReport {
+        StatsReport {
+            start_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2024, 12, 31).unwrap(),
+            daily_performance: DailyPerformance::default(),
+            evaluate_pairs: EvaluatePairs::default(),
+            long_rate: 0.5,
+            short_rate: 0.5,
+            relevance: 0.1,
+            relevance_short: -0.1,
+            volatility_ratio: 0.8,
+            relevance_volatility: 0.2,
+            symbols_count: 3,
+        }
+    }
+
+    #[test]
+    fn stats_report_to_value() {
+        let stats = make_stats_report();
+        let val: Value = stats.into();
+        assert!(val.is_object());
+        let obj = val.as_object().unwrap();
+        assert_eq!(obj["开始日期"], "2024-01-01");
+        assert_eq!(obj["结束日期"], "2024-12-31");
+        assert_eq!(obj["品种数量"], 3);
+        assert_eq!(obj["多头占比"], 0.5);
+    }
+
+    #[test]
+    fn report_to_value() {
+        let stats = make_stats_report();
+        let daily_return = DataFrame::new(vec![
+            polars::prelude::Series::new("date".into(), &[0_i32])
+                .cast(&polars::prelude::DataType::Date)
+                .unwrap()
+                .into_column(),
+            polars::prelude::Series::new("total".into(), &[0.01_f64]).into_column(),
+        ])
+        .unwrap();
+
+        let report = Report {
+            symbols: vec![SymbolsReport {
+                symbol: "TEST".into(),
+                daily: DataFrame::empty(),
+                pair: DataFrame::empty(),
+            }],
+            daily_return,
+            stats,
+            symbol_dict: vec!["TEST".into()],
+            daily_totals: DailyTotals {
+                date_keys: vec![20240101],
+                totals: vec![0.01],
+                n1b_totals: vec![0.005],
+                start_date_key: 20240101,
+                end_date_key: 20240101,
+                long_count: 1,
+                short_count: 0,
+                total_weight_rows: 1,
+                strategy_means: vec![0.01],
+                benchmark_means: vec![0.005],
+            },
+        };
+
+        let val: Value = report.into();
+        assert!(val.is_object());
+        let obj = val.as_object().unwrap();
+        assert!(obj.contains_key("TEST"));
+        assert!(obj.contains_key("品种等权日收益"));
+        assert!(obj.contains_key("绩效评价"));
+    }
+}

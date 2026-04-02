@@ -141,3 +141,145 @@ impl WeightBacktest {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_dataframe() -> DataFrame {
+        let n = 20;
+        let dates: Vec<String> = (0..10)
+            .flat_map(|d| {
+                vec![
+                    format!("2024-01-{:02} 09:30:00", d + 1),
+                    format!("2024-01-{:02} 09:30:00", d + 1),
+                ]
+            })
+            .collect();
+        let symbols: Vec<&str> = (0..10).flat_map(|_| vec!["SYM_A", "SYM_B"]).collect();
+        let weights: Vec<f64> = (0..n)
+            .map(|i| {
+                let cycle = (i / 2) as f64;
+                if i % 2 == 0 {
+                    (cycle * 0.1 - 0.2).clamp(-1.0, 1.0)
+                } else {
+                    (-cycle * 0.15 + 0.3).clamp(-1.0, 1.0)
+                }
+            })
+            .collect();
+        let prices: Vec<f64> = (0..n)
+            .map(|i| 100.0 + (i as f64) * 0.5 + ((i as f64) * 0.7).sin())
+            .collect();
+
+        df! {
+            "dt" => dates,
+            "symbol" => symbols,
+            "weight" => weights,
+            "price" => prices
+        }
+        .unwrap()
+    }
+
+    #[test]
+    fn backtest_full_flow_ts() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let report = wb.report.as_ref().unwrap();
+        // 2 symbols
+        assert_eq!(report.symbol_dict.len(), 2);
+        assert!(report.symbol_dict.contains(&"SYM_A".to_string()));
+        assert!(report.symbol_dict.contains(&"SYM_B".to_string()));
+        assert_eq!(report.stats.symbols_count, 2);
+
+        // long_rate + short_rate should be <= 1.0 and >= 0.0
+        assert!(report.stats.long_rate >= 0.0 && report.stats.long_rate <= 1.0);
+        assert!(report.stats.short_rate >= 0.0 && report.stats.short_rate <= 1.0);
+
+        // daily_return should have date + total columns, rows = number of unique trading days
+        assert_eq!(report.daily_return.width(), 2);
+        assert!(report.daily_return.height() > 0);
+        // total column values should sum to absolute_return (within rounding)
+        let total_sum: f64 = report
+            .daily_return
+            .column("total")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .sum()
+            .unwrap();
+        let abs_ret = report.stats.daily_performance.absolute_return;
+        assert!(
+            (total_sum - abs_ret).abs() < 0.01,
+            "daily total sum {total_sum} should ≈ absolute_return {abs_ret}"
+        );
+
+        // dailys_df should have 15 columns and rows = days * symbols
+        let dailys = wb.dailys_df().unwrap();
+        assert_eq!(dailys.width(), 15);
+        assert!(dailys.height() > 0);
+
+        // alpha should have 4 columns and same rows as daily_return
+        let alpha = wb.alpha_df().unwrap();
+        assert_eq!(alpha.width(), 4);
+        // alpha excess = strategy - benchmark
+        let excess: Vec<f64> = alpha.column("超额").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
+        let strategy: Vec<f64> = alpha.column("策略").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
+        let benchmark: Vec<f64> = alpha.column("基准").unwrap().as_materialized_series().f64().unwrap().into_no_null_iter().collect();
+        for i in 0..excess.len() {
+            assert!(
+                (excess[i] - (strategy[i] - benchmark[i])).abs() < 1e-10,
+                "alpha excess[{i}] should equal strategy - benchmark"
+            );
+        }
+    }
+
+    #[test]
+    fn backtest_full_flow_cs() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::CS, 252).unwrap();
+        let report = wb.report.as_ref().unwrap();
+        assert_eq!(report.stats.symbols_count, 2);
+        // CS mode: total = sum (not mean), so daily values should differ from TS
+        assert!(report.daily_return.height() > 0);
+    }
+
+    #[test]
+    fn backtest_ts_vs_cs_differ() {
+        let df1 = make_test_dataframe();
+        let df2 = make_test_dataframe();
+        let mut wb_ts = WeightBacktest::new(df1, 2, Some(0.0002)).unwrap();
+        let mut wb_cs = WeightBacktest::new(df2, 2, Some(0.0002)).unwrap();
+        wb_ts.backtest(Some(1), WeightType::TS, 252).unwrap();
+        wb_cs.backtest(Some(1), WeightType::CS, 252).unwrap();
+        let ts_total = &wb_ts.report.as_ref().unwrap().daily_return;
+        let cs_total = &wb_cs.report.as_ref().unwrap().daily_return;
+        assert_ne!(
+            ts_total
+                .column("total")
+                .unwrap()
+                .as_materialized_series()
+                .f64()
+                .unwrap()
+                .sum(),
+            cs_total
+                .column("total")
+                .unwrap()
+                .as_materialized_series()
+                .f64()
+                .unwrap()
+                .sum(),
+        );
+    }
+
+    #[test]
+    fn backtest_pairs_df() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+        let _ = wb.pairs_df().unwrap();
+    }
+}
