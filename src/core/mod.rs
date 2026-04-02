@@ -10,8 +10,8 @@ pub mod daily_performance;
 pub mod errors;
 mod evaluate_pairs;
 pub mod native_engine;
-mod report;
 pub mod period_win_rates;
+mod report;
 pub mod trade_dir;
 pub mod utils;
 
@@ -135,21 +135,19 @@ impl WeightBacktest {
             .to_lowercase();
 
         let df = match ext.as_str() {
-            "csv" => CsvReader::new(
-                std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?,
-            )
-            .finish()
-            .map_err(WbtError::Polars)?,
+            "csv" => {
+                CsvReader::new(std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?)
+                    .finish()
+                    .map_err(WbtError::Polars)?
+            }
             "parquet" => {
-                let file =
-                    std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?;
+                let file = std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?;
                 ParquetReader::new(file)
                     .finish()
                     .map_err(WbtError::Polars)?
             }
             "feather" | "arrow" => {
-                let file =
-                    std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?;
+                let file = std::fs::File::open(p).map_err(|e| WbtError::Io(e.to_string()))?;
                 IpcReader::new(file).finish().map_err(WbtError::Polars)?
             }
             _ => {
@@ -587,6 +585,68 @@ mod tests {
         assert!(err_msg.contains("Unsupported"));
     }
 
+    #[test]
+    fn from_file_parquet() {
+        let dir = std::env::temp_dir().join("wbt_test_from_file_parquet");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.parquet");
+
+        // Build the same test DataFrame as from_file_csv
+        let df = df! {
+            "dt" => &[
+                "2024-01-01 09:30:00",
+                "2024-01-02 09:30:00",
+                "2024-01-01 09:30:00",
+                "2024-01-02 09:30:00",
+            ],
+            "symbol" => &["SYM_A", "SYM_A", "SYM_B", "SYM_B"],
+            "weight" => &[0.5_f64, -0.3, 0.2, 0.0],
+            "price" => &[100.0_f64, 101.0, 50.0, 51.0]
+        }
+        .unwrap();
+
+        let file = std::fs::File::create(&path).unwrap();
+        ParquetWriter::new(file).finish(&mut df.clone()).unwrap();
+
+        let wb = WeightBacktest::from_file(path.to_str().unwrap(), 2, None).unwrap();
+        assert_eq!(wb.symbols.len(), 2);
+        assert!(wb.symbols.contains(&std::sync::Arc::from("SYM_A")));
+        assert!(wb.symbols.contains(&std::sync::Arc::from("SYM_B")));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_file_feather() {
+        let dir = std::env::temp_dir().join("wbt_test_from_file_feather");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.feather");
+
+        // Build the same test DataFrame as from_file_csv
+        let df = df! {
+            "dt" => &[
+                "2024-01-01 09:30:00",
+                "2024-01-02 09:30:00",
+                "2024-01-01 09:30:00",
+                "2024-01-02 09:30:00",
+            ],
+            "symbol" => &["SYM_A", "SYM_A", "SYM_B", "SYM_B"],
+            "weight" => &[0.5_f64, -0.3, 0.2, 0.0],
+            "price" => &[100.0_f64, 101.0, 50.0, 51.0]
+        }
+        .unwrap();
+
+        let file = std::fs::File::create(&path).unwrap();
+        IpcWriter::new(file).finish(&mut df.clone()).unwrap();
+
+        let wb = WeightBacktest::from_file(path.to_str().unwrap(), 2, None).unwrap();
+        assert_eq!(wb.symbols.len(), 2);
+        assert!(wb.symbols.contains(&std::sync::Arc::from("SYM_A")));
+        assert!(wb.symbols.contains(&std::sync::Arc::from("SYM_B")));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     // --- unique_symbols sorted ---
     #[test]
     fn unique_symbols_sorted_order() {
@@ -599,5 +659,33 @@ mod tests {
         .unwrap();
         let syms = WeightBacktest::unique_symbols(&df).unwrap();
         assert_eq!(syms, vec![Arc::from("A"), Arc::from("B"), Arc::from("C")]);
+    }
+
+    // --- convert_datetime: Datetime(Nanoseconds) passthrough ---
+    #[test]
+    fn convert_datetime_nanoseconds_passthrough() {
+        let dates: Vec<i64> = vec![
+            1_704_067_200_000_000_000, // 2024-01-01 00:00 UTC in ns
+            1_704_153_600_000_000_000, // 2024-01-02 00:00 UTC in ns
+        ];
+        let dt_series = Series::new("dt".into(), dates)
+            .cast(&DataType::Datetime(TimeUnit::Nanoseconds, None))
+            .unwrap();
+        let df = DataFrame::new(vec![
+            dt_series.into_column(),
+            Series::new("symbol".into(), &["A", "A"]).into_column(),
+            Series::new("weight".into(), &[0.5_f64, 0.0]).into_column(),
+            Series::new("price".into(), &[100.0_f64, 101.0]).into_column(),
+        ])
+        .unwrap();
+
+        let result = WeightBacktest::convert_datetime(df);
+        assert!(result.is_ok());
+        let df = result.unwrap();
+        assert!(matches!(
+            df.column("dt").unwrap().dtype(),
+            DataType::Datetime(TimeUnit::Nanoseconds, _)
+        ));
+        assert_eq!(df.height(), 2);
     }
 }

@@ -2,9 +2,7 @@ use crate::core::daily_performance::daily_performance;
 use crate::core::native_engine::{DailyTotals, DailysSoA, PairsSoA, dt_to_date_key_fast};
 use crate::core::period_win_rates::period_win_rates;
 use crate::core::trade_dir::TradeDir;
-use crate::core::utils::{
-    RoundToNthDigit, date_key_to_naive_date, std_inline,
-};
+use crate::core::utils::{RoundToNthDigit, date_key_to_naive_date, std_inline};
 use crate::core::{
     WeightBacktest,
     errors::WbtError,
@@ -169,12 +167,10 @@ impl WeightBacktest {
             row_by_date.insert(date_key, row);
         }
 
-        let mut per_symbol = vec![vec![None; daily_totals.date_keys.len()]; dailys_soa.symbol_dict.len()];
+        let mut per_symbol =
+            vec![vec![None; daily_totals.date_keys.len()]; dailys_soa.symbol_dict.len()];
         for i in 0..dailys_soa.sym_ids.len() {
-            let date_key = dt_to_date_key_fast(
-                dailys_soa.date_ticks[i],
-                dailys_soa.time_unit,
-            );
+            let date_key = dt_to_date_key_fast(dailys_soa.date_ticks[i], dailys_soa.time_unit);
             if let Some(&row) = row_by_date.get(&date_key) {
                 per_symbol[dailys_soa.sym_ids[i] as usize][row] = Some(dailys_soa.ret[i]);
             }
@@ -448,8 +444,7 @@ impl WeightBacktest {
         let daily_totals = &report.daily_totals;
         let yearly_days = self.yearly_days;
 
-        let (long_returns, _) =
-            aggregate_long_short_returns(dailys_soa, daily_totals, weight_type);
+        let (long_returns, _) = aggregate_long_short_returns(dailys_soa, daily_totals, weight_type);
         let bench_returns = &daily_totals.benchmark_means;
 
         let yd_sqrt = (yearly_days as f64).sqrt();
@@ -489,11 +484,7 @@ impl WeightBacktest {
             .collect();
 
         let dp = daily_performance(&alpha_daily, Some(yearly_days))?;
-        let pwr = period_win_rates(
-            &daily_totals.date_keys,
-            &alpha_daily,
-            yearly_days as i64,
-        );
+        let pwr = period_win_rates(&daily_totals.date_keys, &alpha_daily, yearly_days as i64);
 
         let mut m = HashMap::new();
         m.insert("绝对收益".into(), json!(dp.absolute_return));
@@ -596,8 +587,8 @@ mod tests {
             assert!(report.stats.long_rate >= 0.0 && report.stats.long_rate <= 1.0);
             assert!(report.stats.short_rate >= 0.0 && report.stats.short_rate <= 1.0);
 
-            // New fields exist
-            assert!(report.stats.trade_count > 0 || report.stats.trade_count == 0);
+            // New fields exist (trade_count is usize, always >= 0)
+            let _ = report.stats.trade_count;
             assert!(report.stats.annual_trade_count >= 0.0);
 
             // long_stats and short_stats populated
@@ -785,5 +776,98 @@ mod tests {
         assert_eq!(wb.yearly_days, 252); // default
         wb.backtest(Some(1), WeightType::TS, 365).unwrap();
         assert_eq!(wb.yearly_days, 365);
+    }
+
+    /// CS mode: total column = sum (not mean) of per-symbol columns for each row.
+    #[test]
+    fn backtest_cs_mode_total_is_sum() {
+        // Build a 2-symbol, 5-day DataFrame with known weights and prices
+        let dates: Vec<String> = (0..5)
+            .flat_map(|d| {
+                vec![
+                    format!("2024-01-{:02} 09:30:00", d + 1),
+                    format!("2024-01-{:02} 09:30:00", d + 1),
+                ]
+            })
+            .collect();
+        let symbols: Vec<&str> = (0..5).flat_map(|_| vec!["A", "B"]).collect();
+        let weights: Vec<f64> = (0..10)
+            .map(|i| if i % 2 == 0 { 0.3 } else { -0.2 })
+            .collect();
+        let prices: Vec<f64> = (0..10)
+            .map(|i| {
+                if i % 2 == 0 {
+                    100.0 + (i / 2) as f64 * 0.5
+                } else {
+                    150.0 - (i / 2) as f64 * 0.3
+                }
+            })
+            .collect();
+
+        let df = df! {
+            "dt" => dates,
+            "symbol" => symbols,
+            "weight" => weights,
+            "price" => prices
+        }
+        .unwrap();
+
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0)).unwrap();
+        wb.backtest(Some(1), WeightType::CS, 252).unwrap();
+
+        let dr = wb.daily_return_df().unwrap();
+        let sym_a: Vec<Option<f64>> = dr
+            .column("A")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_iter()
+            .collect();
+        let sym_b: Vec<Option<f64>> = dr
+            .column("B")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_iter()
+            .collect();
+        let total: Vec<Option<f64>> = dr
+            .column("total")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_iter()
+            .collect();
+
+        for i in 0..total.len() {
+            let a = sym_a[i].unwrap_or(0.0);
+            let b = sym_b[i].unwrap_or(0.0);
+            let t = total[i].unwrap_or(0.0);
+            assert!(
+                (t - (a + b)).abs() < 1e-10,
+                "CS mode: total[{i}]={t} should equal A[{i}]({a}) + B[{i}]({b})"
+            );
+        }
+    }
+
+    /// Invalid kind in segment_stats should fall back to "多空" (default) behaviour.
+    #[test]
+    fn segment_stats_invalid_kind_defaults_to_all() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let stats_default = wb.segment_stats(None, None, "多空").unwrap();
+        let stats_invalid = wb.segment_stats(None, None, "invalid_kind").unwrap();
+
+        // Both should produce the same 年化收益 value since invalid falls back to ret
+        let default_ret = stats_default["年化收益"].as_f64().unwrap_or(0.0);
+        let invalid_ret = stats_invalid["年化收益"].as_f64().unwrap_or(0.0);
+        assert!(
+            (default_ret - invalid_ret).abs() < 1e-10,
+            "invalid kind should produce same result as 多空: {default_ret} vs {invalid_ret}"
+        );
     }
 }

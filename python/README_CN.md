@@ -52,7 +52,8 @@ uv run basedpyright
 import pandas as pd
 from wbt import WeightBacktest
 
-dfw = pd.DataFrame(
+# pandas DataFrame 输入
+df = pd.DataFrame(
     {
         "dt": ["2024-01-02 09:01:00", "2024-01-02 09:02:00"],
         "symbol": ["AAPL", "AAPL"],
@@ -60,9 +61,13 @@ dfw = pd.DataFrame(
         "price": [185.0, 186.0],
     }
 )
+wb = WeightBacktest(df, digits=2, fee_rate=0.0002, n_jobs=4, weight_type="ts")
+print(wb.stats)           # 多空综合指标
+print(wb.long_stats)      # 多头指标
+print(wb.short_stats)     # 空头指标
 
-wb = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=4, weight_type="ts")
-print(wb.stats)
+# 也支持文件路径和 Polars DataFrame
+wb = WeightBacktest("path/to/data.parquet", digits=2)
 ```
 
 ## License

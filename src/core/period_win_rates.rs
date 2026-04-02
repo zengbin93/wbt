@@ -155,11 +155,7 @@ fn year_win_rate(date_keys: &[i32], returns: &[f64], yearly_days: i64) -> f64 {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-pub fn period_win_rates(
-    date_keys: &[i32],
-    returns: &[f64],
-    yearly_days: i64,
-) -> PeriodWinRates {
+pub fn period_win_rates(date_keys: &[i32], returns: &[f64], yearly_days: i64) -> PeriodWinRates {
     if date_keys.is_empty() {
         return PeriodWinRates::default();
     }
@@ -279,9 +275,7 @@ mod tests {
         let yearly_days = 10i64;
         let below_min = (yearly_days / 2 - 1) as usize; // 4
 
-        let date_keys: Vec<i32> = (1..=below_min as i32)
-            .map(|d| 20240100 + d)
-            .collect();
+        let date_keys: Vec<i32> = (1..=below_min as i32).map(|d| 20240100 + d).collect();
         let returns: Vec<f64> = vec![0.01; below_min];
 
         let result = period_win_rates(&date_keys, &returns, yearly_days);

@@ -52,7 +52,8 @@ uv run basedpyright
 import pandas as pd
 from wbt import WeightBacktest
 
-dfw = pd.DataFrame(
+# pandas DataFrame input
+df = pd.DataFrame(
     {
         "dt": ["2024-01-02 09:01:00", "2024-01-02 09:02:00"],
         "symbol": ["AAPL", "AAPL"],
@@ -60,12 +61,21 @@ dfw = pd.DataFrame(
         "price": [185.0, 186.0],
     }
 )
-
-wb = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=4, weight_type="ts")
+wb = WeightBacktest(df, digits=2, fee_rate=0.0002, n_jobs=4, weight_type="ts")
 print(wb.stats)
+
+# File path input (csv, parquet, feather)
+wb = WeightBacktest("path/to/data.parquet", digits=2)
+
+# Polars DataFrame input
+import polars as pl
+df_pl = pl.read_parquet("path/to/data.parquet")
+wb = WeightBacktest(df_pl, digits=2)
 ```
 
 ## Input Format
+
+The `data` parameter accepts `pd.DataFrame`, `pl.DataFrame`, `pl.LazyFrame`, or a file path (`str` / `Path`).
 
 | Column   | Type     | Description |
 |----------|----------|-------------|
@@ -85,7 +95,14 @@ repo-root/
         |-- __init__.py
         |-- _df_convert.py
         |-- _wbt.pyi
-        `-- backtest.py
+        |-- backtest.py
+        `-- plotting/
+            |-- __init__.py
+            |-- _common.py
+            |-- returns.py
+            |-- risk.py
+            |-- trades.py
+            `-- overview.py
 ```
 
 ## License

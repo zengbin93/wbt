@@ -605,8 +605,8 @@ impl NativeEngine {
                         (raw_sum, raw_n1b)
                     };
                     out_date_keys.push(date_key);
-                    out_totals.push((v * 10000.0).round() / 10000.0);
-                    out_n1b.push((n * 10000.0).round() / 10000.0);
+                    out_totals.push(v);
+                    out_n1b.push(n);
                     out_strategy_means.push(raw_sum / cnt_f);
                     out_benchmark_means.push(raw_n1b / cnt_f);
                 }
@@ -1169,6 +1169,428 @@ mod tests {
         for col in expected_cols {
             assert!(df.column(col).is_ok(), "missing column: {col}");
         }
+    }
+
+    // ===================================================================
+    // process_symbol_chunk — direct unit tests
+    // ===================================================================
+
+    const FEE_RATE: f64 = 0.0001;
+    const DIGITS_POW10: f64 = 100.0; // digits=2
+
+    // 2024-01-02 00:00:00 UTC in milliseconds
+    const DAY1_BASE: i64 = 1_704_153_600_000;
+    const HOUR_MS: i64 = 3_600_000;
+    // 2024-01-03 00:00:00 UTC in milliseconds
+    const DAY2_BASE: i64 = DAY1_BASE + 86_400_000;
+
+    fn assert_f64_eq(actual: f64, expected: f64, label: &str) {
+        assert!(
+            (actual - expected).abs() < 1e-8,
+            "{label}: expected {expected}, got {actual}"
+        );
+    }
+
+    // Test A: Single day, single bar transition (simplest case)
+    #[test]
+    fn chunk_single_day_single_transition() {
+        let dt = [DAY1_BASE + 9 * HOUR_MS, DAY1_BASE + 10 * HOUR_MS];
+        let weight = [0.5, 0.0];
+        let price = [100.0, 102.0];
+
+        let (d, _p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        assert_eq!(d.date_ticks.len(), 1, "should produce 1 daily row");
+
+        // n1b = 102/100 - 1 = 0.02
+        let n1b = 0.02;
+        assert_f64_eq(d.n1b[0], n1b, "n1b");
+
+        // edge = 0.5 * 0.02 = 0.01
+        let edge = 0.5 * n1b;
+        assert_f64_eq(d.edge[0], edge, "edge");
+
+        // pending_cost at i=1 is still 0 (from init), so ret = edge - 0
+        assert_f64_eq(d.ret[0], edge, "ret");
+
+        // d_cost accumulates pending_cost=0 (from init)
+        assert_f64_eq(d.cost[0], 0.0, "cost");
+
+        // long_edge = 0.5 * 0.02 = 0.01
+        assert_f64_eq(d.long_edge[0], edge, "long_edge");
+        assert_f64_eq(d.short_edge[0], 0.0, "short_edge");
+        assert_f64_eq(d.long_return[0], edge, "long_return");
+        assert_f64_eq(d.short_return[0], 0.0, "short_return");
+    }
+
+    // Test B: Multi-bar per day aggregation
+    #[test]
+    fn chunk_multi_bar_single_day() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY1_BASE + 11 * HOUR_MS,
+            DAY1_BASE + 12 * HOUR_MS,
+        ];
+        let weight = [0.5, 0.5, 0.3, 0.0];
+        let price = [100.0, 102.0, 101.0, 103.0];
+
+        let (d, _p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        assert_eq!(d.date_ticks.len(), 1);
+
+        // bar1->2: n1b = 102/100 - 1 = 0.02, edge = 0.5*0.02 = 0.01
+        // bar2->3: n1b = 101/102 - 1 = -1/102, edge = 0.5*(-1/102)
+        // bar3->4: n1b = 103/101 - 1 = 2/101, edge = 0.3*(2/101)
+        let n1b_1 = 102.0 / 100.0 - 1.0;
+        let n1b_2 = 101.0 / 102.0 - 1.0;
+        let n1b_3 = 103.0 / 101.0 - 1.0;
+
+        let edge_1 = 0.5 * n1b_1;
+        let edge_2 = 0.5 * n1b_2;
+        let edge_3 = 0.3 * n1b_3;
+
+        assert_f64_eq(d.n1b[0], n1b_1 + n1b_2 + n1b_3, "n1b");
+        assert_f64_eq(d.edge[0], edge_1 + edge_2 + edge_3, "edge");
+
+        // pending_cost at i=1: 0 (init)
+        // pending_cost at i=2: |0.5-0.5|*FEE = 0
+        // pending_cost at i=3: |0.5-0.3|*FEE = 0.2*FEE
+        // d_cost = 0 + 0 + 0.2*FEE
+        let cost_at_2 = 0.0; // |0.5-0.5|*FEE
+        let cost_at_3 = 0.2 * FEE_RATE; // |0.5-0.3|*FEE
+        assert_f64_eq(d.cost[0], 0.0 + cost_at_2 + cost_at_3, "cost");
+
+        // ret: sum of (edge_i - pending_cost_i)
+        // i=1: edge_1 - 0
+        // i=2: edge_2 - 0  (pending_cost from i=1 was |0.5-0.5|*FEE=0... wait)
+        // Actually pending_cost after i=1 = |0.5-0.5|*FEE = 0 (prev_weight at i=1 init is 0.5, weight[1]=0.5)
+        // Wait: prev_weight is initialized to pending_weight = weight[0] = 0.5
+        // At i=1: curr_cost = |prev_weight - weight| = |0.5 - 0.5| * FEE = 0
+        //         ret = edge_1 - pending_cost(=0) = edge_1
+        //         then pending_cost = 0
+        // At i=2: curr_cost = |0.5 - 0.3| * FEE = 0.2*FEE
+        //         ret = edge_2 - pending_cost(=0) = edge_2
+        //         then pending_cost = 0.2*FEE
+        // At i=3: curr_cost = |0.3 - 0.0| * FEE = 0.3*FEE
+        //         ret = edge_3 - pending_cost(=0.2*FEE) = edge_3 - 0.2*FEE
+        //         then pending_cost = 0.3*FEE
+        let ret_total = edge_1 + edge_2 + (edge_3 - 0.2 * FEE_RATE);
+        assert_f64_eq(d.ret[0], ret_total, "ret");
+    }
+
+    // Test C: Two days, day boundary flush
+    #[test]
+    fn chunk_two_days_boundary() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY2_BASE + 9 * HOUR_MS,
+            DAY2_BASE + 10 * HOUR_MS,
+        ];
+        let weight = [0.5, 0.3, 0.3, 0.0];
+        let price = [100.0, 102.0, 104.0, 106.0];
+
+        let (d, _p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        assert_eq!(d.date_ticks.len(), 2, "should produce 2 daily rows");
+
+        // Day boundary flush is triggered when pending_date_key != active_date_key.
+        // The cross-day bar transition (bar1->bar2) is accumulated BEFORE the flush
+        // at bar i=2, so day1 contains transitions i=1 AND i=2.
+        //
+        // i=1: n1b = 102/100 - 1 = 0.02, edge = 0.5 * 0.02
+        // i=2: n1b = 104/102 - 1, edge = 0.3 * (104/102 - 1)
+        let n1b_i1 = 102.0 / 100.0 - 1.0;
+        let n1b_i2 = 104.0 / 102.0 - 1.0;
+        let edge_i1 = 0.5 * n1b_i1;
+        let edge_i2 = 0.3 * n1b_i2;
+
+        assert_f64_eq(d.n1b[0], n1b_i1 + n1b_i2, "day1 n1b");
+        assert_f64_eq(d.edge[0], edge_i1 + edge_i2, "day1 edge");
+
+        // Day 2: transition i=3 only
+        // i=3: n1b = 106/104 - 1, edge = 0.3 * (106/104 - 1)
+        let n1b_i3 = 106.0 / 104.0 - 1.0;
+        let edge_d2 = 0.3 * n1b_i3;
+        assert_f64_eq(d.n1b[1], n1b_i3, "day2 n1b");
+        assert_f64_eq(d.edge[1], edge_d2, "day2 edge");
+
+        // Verify date_ticks: day1 uses the first bar's dt
+        assert_eq!(d.date_ticks[0], DAY1_BASE + 9 * HOUR_MS);
+    }
+
+    // Test D: Short position basic
+    #[test]
+    fn chunk_short_position_basic() {
+        let dt = [DAY1_BASE + 9 * HOUR_MS, DAY1_BASE + 10 * HOUR_MS];
+        let weight = [-0.3, 0.0];
+        let price = [100.0, 98.0];
+
+        let (d, _p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        assert_eq!(d.date_ticks.len(), 1);
+
+        let n1b = 98.0 / 100.0 - 1.0; // -0.02
+        assert_f64_eq(d.n1b[0], n1b, "n1b");
+
+        // edge = pending_weight * n1b = -0.3 * (-0.02) = 0.006
+        let edge = -0.3 * n1b;
+        assert_f64_eq(d.edge[0], edge, "edge");
+
+        // long_edge = pending_long_weight * n1b = 0 * n1b = 0
+        assert_f64_eq(d.long_edge[0], 0.0, "long_edge");
+
+        // short_edge = pending_short_weight * n1b = -0.3 * (-0.02) = 0.006
+        let short_edge = -0.3 * n1b;
+        assert_f64_eq(d.short_edge[0], short_edge, "short_edge");
+    }
+
+    // Test E: Long-to-short crossover
+    #[test]
+    fn chunk_long_to_short_crossover() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY1_BASE + 11 * HOUR_MS,
+        ];
+        let weight = [0.5, -0.3, 0.0];
+        let price = [100.0, 102.0, 100.0];
+
+        let (d, _p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        assert_eq!(d.date_ticks.len(), 1);
+
+        // i=1: n1b = 102/100 - 1 = 0.02
+        //   edge = 0.5 * 0.02 = 0.01
+        //   long_edge = 0.5 * 0.02 = 0.01
+        //   short_edge = 0.0 * 0.02 = 0.0
+        let n1b_1 = 102.0 / 100.0 - 1.0;
+
+        // i=2: n1b = 100/102 - 1 = -2/102
+        //   edge = -0.3 * (-2/102) = 0.3*2/102
+        //   long_edge = 0.0 * n1b = 0.0  (pending_long_weight = 0 since weight=-0.3)
+        //   short_edge = -0.3 * (-2/102) = positive
+        let n1b_2 = 100.0 / 102.0 - 1.0;
+        let edge_2 = -0.3 * n1b_2;
+        let short_edge_2 = -0.3 * n1b_2;
+
+        assert_f64_eq(d.long_edge[0], 0.5 * n1b_1, "long_edge");
+        assert_f64_eq(d.short_edge[0], short_edge_2, "short_edge");
+        assert_f64_eq(d.edge[0], 0.5 * n1b_1 + edge_2, "total edge");
+    }
+
+    // ===================================================================
+    // process_pairs_block_matching — via process_symbol_chunk
+    // ===================================================================
+
+    // Test F: Simple long open/close
+    #[test]
+    fn pairs_simple_long_open_close() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY1_BASE + 11 * HOUR_MS,
+        ];
+        let weight = [0.0, 0.5, 0.0];
+        let price = [100.0, 102.0, 105.0];
+
+        let (_d, p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        // weight goes 0 -> 0.5 -> 0
+        // At init: last_volume = (0.0 * 100).round() = 0 -> no open
+        // At i=1: curr_volume = (0.5*100).round() = 50, diff=50>0 -> open long 50 lots at price 102
+        // At i=2: curr_volume = 0, last_volume=50 -> close long 50 lots at price 105
+        assert_eq!(p.dirs.len(), 1, "should produce 1 pair");
+        assert_eq!(p.dirs[0], "多头");
+        assert_f64_eq(p.open_prices[0], 102.0, "open_price");
+        assert_f64_eq(p.close_prices[0], 105.0, "close_price");
+
+        // profit_bp = (105 - 102) / 102 * 10000 rounded to 2 decimals
+        let expected_bp = ((105.0_f64 - 102.0) / 102.0 * 10000.0 * 100.0).round() / 100.0;
+        assert_f64_eq(p.profit_bps[0], expected_bp, "profit_bp");
+
+        // hold_bars = bar_id_close - bar_id_open + 1 = 3 - 2 + 1 = 2
+        assert_eq!(p.hold_bars[0], 2);
+        assert_eq!(p.counts[0], 50);
+    }
+
+    // Test G: Simple short open/close
+    #[test]
+    fn pairs_simple_short_open_close() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY1_BASE + 11 * HOUR_MS,
+        ];
+        let weight = [0.0, -0.3, 0.0];
+        let price = [100.0, 102.0, 98.0];
+
+        let (_d, p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        // At init: last_volume = 0 -> no open
+        // At i=1: curr_volume = (-0.3*100).round() = -30
+        //   last_vol=0 >= 0 && curr_vol=-30 <= 0 -> close long (0, skip) + open short 30 at price 102
+        // At i=2: curr_volume = 0
+        //   last_vol=-30 <= 0 && curr_vol=0 >= 0... wait, 0 >= 0 && 0 <= 0?
+        //   Actually: last_vol=-30 <= 0 && curr_vol=0 <= 0 -> yes! diff = 0 - (-30) = 30 > 0 -> close short 30 at price 98
+
+        assert_eq!(p.dirs.len(), 1, "should produce 1 pair");
+        assert_eq!(p.dirs[0], "空头");
+        assert_f64_eq(p.open_prices[0], 102.0, "open_price");
+        assert_f64_eq(p.close_prices[0], 98.0, "close_price");
+
+        // profit_bp = (102 - 98) / 102 * 10000 rounded to 2 decimals
+        let expected_bp = ((102.0_f64 - 98.0) / 102.0 * 10000.0 * 100.0).round() / 100.0;
+        assert_f64_eq(p.profit_bps[0], expected_bp, "profit_bp");
+        assert_eq!(p.hold_bars[0], 2); // bar 3 - bar 2 + 1
+        assert_eq!(p.counts[0], 30);
+    }
+
+    // Test H: Long increase (same direction)
+    #[test]
+    fn pairs_long_increase_same_direction() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY1_BASE + 11 * HOUR_MS,
+            DAY1_BASE + 12 * HOUR_MS,
+        ];
+        let weight = [0.0, 0.3, 0.5, 0.0];
+        let price = [100.0, 102.0, 104.0, 106.0];
+
+        let (_d, p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        // At init: last_volume = 0
+        // At i=1: curr_volume = 30. open long 30 at price 102. bar_id=2
+        // At i=2: curr_volume = 50. diff=20>0. open long 20 more at price 104. bar_id=3
+        // At i=3: curr_volume = 0. close long 50. bar_id=4
+        //   Close uses LIFO (stack). Last in = 20 lots at bar 3. Then 30 lots at bar 2.
+        //   So we get 2 pairs.
+
+        assert_eq!(p.dirs.len(), 2, "should produce 2 pairs (LIFO close)");
+        assert_eq!(p.dirs[0], "多头");
+        assert_eq!(p.dirs[1], "多头");
+
+        // First closed: 20 lots opened at bar 3 (price 104), closed at bar 4 (price 106)
+        assert_f64_eq(p.open_prices[0], 104.0, "pair1 open_price");
+        assert_f64_eq(p.close_prices[0], 106.0, "pair1 close_price");
+        assert_eq!(p.counts[0], 20);
+        assert_eq!(p.hold_bars[0], 4 - 3 + 1); // 2
+
+        // Second closed: 30 lots opened at bar 2 (price 102), closed at bar 4 (price 106)
+        assert_f64_eq(p.open_prices[1], 102.0, "pair2 open_price");
+        assert_f64_eq(p.close_prices[1], 106.0, "pair2 close_price");
+        assert_eq!(p.counts[1], 30);
+        assert_eq!(p.hold_bars[1], 4 - 2 + 1); // 3
+    }
+
+    // Test I: Long-to-short crossover in pairs
+    #[test]
+    fn pairs_long_to_short_crossover() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY1_BASE + 11 * HOUR_MS,
+            DAY1_BASE + 12 * HOUR_MS,
+        ];
+        let weight = [0.0, 0.5, -0.3, 0.0];
+        let price = [100.0, 102.0, 104.0, 100.0];
+
+        let (_d, p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        // At init: last_volume = 0
+        // At i=1: curr_volume = 50. open long 50 at price 102, bar_id=2
+        // At i=2: curr_volume = -30.
+        //   last_vol=50 >= 0 && curr_vol=-30 <= 0
+        //   -> close long 50 at price 104, bar_id=3
+        //   -> open short 30 at price 104, bar_id=3
+        // At i=3: curr_volume = 0.
+        //   last_vol=-30 <= 0 && curr_vol=0 <= 0
+        //   diff = 0 - (-30) = 30 > 0 -> close short 30 at price 100, bar_id=4
+
+        assert_eq!(p.dirs.len(), 2, "should produce 2 pairs");
+
+        // Pair 1: long close
+        assert_eq!(p.dirs[0], "多头");
+        assert_f64_eq(p.open_prices[0], 102.0, "pair1 open");
+        assert_f64_eq(p.close_prices[0], 104.0, "pair1 close");
+        assert_eq!(p.counts[0], 50);
+        assert_eq!(p.hold_bars[0], 3 - 2 + 1); // 2
+
+        // Pair 2: short close
+        assert_eq!(p.dirs[1], "空头");
+        assert_f64_eq(p.open_prices[1], 104.0, "pair2 open");
+        assert_f64_eq(p.close_prices[1], 100.0, "pair2 close");
+        assert_eq!(p.counts[1], 30);
+        assert_eq!(p.hold_bars[1], 4 - 3 + 1); // 2
+
+        // profit_bp for short: (104 - 100) / 104 * 10000
+        let expected_short_bp = ((104.0_f64 - 100.0) / 104.0 * 10000.0 * 100.0).round() / 100.0;
+        assert_f64_eq(p.profit_bps[1], expected_short_bp, "pair2 profit_bp");
     }
 
     // --- PairsSoA::to_dataframe ---

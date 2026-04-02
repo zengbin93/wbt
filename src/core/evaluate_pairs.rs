@@ -111,6 +111,107 @@ fn compute_break_even_point(profit_count_pairs: &mut [(f64, f64)], trade_count: 
     if sum <= 0.0 { 1.0 } else { break_even_point }
 }
 
+/// 评估交易对性能 — 从 PairsSoA 直接读取（零 DataFrame 构建）
+pub fn evaluate_pairs_soa(
+    pairs: &PairsSoA,
+    trade_dir: TradeDir,
+) -> Result<EvaluatePairs, WbtError> {
+    let n = pairs.profit_bps.len();
+    if n == 0 {
+        return Ok(EvaluatePairs::default());
+    }
+
+    let dir_filter = match trade_dir {
+        TradeDir::Long => Some("多头"),
+        TradeDir::Short => Some("空头"),
+        TradeDir::LongShort => None,
+    };
+
+    let mut trade_count = 0.0f64;
+    let mut win_trade_count = 0.0f64;
+    let mut sum_win = 0.0f64;
+    let mut loss_trade_count = 0.0f64;
+    let mut sum_loss = 0.0f64;
+    let mut sum_hold_bars = 0.0f64;
+    let mut profit_count_pairs: Vec<(f64, f64)> = Vec::with_capacity(n);
+
+    for i in 0..n {
+        // 方向过滤
+        if let Some(filter_str) = dir_filter
+            && pairs.dirs[i] != filter_str
+        {
+            continue;
+        }
+
+        let p = pairs.profit_bps[i];
+        let c = pairs.counts[i] as f64;
+        if c <= 0.0 {
+            continue;
+        }
+
+        trade_count += c;
+
+        if p >= 0.0 {
+            win_trade_count += c;
+            sum_win += p * c;
+        } else {
+            loss_trade_count += c;
+            sum_loss += p * c;
+        }
+
+        sum_hold_bars += (pairs.hold_bars[i] as f64) * c;
+        profit_count_pairs.push((p, c));
+    }
+
+    if trade_count <= 0.0 {
+        return Ok(EvaluatePairs::default());
+    }
+
+    let position_k_days = sum_hold_bars / trade_count;
+    let win_one = if win_trade_count > 0.0 {
+        sum_win / win_trade_count
+    } else {
+        0.0
+    };
+    let loss_one = if loss_trade_count > 0.0 {
+        sum_loss / loss_trade_count
+    } else {
+        0.0
+    };
+    let win_rate = win_trade_count / trade_count;
+
+    let break_even_point = compute_break_even_point(&mut profit_count_pairs, trade_count);
+
+    let total_profit_loss_ratio = if sum_loss == 0.0 {
+        0.0
+    } else {
+        sum_win / sum_loss.abs()
+    };
+    let single_profit_loss_ratio = if loss_one == 0.0 {
+        0.0
+    } else {
+        win_one / loss_one.abs()
+    };
+
+    Ok(EvaluatePairs {
+        trade_direction: trade_dir,
+        trade_count: trade_count as usize,
+        total_profit: (sum_win + sum_loss).round_to_2_digit(),
+        single_trade_profit: ((sum_win + sum_loss) / trade_count).round_to_2_digit(),
+        win_trade_count: win_trade_count as usize,
+        sum_win: sum_win.round_to_2_digit(),
+        win_one: win_one.round_to_4_digit(),
+        loss_trade_count: loss_trade_count as usize,
+        sum_loss: sum_loss.round_to_2_digit(),
+        loss_one: loss_one.round_to_4_digit(),
+        win_rate: win_rate.round_to_4_digit(),
+        total_profit_loss_ratio: total_profit_loss_ratio.round_to_4_digit(),
+        single_profit_loss_ratio: single_profit_loss_ratio.round_to_4_digit(),
+        break_even_point: break_even_point.round_to_4_digit(),
+        position_k_days: position_k_days.round_to_2_digit(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,105 +351,15 @@ mod tests {
         let bep = compute_break_even_point(&mut pairs, 2.0);
         assert_eq!(bep, 1.0);
     }
-}
 
-/// 评估交易对性能 — 从 PairsSoA 直接读取（零 DataFrame 构建）
-pub fn evaluate_pairs_soa(
-    pairs: &PairsSoA,
-    trade_dir: TradeDir,
-) -> Result<EvaluatePairs, WbtError> {
-    let n = pairs.profit_bps.len();
-    if n == 0 {
-        return Ok(EvaluatePairs::default());
+    /// Entries with count=0 should be skipped (defensive guard at line 74).
+    #[test]
+    fn break_even_zero_count_skipped() {
+        // (profit, count): the zero-count entry should be ignored
+        let mut pairs = vec![(100.0, 0.0), (-50.0, 1.0), (200.0, 1.0)];
+        let bep = compute_break_even_point(&mut pairs, 2.0);
+        // Only 2 real trades: -50 (loss) + 200 (win). Sorted: [-50, 200].
+        // cumsum: [-50, 150]. First > 0 at index 1 → bep = 2/2 = 1.0
+        assert_eq!(bep, 1.0);
     }
-
-    let dir_filter = match trade_dir {
-        TradeDir::Long => Some("多头"),
-        TradeDir::Short => Some("空头"),
-        TradeDir::LongShort => None,
-    };
-
-    let mut trade_count = 0.0f64;
-    let mut win_trade_count = 0.0f64;
-    let mut sum_win = 0.0f64;
-    let mut loss_trade_count = 0.0f64;
-    let mut sum_loss = 0.0f64;
-    let mut sum_hold_bars = 0.0f64;
-    let mut profit_count_pairs: Vec<(f64, f64)> = Vec::with_capacity(n);
-
-    for i in 0..n {
-        // 方向过滤
-        if let Some(filter_str) = dir_filter
-            && pairs.dirs[i] != filter_str
-        {
-            continue;
-        }
-
-        let p = pairs.profit_bps[i];
-        let c = pairs.counts[i] as f64;
-        if c <= 0.0 {
-            continue;
-        }
-
-        trade_count += c;
-
-        if p >= 0.0 {
-            win_trade_count += c;
-            sum_win += p * c;
-        } else {
-            loss_trade_count += c;
-            sum_loss += p * c;
-        }
-
-        sum_hold_bars += (pairs.hold_bars[i] as f64) * c;
-        profit_count_pairs.push((p, c));
-    }
-
-    if trade_count <= 0.0 {
-        return Ok(EvaluatePairs::default());
-    }
-
-    let position_k_days = sum_hold_bars / trade_count;
-    let win_one = if win_trade_count > 0.0 {
-        sum_win / win_trade_count
-    } else {
-        0.0
-    };
-    let loss_one = if loss_trade_count > 0.0 {
-        sum_loss / loss_trade_count
-    } else {
-        0.0
-    };
-    let win_rate = win_trade_count / trade_count;
-
-    let break_even_point = compute_break_even_point(&mut profit_count_pairs, trade_count);
-
-    let total_profit_loss_ratio = if sum_loss == 0.0 {
-        0.0
-    } else {
-        sum_win / sum_loss.abs()
-    };
-    let single_profit_loss_ratio = if loss_one == 0.0 {
-        0.0
-    } else {
-        win_one / loss_one.abs()
-    };
-
-    Ok(EvaluatePairs {
-        trade_direction: trade_dir,
-        trade_count: trade_count as usize,
-        total_profit: (sum_win + sum_loss).round_to_2_digit(),
-        single_trade_profit: ((sum_win + sum_loss) / trade_count).round_to_2_digit(),
-        win_trade_count: win_trade_count as usize,
-        sum_win: sum_win.round_to_2_digit(),
-        win_one: win_one.round_to_4_digit(),
-        loss_trade_count: loss_trade_count as usize,
-        sum_loss: sum_loss.round_to_2_digit(),
-        loss_one: loss_one.round_to_4_digit(),
-        win_rate: win_rate.round_to_4_digit(),
-        total_profit_loss_ratio: total_profit_loss_ratio.round_to_4_digit(),
-        single_profit_loss_ratio: single_profit_loss_ratio.round_to_4_digit(),
-        break_even_point: break_even_point.round_to_4_digit(),
-        position_k_days: position_k_days.round_to_2_digit(),
-    })
 }

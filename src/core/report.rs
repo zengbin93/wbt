@@ -161,6 +161,19 @@ mod tests {
     }
 
     #[test]
+    fn stats_report_to_value_key_count() {
+        let stats = make_stats_report();
+        let val: Value = stats.into();
+        let obj = val.as_object().unwrap();
+        assert_eq!(
+            obj.len(),
+            25,
+            "StatsReport JSON must have exactly 25 keys, got {}",
+            obj.len()
+        );
+    }
+
+    #[test]
     fn report_to_value() {
         let stats = make_stats_report();
         let daily_return = DataFrame::new(vec![

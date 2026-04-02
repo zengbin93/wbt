@@ -81,7 +81,7 @@ class WeightBacktest:
             if dfw["weight"].dtype != "float":
                 dfw["weight"] = dfw["weight"].astype(float)
             if dfw.isnull().sum().sum() > 0:
-                raise ValueError(f"dfw 中存在空值，请先处理; 具体数据：\n{dfw[dfw.isnull().T.any().T]}")
+                raise ValueError(f"data 中存在空值，请先处理; 具体数据：\n{dfw[dfw.isnull().T.any().T]}")
 
             dfw = dfw[["dt", "symbol", "weight", "price"]].copy()
             dfw["weight"] = dfw["weight"].astype("float").round(digits)
@@ -111,17 +111,25 @@ class WeightBacktest:
 
     @property
     def stats(self) -> dict:
-        """回测绩效评价
+        """回测绩效评价（多空综合）
 
-        :return: dict, 回测绩效评价, 样例如下：
-            {'开始日期': '2017-01-03', '结束日期': '2023-07-31', '绝对收益': 0.6889, '年化': 0.0922,
-            '夏普': 1.1931, '最大回撤': 0.1373, '卡玛': 0.6715, '日胜率': 0.5436, '日盈亏比': 1.0568,
-            '日赢面': 0.1181, '年化波动率': 0.0773, '下行波动率': 0.0551, '非零覆盖': 0.9665,
-            '盈亏平衡点': 0.9782, '新高间隔': 229.0, '新高占比': 0.0861, '回撤风险': 1.7762,
-            '回归年度回报率': 0.1046, '长度调整平均最大回撤': 0.1714, '交易胜率': 0.3717,
-            '单笔收益': 25.59, '持仓K线数': 972.81, '多头占比': 0.5028, '空头占比': 0.4611,
-            '与基准相关性': 0.0727, '与基准空头相关性': -0.148, '波动比': 0.5865,
-            '与基准波动相关性': 0.2055, '品种数量': 9}
+        :return: dict, 包含三大类指标：
+
+            收益指标：绝对收益、年化收益、夏普比率、卡玛比率、新高占比、单笔盈亏比、单笔收益、
+                      日胜率、周胜率、月胜率、季胜率、年胜率
+
+            风险指标：最大回撤、年化波动率、下行波动率、新高间隔
+
+            特质指标：交易次数、年化交易次数、持仓K线数、交易胜率、多头占比、空头占比、品种数量
+
+            样例如下：
+            {'开始日期': '2017-01-03', '结束日期': '2023-07-31', '绝对收益': 0.6889,
+            '年化收益': 0.0922, '夏普比率': 1.1931, '卡玛比率': 0.6715, '新高占比': 0.0861,
+            '单笔盈亏比': 1.0568, '单笔收益': 25.59, '日胜率': 0.5436, '周胜率': 0.5769,
+            '月胜率': 0.6250, '季胜率': 0.7500, '年胜率': 0.8333,
+            '最大回撤': 0.1373, '年化波动率': 0.0773, '下行波动率': 0.0551, '新高间隔': 229.0,
+            '交易次数': 120, '年化交易次数': 18.46, '持仓K线数': 972.81, '交易胜率': 0.3717,
+            '多头占比': 0.5028, '空头占比': 0.4611, '品种数量': 9}
         """
         return self._inner.stats()
 
@@ -159,16 +167,22 @@ class WeightBacktest:
     def dailys(self) -> pd.DataFrame:
         """品种每日的交易信息
 
-        columns = ['date', 'symbol', 'edge', 'return', 'cost', 'n1b', 'turnover']
+        columns = ['symbol', 'date', 'n1b', 'edge', 'return', 'cost', 'turnover',
+                   'long_edge', 'short_edge', 'long_cost', 'short_cost',
+                   'long_turnover', 'short_turnover', 'long_return', 'short_return']
 
         其中:
-            date        交易日，
-            symbol      合约代码，
-            n1b         品种每日收益率，
-            edge        策略每日收益率，
-            return      策略每日收益率减去交易成本后的真实收益，
-            cost        交易成本
-            turnover    当日的单边换手率
+            date            交易日
+            symbol          合约代码
+            n1b             品种每日基准收益率
+            edge            策略每日收益率
+            return          策略每日收益率减去交易成本后的真实收益（= edge - cost）
+            cost            交易成本
+            turnover        当日的单边换手率
+            long_edge       多头部分的策略收益
+            short_edge      空头部分的策略收益
+            long_return     多头部分的净收益（= long_edge - long_cost）
+            short_return    空头部分的净收益（= short_edge - short_cost）
         """
         return self._map_symbols(arrow_bytes_to_pd_df(self._inner.dailys()))
 

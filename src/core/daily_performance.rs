@@ -115,7 +115,7 @@ pub fn daily_performance(
     let mut cum_return = 0.0;
     let mut mean = 0.0;
     let mut m2 = 0.0;
-    let mut max_cum_return: f64 = 0.0;
+    let mut max_cum_return: f64 = f64::NEG_INFINITY;
     let mut zero_drawdown_count = 0;
     let mut current_interval = 0;
     let mut new_high_interval: i32 = 0;
@@ -462,6 +462,36 @@ mod tests {
         assert!(dp.sharpe_ratio < 0.0);
         assert_eq!(dp.max_drawdown, 0.02);
         assert_eq!(dp.daily_win_rate, 0.3333);
+    }
+
+    /// All negative returns: sorted cumsum never goes positive → break_even_point = 1.0
+    #[test]
+    fn break_even_all_negative() {
+        let returns = [-0.01, -0.02, -0.03];
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp.break_even_point, 1.0); // Can never break even
+    }
+
+    /// Known linear-regression slope on cumsum [0.01, 0.005, 0.025] with n=3, yearly=252.
+    ///
+    /// x = [0, 1, 2], y = cumsum
+    /// lr_sum_x = 3, lr_sum_x2 = 5
+    /// lr_sum_xy = 0*0.01 + 1*0.005 + 2*0.025 = 0.055
+    /// lr_sum_y  = 0.01 + 0.005 + 0.025 = 0.04
+    /// denom = 3*5 - 3*3 = 6
+    /// slope = (3*0.055 - 3*0.04) / 6 = 0.045/6 = 0.0075
+    /// annualised = 0.0075 * 252 = 1.89
+    #[test]
+    fn annual_lin_reg_known() {
+        let returns = [0.01, -0.005, 0.02];
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        let slope = dp
+            .annual_lin_reg_cumsum_return
+            .expect("annual_lin_reg_cumsum_return should be Some for these returns");
+        assert!(
+            (slope - 1.89).abs() < 1e-3,
+            "expected slope ≈ 1.89, got {slope}"
+        );
     }
 
     #[test]
