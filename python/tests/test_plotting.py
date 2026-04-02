@@ -34,6 +34,10 @@ class TestPlotCumulativeReturns:
         fig = plot_cumulative_returns(wb.daily_return, cols=["SYM_A", "SYM_B", "total"])
         assert len(fig.data) >= 1
 
+    def test_cumulative_returns_trace_count(self, wb):
+        fig = plot_cumulative_returns(wb.daily_return)
+        assert len(fig.data) >= 1  # At least one trace
+
     def test_to_html(self, wb):
         html = plot_cumulative_returns(wb.daily_return, to_html=True)
         assert isinstance(html, str)
@@ -90,6 +94,10 @@ class TestPlotDrawdown:
         assert isinstance(fig, go.Figure)
         # Should have 2 traces: drawdown + cumulative
         assert len(fig.data) == 2
+
+    def test_drawdown_two_traces(self, wb):
+        fig = plot_drawdown(wb.daily_return)
+        assert len(fig.data) == 2  # drawdown fill + cumulative line
 
     def test_to_html(self, wb):
         html = plot_drawdown(wb.daily_return, to_html=True)
