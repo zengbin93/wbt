@@ -31,7 +31,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install maturin numpy pytest
-      - run: maturin develop --release
+      - run: maturin build --release --strip
+      - run: pip install --find-links target/wheels wbt
       - run: python -c "import wbt; print('wbt imported successfully')"
       - run: pytest tests/ -v --tb=short
 
