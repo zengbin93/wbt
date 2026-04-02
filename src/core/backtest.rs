@@ -15,6 +15,75 @@ use anyhow::Context;
 use polars::prelude::*;
 
 impl WeightBacktest {
+    pub(crate) fn build_daily_return_df(
+        dailys_soa: &DailysSoA,
+        daily_totals: &DailyTotals,
+        weight_type: WeightType,
+    ) -> Result<DataFrame, WbtError> {
+        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        let dr_dates: Vec<i32> = daily_totals
+            .date_keys
+            .iter()
+            .map(|dk| {
+                let nd = date_key_to_naive_date(*dk);
+                (nd - epoch).num_days() as i32
+            })
+            .collect();
+
+        let mut row_by_date = hashbrown::HashMap::with_capacity(daily_totals.date_keys.len());
+        for (row, date_key) in daily_totals.date_keys.iter().copied().enumerate() {
+            row_by_date.insert(date_key, row);
+        }
+
+        let mut per_symbol = vec![vec![None; daily_totals.date_keys.len()]; dailys_soa.symbol_dict.len()];
+        for i in 0..dailys_soa.sym_ids.len() {
+            let date_key = crate::core::native_engine::dt_to_date_key_fast(
+                dailys_soa.date_ticks[i],
+                dailys_soa.time_unit,
+            );
+            if let Some(&row) = row_by_date.get(&date_key) {
+                per_symbol[dailys_soa.sym_ids[i] as usize][row] = Some(dailys_soa.ret[i]);
+            }
+        }
+
+        let mut total_values = Vec::with_capacity(daily_totals.date_keys.len());
+        for row in 0..daily_totals.date_keys.len() {
+            let mut sum = 0.0;
+            let mut count = 0usize;
+            for sym_values in &per_symbol {
+                if let Some(value) = sym_values[row] {
+                    sum += value;
+                    count += 1;
+                }
+            }
+            let total = match weight_type {
+                WeightType::TS => {
+                    if count > 0 {
+                        sum / count as f64
+                    } else {
+                        0.0
+                    }
+                }
+                WeightType::CS => sum,
+            };
+            total_values.push(total);
+        }
+
+        let mut columns = Vec::with_capacity(dailys_soa.symbol_dict.len() + 2);
+        columns.push(
+            Series::new("date".into(), dr_dates)
+                .cast(&DataType::Date)
+                .map_err(WbtError::Polars)?
+                .into_column(),
+        );
+        for (sym, values) in dailys_soa.symbol_dict.iter().zip(per_symbol.into_iter()) {
+            columns.push(Series::new(sym.as_str().into(), values).into_column());
+        }
+        columns.push(Series::new("total".into(), total_values).into_column());
+
+        DataFrame::new(columns).map_err(WbtError::Polars)
+    }
+
     /// 执行回测逻辑并计算性能指标
     pub fn do_backtest(
         &mut self,
@@ -101,6 +170,10 @@ impl WeightBacktest {
         ])
         .map_err(WbtError::Polars)?;
 
+        self.daily_return_cache = None;
+        self.dailys_cache = None;
+        self.pairs_cache = None;
+        self.weight_type = Some(weight_type);
         self.dailys_soa = Some(dailys_soa);
         self.pairs_soa = Some(pairs_soa);
 
@@ -186,23 +259,58 @@ mod tests {
         let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
 
-        let report = wb.report.as_ref().unwrap();
-        // 2 symbols
-        assert_eq!(report.symbol_dict.len(), 2);
-        assert!(report.symbol_dict.contains(&"SYM_A".to_string()));
-        assert!(report.symbol_dict.contains(&"SYM_B".to_string()));
-        assert_eq!(report.stats.symbols_count, 2);
+        let abs_ret = {
+            let report = wb.report.as_ref().unwrap();
+            // 2 symbols
+            assert_eq!(report.symbol_dict.len(), 2);
+            assert!(report.symbol_dict.contains(&"SYM_A".to_string()));
+            assert!(report.symbol_dict.contains(&"SYM_B".to_string()));
+            assert_eq!(report.stats.symbols_count, 2);
 
-        // long_rate + short_rate should be <= 1.0 and >= 0.0
-        assert!(report.stats.long_rate >= 0.0 && report.stats.long_rate <= 1.0);
-        assert!(report.stats.short_rate >= 0.0 && report.stats.short_rate <= 1.0);
+            // long_rate + short_rate should be <= 1.0 and >= 0.0
+            assert!(report.stats.long_rate >= 0.0 && report.stats.long_rate <= 1.0);
+            assert!(report.stats.short_rate >= 0.0 && report.stats.short_rate <= 1.0);
+            report.stats.daily_performance.absolute_return
+        };
 
-        // daily_return should have date + total columns, rows = number of unique trading days
-        assert_eq!(report.daily_return.width(), 2);
-        assert!(report.daily_return.height() > 0);
+        let daily_return = wb.daily_return_df().unwrap();
+        // daily_return should expose per-symbol daily returns plus total
+        assert_eq!(daily_return.width(), 4);
+        assert!(daily_return.column("SYM_A").is_ok());
+        assert!(daily_return.column("SYM_B").is_ok());
+        assert!(daily_return.height() > 0);
+        let sym_a: Vec<f64> = daily_return
+            .column("SYM_A")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
+        let sym_b: Vec<f64> = daily_return
+            .column("SYM_B")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
+        let total: Vec<f64> = daily_return
+            .column("total")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
+        for i in 0..total.len() {
+            assert!(
+                (total[i] - (sym_a[i] + sym_b[i]) / 2.0).abs() < 1e-10,
+                "total[{i}] should equal mean(symbol returns)"
+            );
+        }
         // total column values should sum to absolute_return (within rounding)
-        let total_sum: f64 = report
-            .daily_return
+        let total_sum: f64 = daily_return
             .column("total")
             .unwrap()
             .as_materialized_series()
@@ -210,7 +318,6 @@ mod tests {
             .unwrap()
             .sum()
             .unwrap();
-        let abs_ret = report.stats.daily_performance.absolute_return;
         assert!(
             (total_sum - abs_ret).abs() < 0.01,
             "daily total sum {total_sum} should ≈ absolute_return {abs_ret}"

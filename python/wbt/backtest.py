@@ -130,7 +130,7 @@ class WeightBacktest:
         ==========  ===========  ============  ===========  ============
 
         """
-        return self._pivot_daily_return("return")
+        return self._map_symbols(arrow_bytes_to_pd_df(self._inner.daily_return()))
 
     @property
     def dailys(self) -> pd.DataFrame:

@@ -113,12 +113,12 @@ impl PyWeightBacktest {
 
     #[pyo3(text_signature = "($self)")]
     fn daily_return<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        if let Some(ref mut report) = self.inner.report {
-            let df_bytes = df_to_pyarrow(&mut report.daily_return)?;
-            Ok(PyBytes::new(py, &df_bytes))
-        } else {
-            Err(PyException::new_err("Report not found"))
-        }
+        let df = self
+            .inner
+            .daily_return_df()
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let df_bytes = df_to_pyarrow(df)?;
+        Ok(PyBytes::new(py, &df_bytes))
     }
 
     fn dailys<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {

@@ -25,8 +25,10 @@ pub struct WeightBacktest {
     dailys_soa: Option<DailysSoA>,
     pairs_soa: Option<PairsSoA>,
     /// Lazy 缓存
+    daily_return_cache: Option<DataFrame>,
     dailys_cache: Option<DataFrame>,
     pairs_cache: Option<DataFrame>,
+    weight_type: Option<WeightType>,
     pub report: Option<Report>,
 }
 
@@ -106,8 +108,10 @@ impl WeightBacktest {
             fee_rate: fee_rate.unwrap_or(0.0002),
             dailys_soa: None,
             pairs_soa: None,
+            daily_return_cache: None,
             dailys_cache: None,
             pairs_cache: None,
+            weight_type: None,
             report: None,
         };
         Ok(wb)
@@ -129,6 +133,26 @@ impl WeightBacktest {
             .context("Failed to create thread pool")?;
 
         pool.install(|| self.do_backtest(weight_type, yearly_days))
+    }
+
+    /// 按需构建 daily_return DataFrame（延迟物化，结果缓存）
+    pub fn daily_return_df(&mut self) -> Result<&mut DataFrame, WbtError> {
+        if self.daily_return_cache.is_none() {
+            let dailys_soa = self
+                .dailys_soa
+                .as_ref()
+                .ok_or_else(|| WbtError::NoneValue("dailys_soa not computed yet".into()))?;
+            let report = self
+                .report
+                .as_ref()
+                .ok_or_else(|| WbtError::NoneValue("report not computed yet".into()))?;
+            let weight_type = self
+                .weight_type
+                .ok_or_else(|| WbtError::NoneValue("weight_type not computed yet".into()))?;
+            let df = Self::build_daily_return_df(dailys_soa, &report.daily_totals, weight_type)?;
+            self.daily_return_cache = Some(df);
+        }
+        Ok(self.daily_return_cache.as_mut().unwrap())
     }
 
     /// 按需构建 dailys DataFrame（延迟物化，结果缓存）
@@ -364,6 +388,28 @@ mod tests {
         let df = raw_example_data();
         let wb = WeightBacktest::new(df, 2, Some(0.001)).unwrap();
         assert_eq!(wb.fee_rate, 0.001);
+    }
+
+    #[test]
+    fn daily_return_cache_is_lazy_and_reused() {
+        let df = raw_example_data();
+        let mut wb = WeightBacktest::new(df, 2, None).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        assert!(wb.daily_return_cache.is_none());
+
+        let first_ptr = {
+            let df = wb.daily_return_df().unwrap();
+            df as *mut DataFrame
+        };
+        assert!(wb.daily_return_cache.is_some());
+
+        let second_ptr = {
+            let df = wb.daily_return_df().unwrap();
+            df as *mut DataFrame
+        };
+
+        assert_eq!(first_ptr, second_ptr);
     }
 
     #[test]
