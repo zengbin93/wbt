@@ -3,10 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import polars as pl
 
 from wbt._df_convert import arrow_bytes_to_pd_df, pandas_to_arrow_bytes, polars_to_arrow_bytes
 from wbt._wbt import PyWeightBacktest, daily_performance
 
+
+WEIGH_DATA_TYPE = pd.DataFrame | pl.DataFrame | pl.LazyFrame | str | Path
 
 class WeightBacktest:
     """持仓权重回测
@@ -16,7 +19,7 @@ class WeightBacktest:
 
     def __init__(
         self,
-        data: pd.DataFrame | str | Path,
+        data: WEIGH_DATA_TYPE,
         digits: int = 2,
         fee_rate: float = 0.0002,
         n_jobs: int = 1,
@@ -94,7 +97,7 @@ class WeightBacktest:
                 arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days
             )
 
-    def get_top_symbols(self, n: int = 1, kind: str = "profit") -> list:
+    def get_top_symbols(self, n: int = 1, kind: str = "profit") -> list[str]:
         """获取回测赚钱/亏钱最多的前n个品种
 
         :param n: int, 前n个品种
@@ -313,3 +316,26 @@ class WeightBacktest:
         df = self.pairs
         symbol_col = "标的代码" if "标的代码" in df.columns else "symbol"
         return df[df[symbol_col] == symbol].copy()
+
+
+def backtest(data: WEIGH_DATA_TYPE,
+             digits: int = 2,
+             fee_rate: float = 0.0002, 
+             n_jobs: int = 1, 
+             weight_type: str = "ts", 
+             yearly_days: int = 252) -> WeightBacktest:
+    """快速回测接口，适合在 Jupyter 中快速查看回测结果
+
+    :param data: 持仓权重数据，支持以下类型：
+        - pd.DataFrame: columns = ['dt', 'symbol', 'weight', 'price']
+        - polars.DataFrame / polars.LazyFrame: 同上列
+        - str / Path: 文件路径（支持 .csv, .parquet, .feather, .arrow）
+    :param digits: int, 权重列保留小数位数
+    :param fee_rate: float, default 0.0002, 单边交易成本, 包括手续费与冲击成本
+    :param n_jobs: int, default 1, 并行计算的线程数
+    :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
+    :param yearly_days: int, default 252, 年化交易日数量
+    :return: WeightBacktest 对象
+    """
+    wb = WeightBacktest(data, digits=digits, fee_rate=fee_rate, n_jobs=n_jobs, weight_type=weight_type, yearly_days=yearly_days)
+    return wb
