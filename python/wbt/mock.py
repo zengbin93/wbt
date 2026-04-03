@@ -280,6 +280,11 @@ def mock_weights(
     np.random.seed(seed)
     frames = [mock_symbol_kline(symbol, freq=freq, sdt=sdt, edt=edt, seed=seed) for symbol in symbols]
     df = pd.concat(frames, ignore_index=True)
-    df["weight"] = np.random.normal(-1, 1, len(df)).clip(-1, 1)
+    n = len(df)
+    magnitudes = np.clip(np.abs(np.random.normal(0.5, 0.5, n)), 0, 1)
+    signs = np.ones(n)
+    signs[n // 2 :] = -1
+    np.random.shuffle(signs)
+    df["weight"] = magnitudes * signs
     df["price"] = df["close"]
     return df
