@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-plotly = pytest.importorskip("plotly")
+plotly = pytest.importorskip("plotly")  # noqa: E402
 
-import plotly.graph_objects as go
+import plotly.graph_objects as go  # noqa: E402
 
-from wbt.plotting import (
+from wbt.plotting import (  # noqa: E402
     plot_backtest_overview,
     plot_colored_table,
     plot_cumulative_returns,

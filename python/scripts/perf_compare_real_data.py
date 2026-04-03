@@ -156,7 +156,7 @@ def main() -> int:
     parser.add_argument("--yearly-days", type=int, default=252)
     args = parser.parse_args()
 
-    WbtWeightBacktest, OrigWeightBacktest, wbt_daily_performance, orig_daily_performance = load_backtest_classes()
+    WbtWeightBacktest, OrigWeightBacktest, wbt_daily_performance, orig_daily_performance = load_backtest_classes()  # noqa: N806
 
     print(f"Loading data from {args.data_path}")
     dfw = pd.read_feather(args.data_path)

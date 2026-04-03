@@ -265,8 +265,8 @@ def main() -> int:
     dfw = pd.read_feather(args.data_path)
     print(f"Data: {dfw.shape[0]:,} rows, {dfw['symbol'].nunique()} symbols")
 
-    CzscWeightBacktest, czsc_daily_performance = load_czsc_weight_backtest(args.czsc_root)
-    WbtWeightBacktest, wbt_daily_performance = load_wbt_backtest()
+    CzscWeightBacktest, czsc_daily_performance = load_czsc_weight_backtest(args.czsc_root)  # noqa: N806
+    WbtWeightBacktest, wbt_daily_performance = load_wbt_backtest()  # noqa: N806
 
     if args.n_jobs != 1:
         print("Note: forcing n_jobs=1 for czsc source comparison to avoid subprocess import issues.")

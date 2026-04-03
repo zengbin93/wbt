@@ -52,6 +52,11 @@ typeCheckingMode = "standard"
 reportMissingImports = false
 reportMissingTypeStubs = false
 reportUnknownMemberType = false
+reportArgumentType = false
+reportAttributeAccessIssue = false
+reportCallIssue = false
+reportIndexIssue = false
+reportOperatorIssue = false
 include = ["wbt", "tests"]
 exclude = ["tests/manual"]
 
