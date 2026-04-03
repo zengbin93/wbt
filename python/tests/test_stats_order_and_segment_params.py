@@ -3,9 +3,8 @@
 Design reference: docs/desgin.md — stats output fields must follow a fixed order
 for human readability.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from wbt import WeightBacktest
 

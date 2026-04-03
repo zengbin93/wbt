@@ -52,7 +52,7 @@ def plot_cumulative_returns(
                 y=cumulative,
                 mode="lines",
                 name=col,
-                line=dict(color=color, width=1.5),
+                line={"color": color, "width": 1.5},
             )
         )
 
@@ -102,7 +102,7 @@ def plot_monthly_heatmap(
             texttemplate="%{text}",
             colorscale="RdYlGn",
             zmid=0,
-            colorbar=dict(tickformat=".1%"),
+            colorbar={"tickformat": ".1%"},
         )
     )
 

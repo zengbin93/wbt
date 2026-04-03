@@ -1,9 +1,8 @@
 """Tests for untested Python input paths: polars DataFrame/LazyFrame, file paths (str/Path),
 and utility roundtrip for polars_to_arrow_bytes.
 """
-from __future__ import annotations
 
-from pathlib import Path
+from __future__ import annotations
 
 import pandas as pd
 import pytest

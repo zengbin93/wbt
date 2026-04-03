@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "compare_with_czsc_real_data.py"
 

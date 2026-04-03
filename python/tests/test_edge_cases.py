@@ -3,6 +3,7 @@
 Covers special scenarios that trigger early-return paths or boundary conditions
 in daily_performance, segment_stats, long_stats/short_stats, and long_alpha_stats.
 """
+
 from __future__ import annotations
 
 import math
@@ -14,10 +15,10 @@ import pytest
 
 from wbt import WeightBacktest, daily_performance
 
-
 # ============================================================================
 # Helper
 # ============================================================================
+
 
 def _make_dfw(n_days: int, symbols: list[str], weight_fn, price_fn) -> pd.DataFrame:
     """Build deterministic test DataFrame."""
@@ -26,18 +27,21 @@ def _make_dfw(n_days: int, symbols: list[str], weight_fn, price_fn) -> pd.DataFr
     for d in range(n_days):
         dt_str = (base + timedelta(days=d)).strftime("%Y-%m-%d %H:%M:%S")
         for sym in symbols:
-            rows.append({
-                "dt": dt_str,
-                "symbol": sym,
-                "weight": weight_fn(d, sym),
-                "price": price_fn(d, sym),
-            })
+            rows.append(
+                {
+                    "dt": dt_str,
+                    "symbol": sym,
+                    "weight": weight_fn(d, sym),
+                    "price": price_fn(d, sym),
+                }
+            )
     return pd.DataFrame(rows)
 
 
 # ============================================================================
 # 1. daily_performance edge cases
 # ============================================================================
+
 
 class TestDailyPerformanceEdgeCases:
     """Edge cases for the standalone daily_performance function."""
@@ -119,6 +123,7 @@ class TestDailyPerformanceEdgeCases:
 # 2. WeightBacktest with extreme data
 # ============================================================================
 
+
 class TestMinimalData:
     """Minimum viable data: 2-3 bars."""
 
@@ -130,8 +135,7 @@ class TestMinimalData:
 
     def test_three_bars_one_symbol(self) -> None:
         """3 bars → 2 daily returns → std > 0 if different → valid stats."""
-        dfw = _make_dfw(3, ["A"], lambda d, s: 0.5,
-                        lambda d, s: [100.0, 102.0, 101.0][d])
+        dfw = _make_dfw(3, ["A"], lambda d, s: 0.5, lambda d, s: [100.0, 102.0, 101.0][d])
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         stats = bt.stats
         # 2 returns: (102-100)/100=0.02, (101-102)/102=-0.0098
@@ -145,9 +149,7 @@ class TestPureLong:
 
     def test_short_stats_zero(self) -> None:
         """Pure long: short_stats should have zero return."""
-        dfw = _make_dfw(10, ["A", "B"],
-                        lambda d, s: 0.3,
-                        lambda d, s: 100.0 + d * (1 if s == "A" else 0.5))
+        dfw = _make_dfw(10, ["A", "B"], lambda d, s: 0.3, lambda d, s: 100.0 + d * (1 if s == "A" else 0.5))
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, yearly_days=252)
         assert bt.stats["空头占比"] == 0.0
         assert bt.short_stats["绝对收益"] == 0.0
@@ -155,9 +157,7 @@ class TestPureLong:
 
     def test_long_stats_nonzero(self) -> None:
         """Pure long: long_stats should have valid return."""
-        dfw = _make_dfw(10, ["A"],
-                        lambda d, s: 0.5,
-                        lambda d, s: 100.0 + d * 0.5)
+        dfw = _make_dfw(10, ["A"], lambda d, s: 0.5, lambda d, s: 100.0 + d * 0.5)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         # All returns positive (price increasing), long position
         long_s = bt.long_stats
@@ -169,9 +169,7 @@ class TestPureShort:
 
     def test_long_stats_zero(self) -> None:
         """Pure short: long_stats should have zero return."""
-        dfw = _make_dfw(10, ["A", "B"],
-                        lambda d, s: -0.3,
-                        lambda d, s: 100.0 + d * (1 if s == "A" else 0.5))
+        dfw = _make_dfw(10, ["A", "B"], lambda d, s: -0.3, lambda d, s: 100.0 + d * (1 if s == "A" else 0.5))
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, yearly_days=252)
         assert bt.stats["多头占比"] == 0.0
         assert bt.long_stats["绝对收益"] == 0.0
@@ -179,9 +177,7 @@ class TestPureShort:
 
     def test_short_stats_nonzero(self) -> None:
         """Pure short: short_stats should have non-zero metrics."""
-        dfw = _make_dfw(10, ["A"],
-                        lambda d, s: -0.5,
-                        lambda d, s: 100.0 + d * 0.5)
+        dfw = _make_dfw(10, ["A"], lambda d, s: -0.5, lambda d, s: 100.0 + d * 0.5)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         short_s = bt.short_stats
         # Short position with rising prices → negative return
@@ -193,9 +189,7 @@ class TestZeroWeightsAllBars:
 
     def test_all_zero_weights(self) -> None:
         """Zero weights: all stats should be zero, no trades."""
-        dfw = _make_dfw(10, ["A"],
-                        lambda d, s: 0.0,
-                        lambda d, s: 100.0 + d)
+        dfw = _make_dfw(10, ["A"], lambda d, s: 0.0, lambda d, s: 100.0 + d)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         assert bt.stats["绝对收益"] == 0.0
         assert bt.stats["交易次数"] == 0
@@ -207,14 +201,18 @@ class TestZeroWeightsAllBars:
 # 3. segment_stats edge cases (beyond test_metrics_correctness.py)
 # ============================================================================
 
+
 class TestSegmentStatsEdgeCases:
     """Additional edge cases for segment_stats."""
 
     @pytest.fixture
     def bt(self) -> WeightBacktest:
-        dfw = _make_dfw(20, ["A", "B"],
-                        lambda d, s: 0.3 if (d + (0 if s == "A" else 1)) % 3 != 0 else -0.2,
-                        lambda d, s: 100.0 + d * (0.5 if s == "A" else -0.3) + (0 if s == "A" else 50))
+        dfw = _make_dfw(
+            20,
+            ["A", "B"],
+            lambda d, s: 0.3 if (d + (0 if s == "A" else 1)) % 3 != 0 else -0.2,
+            lambda d, s: 100.0 + d * (0.5 if s == "A" else -0.3) + (0 if s == "A" else 50),
+        )
         return WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, yearly_days=252)
 
     def test_two_day_range(self, bt: WeightBacktest) -> None:
@@ -244,14 +242,13 @@ class TestSegmentStatsEdgeCases:
 # 4. long_alpha_stats edge cases
 # ============================================================================
 
+
 class TestLongAlphaStatsEdgeCases:
     """Edge cases for vol-adjusted alpha calculation."""
 
     def test_pure_short_long_vol_zero(self) -> None:
         """Pure short positions: long returns are all zero → long_vol = 0 → zero alpha stats."""
-        dfw = _make_dfw(10, ["A"],
-                        lambda d, s: -0.5,
-                        lambda d, s: 100.0 + d * 0.5)
+        dfw = _make_dfw(10, ["A"], lambda d, s: -0.5, lambda d, s: 100.0 + d * 0.5)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         alpha = bt.long_alpha_stats
         assert alpha["绝对收益"] == 0.0
@@ -260,27 +257,26 @@ class TestLongAlphaStatsEdgeCases:
 
     def test_constant_prices_bench_vol_zero(self) -> None:
         """Constant prices: all returns = 0 → bench_vol = 0 → zero alpha stats."""
-        dfw = _make_dfw(10, ["A"],
-                        lambda d, s: 0.5,
-                        lambda d, s: 100.0)
+        dfw = _make_dfw(10, ["A"], lambda d, s: 0.5, lambda d, s: 100.0)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         alpha = bt.long_alpha_stats
         assert alpha["绝对收益"] == 0.0
 
     def test_zero_weights_zero_alpha(self) -> None:
         """Zero weights: long returns = 0, bench may have vol, but long_vol = 0 → zero."""
-        dfw = _make_dfw(10, ["A"],
-                        lambda d, s: 0.0,
-                        lambda d, s: 100.0 + d * 0.5)
+        dfw = _make_dfw(10, ["A"], lambda d, s: 0.0, lambda d, s: 100.0 + d * 0.5)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         alpha = bt.long_alpha_stats
         assert alpha["绝对收益"] == 0.0
 
     def test_mixed_weights_valid_alpha(self) -> None:
         """Mixed long/short with varying prices → both vols > 0 → valid alpha stats."""
-        dfw = _make_dfw(15, ["A", "B"],
-                        lambda d, s: [0.3, 0.3, -0.2, 0.5, -0.1][d % 5],
-                        lambda d, s: 100.0 + d * (0.5 if s == "A" else -0.3) + math.sin(d) * 2)
+        dfw = _make_dfw(
+            15,
+            ["A", "B"],
+            lambda d, s: [0.3, 0.3, -0.2, 0.5, -0.1][d % 5],
+            lambda d, s: 100.0 + d * (0.5 if s == "A" else -0.3) + math.sin(d) * 2,
+        )
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, yearly_days=252)
         alpha = bt.long_alpha_stats
         # Should have non-trivial values (not all zero)
@@ -291,15 +287,24 @@ class TestLongAlphaStatsEdgeCases:
 
     def test_alpha_keys_complete_in_zero_vol_case(self) -> None:
         """Even when vol=0, all keys should still be present."""
-        dfw = _make_dfw(10, ["A"],
-                        lambda d, s: -0.5,
-                        lambda d, s: 100.0 + d * 0.5)
+        dfw = _make_dfw(10, ["A"], lambda d, s: -0.5, lambda d, s: 100.0 + d * 0.5)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
         alpha = bt.long_alpha_stats
         expected_keys = [
-            "绝对收益", "年化收益", "夏普比率", "卡玛比率", "新高占比",
-            "日胜率", "周胜率", "月胜率", "季胜率", "年胜率",
-            "最大回撤", "年化波动率", "下行波动率", "新高间隔",
+            "绝对收益",
+            "年化收益",
+            "夏普比率",
+            "卡玛比率",
+            "新高占比",
+            "日胜率",
+            "周胜率",
+            "月胜率",
+            "季胜率",
+            "年胜率",
+            "最大回撤",
+            "年化波动率",
+            "下行波动率",
+            "新高间隔",
         ]
         for k in expected_keys:
             assert k in alpha, f"Missing key in zero-vol case: {k}"
@@ -309,20 +314,33 @@ class TestLongAlphaStatsEdgeCases:
 # 5. Single symbol edge cases
 # ============================================================================
 
+
 class TestSingleSymbolMetrics:
     """Verify metrics correctness with a single symbol."""
 
     def test_single_symbol_stats_complete(self) -> None:
         """Single symbol should produce all expected stats keys."""
-        dfw = _make_dfw(20, ["ONLY"],
-                        lambda d, s: [0.3, 0.3, -0.2, 0.0, 0.5][d % 5],
-                        lambda d, s: 100.0 + d * 0.5 + math.sin(d) * 2)
+        dfw = _make_dfw(
+            20, ["ONLY"], lambda d, s: [0.3, 0.3, -0.2, 0.0, 0.5][d % 5], lambda d, s: 100.0 + d * 0.5 + math.sin(d) * 2
+        )
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, yearly_days=252)
         stats = bt.stats
         expected_keys = [
-            "绝对收益", "年化收益", "夏普比率", "卡玛比率", "最大回撤",
-            "日胜率", "周胜率", "月胜率", "季胜率", "年胜率",
-            "交易次数", "年化交易次数", "多头占比", "空头占比", "品种数量",
+            "绝对收益",
+            "年化收益",
+            "夏普比率",
+            "卡玛比率",
+            "最大回撤",
+            "日胜率",
+            "周胜率",
+            "月胜率",
+            "季胜率",
+            "年胜率",
+            "交易次数",
+            "年化交易次数",
+            "多头占比",
+            "空头占比",
+            "品种数量",
         ]
         for k in expected_keys:
             assert k in stats, f"Missing key: {k}"
@@ -330,9 +348,7 @@ class TestSingleSymbolMetrics:
 
     def test_single_symbol_long_short_sum(self) -> None:
         """Single symbol: long_return + short_return = return."""
-        dfw = _make_dfw(15, ["X"],
-                        lambda d, s: [0.3, -0.2, 0.5, 0.0, -0.4][d % 5],
-                        lambda d, s: 100.0 + d * 0.3)
+        dfw = _make_dfw(15, ["X"], lambda d, s: [0.3, -0.2, 0.5, 0.0, -0.4][d % 5], lambda d, s: 100.0 + d * 0.3)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, yearly_days=252)
         dailys = bt.dailys
         combined = dailys["long_return"] + dailys["short_return"]
@@ -342,6 +358,7 @@ class TestSingleSymbolMetrics:
 # ============================================================================
 # 6. Many symbols
 # ============================================================================
+
 
 class TestCSMode:
     """CS (cross-sectional) weight mode: total = sum of per-symbol returns."""
@@ -354,9 +371,7 @@ class TestCSMode:
             lambda d, s: 0.3 if s == "A" else -0.2,
             lambda d, s: 100.0 + d * (0.5 if s == "A" else -0.3) + 50 * (s != "A"),
         )
-        bt = WeightBacktest(
-            dfw, digits=2, fee_rate=0.0002, n_jobs=1, weight_type="cs", yearly_days=252
-        )
+        bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, weight_type="cs", yearly_days=252)
         dr = bt.daily_return
         sym_cols = [c for c in dr.columns if c not in ("date", "total")]
         expected = dr[sym_cols].sum(axis=1)
@@ -380,11 +395,13 @@ class TestManySymbols:
     def test_five_symbols(self) -> None:
         """5 symbols, TS mode: total = mean of per-symbol returns."""
         symbols = [f"SYM_{i}" for i in range(5)]
-        dfw = _make_dfw(15, symbols,
-                        lambda d, s: 0.3 if int(s[-1]) % 2 == 0 else -0.2,
-                        lambda d, s: 100.0 + d * (int(s[-1]) + 1) * 0.1)
-        bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1,
-                            weight_type="ts", yearly_days=252)
+        dfw = _make_dfw(
+            15,
+            symbols,
+            lambda d, s: 0.3 if int(s[-1]) % 2 == 0 else -0.2,
+            lambda d, s: 100.0 + d * (int(s[-1]) + 1) * 0.1,
+        )
+        bt = WeightBacktest(dfw, digits=2, fee_rate=0.0002, n_jobs=1, weight_type="ts", yearly_days=252)
         assert bt.stats["品种数量"] == 5
 
         # Verify total = mean of symbols

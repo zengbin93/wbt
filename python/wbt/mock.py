@@ -180,10 +180,7 @@ def mock_symbol_kline(
     low_prices = np.minimum(low_prices, np.minimum(open_prices, close_prices))
 
     # ---------- 向量化计算成交量 ----------
-    if is_daily:
-        base_volumes = rng.uniform(100000, 300000, n)
-    else:
-        base_volumes = rng.uniform(10000, 50000, n) * (freq_minutes / 5)
+    base_volumes = rng.uniform(100000, 300000, n) if is_daily else rng.uniform(10000, 50000, n) * (freq_minutes / 5)
 
     vol_factors = price_change_ratios * 5
     vol_multipliers = 1 + vol_factors + rng.uniform(-0.2, 0.2, n)
@@ -193,16 +190,18 @@ def mock_symbol_kline(
     avg_prices = (high_prices + low_prices + open_prices + close_prices) / 4
     amounts = volumes * avg_prices
 
-    return pd.DataFrame({
-        "dt": dates,
-        "symbol": symbol,
-        "open": np.round(open_prices, 2),
-        "close": np.round(close_prices, 2),
-        "high": np.round(high_prices, 2),
-        "low": np.round(low_prices, 2),
-        "vol": volumes,
-        "amount": np.round(amounts, 2),
-    })
+    return pd.DataFrame(
+        {
+            "dt": dates,
+            "symbol": symbol,
+            "open": np.round(open_prices, 2),
+            "close": np.round(close_prices, 2),
+            "high": np.round(high_prices, 2),
+            "low": np.round(low_prices, 2),
+            "vol": volumes,
+            "amount": np.round(amounts, 2),
+        }
+    )
 
 
 @lru_cache(maxsize=10)

@@ -8,7 +8,6 @@ import polars as pl
 from wbt._df_convert import arrow_bytes_to_pd_df, pandas_to_arrow_bytes, polars_to_arrow_bytes
 from wbt._wbt import PyWeightBacktest, daily_performance
 
-
 # Canonical field order for all stats output (from design doc)
 STATS_FIELD_ORDER = [
     "绝对收益",
@@ -72,6 +71,7 @@ def _to_date_key(value: object) -> int | None:
 
 
 WEIGH_DATA_TYPE = pd.DataFrame | pl.DataFrame | pl.LazyFrame | str | Path
+
 
 class WeightBacktest:
     """持仓权重回测
@@ -155,9 +155,7 @@ class WeightBacktest:
             self.symbols = list(dfw["symbol"].unique().tolist())
 
             arrow_data = pandas_to_arrow_bytes(dfw)
-            self._inner = PyWeightBacktest.from_arrow(
-                arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days
-            )
+            self._inner = PyWeightBacktest.from_arrow(arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days)
 
     def get_top_symbols(self, n: int = 1, kind: str = "profit") -> list[str]:
         """获取回测赚钱/亏钱最多的前n个品种
@@ -327,7 +325,12 @@ class WeightBacktest:
         """空头收益统计（从 Rust 端计算）"""
         return _reorder_stats(self._inner.short_stats())
 
-    def segment_stats(self, sdt: str | int | pd.Timestamp | None = None, edt: str | int | pd.Timestamp | None = None, kind: str = "多空") -> dict:
+    def segment_stats(
+        self,
+        sdt: str | int | pd.Timestamp | None = None,
+        edt: str | int | pd.Timestamp | None = None,
+        kind: str = "多空",
+    ) -> dict:
         """分段统计
 
         :param sdt: str | None, 开始日期，支持 "2020-01-01"、"20200101"、pd.Timestamp 格式，None 表示从头开始
@@ -382,12 +385,14 @@ class WeightBacktest:
         return df[df[symbol_col] == symbol].copy()
 
 
-def backtest(data: WEIGH_DATA_TYPE,
-             digits: int = 2,
-             fee_rate: float = 0.0002,
-             n_jobs: int = 1,
-             weight_type: str = "ts",
-             yearly_days: int = 252) -> WeightBacktest:
+def backtest(
+    data: WEIGH_DATA_TYPE,
+    digits: int = 2,
+    fee_rate: float = 0.0002,
+    n_jobs: int = 1,
+    weight_type: str = "ts",
+    yearly_days: int = 252,
+) -> WeightBacktest:
     """WeightBacktest 的便捷接口
 
     :param data: 持仓权重数据，支持以下类型：
@@ -401,5 +406,6 @@ def backtest(data: WEIGH_DATA_TYPE,
     :param yearly_days: int, default 252, 年化交易日数量
     :return: WeightBacktest 对象
     """
-    wb = WeightBacktest(data, digits=digits, fee_rate=fee_rate, n_jobs=n_jobs, weight_type=weight_type, yearly_days=yearly_days)
-    return wb
+    return WeightBacktest(
+        data, digits=digits, fee_rate=fee_rate, n_jobs=n_jobs, weight_type=weight_type, yearly_days=yearly_days
+    )

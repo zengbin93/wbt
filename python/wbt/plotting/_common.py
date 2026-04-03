@@ -43,6 +43,6 @@ def apply_default_layout(fig: go.Figure, title: str | None = None, height: int =
         height=height,
         title=title,
         title_font_size=14,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=60, r=40, t=60, b=60),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+        margin={"l": 60, "r": 40, "t": 60, "b": 60},
     )

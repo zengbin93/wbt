@@ -4,13 +4,12 @@ import argparse
 import importlib.util
 import sys
 import types
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-import numpy as np
 import pandas as pd
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_PATH = Path("/Volumes/jun/全A日线测试_20170101_20250429.feather")
@@ -71,7 +70,7 @@ def build_operation_specs(sample_symbol: str) -> list[OperationSpec]:
 
 def install_czsc_stubs(czsc_root: Path) -> None:
     deprecated_mod = types.ModuleType("deprecated")
-    deprecated_mod.deprecated = lambda *args, **kwargs: (lambda func: func)
+    deprecated_mod.deprecated = lambda *args, **kwargs: lambda func: func
     sys.modules["deprecated"] = deprecated_mod
 
     tqdm_mod = types.ModuleType("tqdm")
@@ -122,8 +121,8 @@ def load_czsc_weight_backtest(czsc_root: Path) -> tuple[type[Any], Callable[...,
 
 def load_wbt_backtest() -> tuple[type[Any], Callable[..., dict[str, Any]]]:
     sys.path.insert(0, str(REPO_ROOT / "python"))
-    from wbt.backtest import WeightBacktest as WbtWeightBacktest
     from wbt import daily_performance as wbt_daily_performance
+    from wbt.backtest import WeightBacktest as WbtWeightBacktest
 
     return WbtWeightBacktest, wbt_daily_performance
 
@@ -153,7 +152,9 @@ def compare_scalar(results: Results, name: str, wbt_val: Any, czsc_val: Any, tol
             results.fail(name, f"wbt={wbt_val} vs czsc={czsc_val}")
 
 
-def compare_dict(results: Results, prefix: str, wbt_dict: dict[str, Any], czsc_dict: dict[str, Any], tol: float) -> None:
+def compare_dict(
+    results: Results, prefix: str, wbt_dict: dict[str, Any], czsc_dict: dict[str, Any], tol: float
+) -> None:
     keys = set(wbt_dict) | set(czsc_dict)
     for key in sorted(keys):
         if key not in wbt_dict:
@@ -232,7 +233,18 @@ def normalize_pairs_df(df: pd.DataFrame) -> pd.DataFrame:
             for _ in range(count):
                 rows.append(dict(base))
         out = pd.DataFrame(rows)
-        ordered = ["标的代码", "交易方向", "开仓时间", "平仓时间", "开仓价格", "平仓价格", "持仓K线数", "事件序列", "持仓天数", "盈亏比例"]
+        ordered = [
+            "标的代码",
+            "交易方向",
+            "开仓时间",
+            "平仓时间",
+            "开仓价格",
+            "平仓价格",
+            "持仓K线数",
+            "事件序列",
+            "持仓天数",
+            "盈亏比例",
+        ]
         return out[ordered].copy()
     return df.copy()
 
@@ -259,13 +271,13 @@ def main() -> int:
     if args.n_jobs != 1:
         print("Note: forcing n_jobs=1 for czsc source comparison to avoid subprocess import issues.")
 
-    kwargs = dict(
-        digits=args.digits,
-        fee_rate=args.fee_rate,
-        n_jobs=1,
-        weight_type=args.weight_type,
-        yearly_days=args.yearly_days,
-    )
+    kwargs = {
+        "digits": args.digits,
+        "fee_rate": args.fee_rate,
+        "n_jobs": 1,
+        "weight_type": args.weight_type,
+        "yearly_days": args.yearly_days,
+    }
     print(f"Params: {kwargs}")
 
     czsc = CzscWeightBacktest(dfw.copy(), **kwargs)
@@ -300,7 +312,9 @@ def main() -> int:
         if op.kind == "df":
             compare_df(results, op.name, wbt_val, czsc_val, args.tol, op.sort_cols)
         elif op.kind == "pairs_df":
-            compare_df(results, op.name, normalize_pairs_df(wbt_val), normalize_pairs_df(czsc_val), args.tol, op.sort_cols)
+            compare_df(
+                results, op.name, normalize_pairs_df(wbt_val), normalize_pairs_df(czsc_val), args.tol, op.sort_cols
+            )
         elif op.kind == "dict":
             compare_dict(results, op.name, wbt_val, czsc_val, args.tol)
         elif op.kind == "list":
