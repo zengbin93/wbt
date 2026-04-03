@@ -320,16 +320,16 @@ class WeightBacktest:
 
 def backtest(data: WEIGH_DATA_TYPE,
              digits: int = 2,
-             fee_rate: float = 0.0002, 
-             n_jobs: int = 1, 
-             weight_type: str = "ts", 
+             fee_rate: float = 0.0002,
+             n_jobs: int = 1,
+             weight_type: str = "ts",
              yearly_days: int = 252) -> WeightBacktest:
-    """快速回测接口，适合在 Jupyter 中快速查看回测结果
+    """WeightBacktest 的便捷接口
 
     :param data: 持仓权重数据，支持以下类型：
         - pd.DataFrame: columns = ['dt', 'symbol', 'weight', 'price']
         - polars.DataFrame / polars.LazyFrame: 同上列
-        - str / Path: 文件路径（支持 .csv, .parquet, .feather, .arrow）
+        - str / Path: 文件路径（支持 .csv, .parquet, .feather, .arrow)
     :param digits: int, 权重列保留小数位数
     :param fee_rate: float, default 0.0002, 单边交易成本, 包括手续费与冲击成本
     :param n_jobs: int, default 1, 并行计算的线程数

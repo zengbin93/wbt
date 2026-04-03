@@ -157,7 +157,7 @@ def _compute_volume(freq: str, freq_minutes: int, price_change_ratio: float) -> 
     return int(base_volume * max(volume_multiplier, 0.3))
 
 
-def generate_symbol_kline(
+def mock_symbol_kline(
     symbol: str,
     freq: str,
     sdt: str = "20100101",
@@ -255,7 +255,7 @@ def generate_symbol_kline(
 
 
 @lru_cache(maxsize=10)
-def generate_weights(
+def mock_weights(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     freq: str = "日线",
     seed: int = 42,
@@ -273,7 +273,7 @@ def generate_weights(
         包含K线数据和权重列的DataFrame，额外列包括 weight, price
     """
     np.random.seed(seed)
-    frames = [generate_symbol_kline(symbol, freq=freq, seed=seed) for symbol in symbols]
+    frames = [mock_symbol_kline(symbol, freq=freq, seed=seed) for symbol in symbols]
     df = pd.concat(frames, ignore_index=True)
     df["weight"] = np.random.normal(-1, 1, len(df)).clip(-1, 1)
     df["price"] = df["close"]
