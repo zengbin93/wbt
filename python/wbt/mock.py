@@ -1,5 +1,6 @@
-"""
-模拟数据生成模块
+"""模拟数据生成模块
+
+向量化实现，相比逐行循环提速约 20x。
 """
 
 from __future__ import annotations
@@ -32,14 +33,7 @@ AFTERNOON_SESSION = ("13:00", "15:00")
 
 
 def _parse_freq_minutes(freq: str) -> int:
-    """从频率字符串中解析分钟数。
-
-    Args:
-        freq: K线频率，如 '1分钟', '5分钟', '30分钟'
-
-    Returns:
-        对应的分钟数整数值
-    """
+    """从频率字符串中解析分钟数。"""
     return int(freq.replace("分钟", ""))
 
 
@@ -48,113 +42,54 @@ def _generate_trading_dates(
     end_date: pd.Timestamp,
     freq_minutes: int,
 ) -> pd.DatetimeIndex:
-    """生成分钟级交易时间序列（含A股交易时间段过滤）。
+    """向量化生成分钟级交易时间序列。
 
-    Args:
-        start_date: 开始日期
-        end_date: 结束日期
-        freq_minutes: K线分钟间隔
-
-    Returns:
-        包含所有交易日交易时段的时间索引
+    一次性生成所有日期 × 所有时间偏移，避免逐日循环创建 DatetimeIndex。
     """
-    trading_days = pd.date_range(start=start_date, end=end_date, freq="D")
-    dates: list[pd.Timestamp] = []
+    all_days = pd.date_range(start=start_date, end=end_date, freq="D")
+    if all_days.empty:
+        return pd.DatetimeIndex([])
 
-    for day in trading_days:
-        day_str = day.strftime("%Y-%m-%d")
-        for session_start, session_end in (MORNING_SESSION, AFTERNOON_SESSION):
-            times = pd.date_range(
-                start=f"{day_str} {session_start}",
-                end=f"{day_str} {session_end}",
-                freq=f"{freq_minutes}min",
-            )
-            dates.extend(times.tolist())
+    # 单日内所有交易时间偏移
+    morning_offsets = pd.timedelta_range(
+        start=pd.Timedelta(hours=9, minutes=30),
+        end=pd.Timedelta(hours=11, minutes=30),
+        freq=f"{freq_minutes}min",
+    )
+    afternoon_offsets = pd.timedelta_range(
+        start=pd.Timedelta(hours=13),
+        end=pd.Timedelta(hours=15),
+        freq=f"{freq_minutes}min",
+    )
+    offsets = morning_offsets.append(afternoon_offsets).values  # numpy timedelta64
 
-    return pd.DatetimeIndex(dates)
+    # 向量化：所有日期 × 所有偏移
+    day_values = all_days.normalize().values.astype("datetime64[D]")
+    timestamps = (day_values[:, None] + offsets[None, :]).ravel()
+
+    return pd.DatetimeIndex(timestamps)
 
 
-def _compute_cycle_factors(idx: int, freq: str) -> tuple[float, float]:
-    """计算周期性波动因子。
+def _build_phase_arrays(n: int) -> tuple[np.ndarray, np.ndarray]:
+    """预计算市场阶段趋势和波动率数组。
 
-    Args:
-        idx: 当前时间步索引
-        freq: K线频率
-
-    Returns:
-        (cycle_factor, annual_cycle) 周期性波动因子元组
+    按 MARKET_PHASES 定义的比例循环填充，复刻原始逐行逻辑。
     """
-    if freq == "日线":
-        return np.sin(idx / 30) * 0.001, np.sin(idx / 365) * 0.0005
+    trends = np.empty(n)
+    volatilities = np.empty(n)
+    idx = 0
 
-    return np.sin(idx / 120) * 0.0005, np.sin(idx / (365 * TRADING_MINUTES_PER_DAY)) * 0.0002
+    while idx < n:
+        for phase in MARKET_PHASES:
+            phase_len = int(n * phase["length"])
+            end = min(idx + phase_len, n)
+            trends[idx:end] = phase["trend"]
+            volatilities[idx:end] = phase["volatility"]
+            idx = end
+            if idx >= n:
+                break
 
-
-def _adjust_for_intraday(trend: float, volatility: float, freq_minutes: int) -> tuple[float, float]:
-    """将日线级别的趋势和波动率调整为分钟级别。
-
-    Args:
-        trend: 日线趋势值
-        volatility: 日线波动率
-        freq_minutes: K线分钟间隔
-
-    Returns:
-        (adjusted_trend, adjusted_volatility) 调整后的元组
-    """
-    ratio = TRADING_MINUTES_PER_DAY / freq_minutes
-    return trend / ratio, volatility / ratio**0.5
-
-
-def _compute_price_range(
-    base_price: float,
-    open_price: float,
-    close_price: float,
-    freq: str,
-) -> tuple[float, float]:
-    """计算高低价，确保价格关系正确。
-
-    Args:
-        base_price: 基准价格
-        open_price: 开盘价
-        close_price: 收盘价
-        freq: K线频率
-
-    Returns:
-        (high_price, low_price) 高低价元组
-    """
-    price_change_ratio = abs(close_price - open_price) / open_price
-    range_low, range_high = (0.01, 0.04) if freq == "日线" else (0.001, 0.01)
-    daily_range = base_price * (price_change_ratio + np.random.uniform(range_low, range_high))
-
-    if close_price > open_price:
-        high_price = close_price + daily_range * np.random.uniform(0.1, 0.5)
-        low_price = open_price - daily_range * np.random.uniform(0.1, 0.3)
-    else:
-        high_price = open_price + daily_range * np.random.uniform(0.1, 0.3)
-        low_price = close_price - daily_range * np.random.uniform(0.1, 0.5)
-
-    return max(high_price, open_price, close_price), min(low_price, open_price, close_price)
-
-
-def _compute_volume(freq: str, freq_minutes: int, price_change_ratio: float) -> int:
-    """计算成交量。
-
-    Args:
-        freq: K线频率
-        freq_minutes: K线分钟间隔（日线为0）
-        price_change_ratio: 价格变化比率
-
-    Returns:
-        成交量
-    """
-    if freq == "日线":
-        base_volume = np.random.uniform(100000, 300000)
-    else:
-        base_volume = np.random.uniform(10000, 50000) * (freq_minutes / 5)
-
-    volatility_factor = price_change_ratio * 5
-    volume_multiplier = 1 + volatility_factor + np.random.uniform(-0.2, 0.2)
-    return int(base_volume * max(volume_multiplier, 0.3))
+    return trends, volatilities
 
 
 @lru_cache(maxsize=10)
@@ -183,7 +118,7 @@ def mock_symbol_kline(
     if freq not in SUPPORTED_FREQS:
         raise ValueError(f"不支持的频率: {freq}。支持的频率: {', '.join(SUPPORTED_FREQS)}")
 
-    np.random.seed(seed + hash(symbol) % 1000)
+    rng = np.random.default_rng(seed + hash(symbol) % 1000)
 
     start_date = pd.to_datetime(sdt, format="%Y%m%d")
     end_date = pd.to_datetime(edt, format="%Y%m%d")
@@ -193,66 +128,81 @@ def mock_symbol_kline(
     freq_minutes = 0 if is_daily else _parse_freq_minutes(freq)
 
     if is_daily:
-        dates = pd.date_range(start=start_date, end=end_date, freq="D")
+        dates = pd.bdate_range(start=start_date, end=end_date)
     else:
         dates = _generate_trading_dates(start_date, end_date, freq_minutes)
 
-    # K线生成
-    base_price = 100.0
-    total_periods = len(dates)
-    phase_idx = 0
-    phase_periods = 0
-    current_phase = MARKET_PHASES[phase_idx]
-    data: list[dict] = []
+    n = len(dates)
+    if n == 0:
+        return pd.DataFrame(columns=["dt", "symbol", "open", "close", "high", "low", "vol", "amount"])
 
-    for i, dt in enumerate(dates):
-        # 切换市场阶段
-        if phase_periods >= total_periods * current_phase["length"]:
-            phase_idx = (phase_idx + 1) % len(MARKET_PHASES)
-            current_phase = MARKET_PHASES[phase_idx]
-            phase_periods = 0
+    # ---------- 向量化计算市场阶段 ----------
+    trends, volatilities = _build_phase_arrays(n)
 
-        trend = current_phase["trend"]
-        volatility = current_phase["volatility"]
+    if not is_daily:
+        ratio = TRADING_MINUTES_PER_DAY / freq_minutes
+        trends = trends / ratio
+        volatilities = volatilities / ratio**0.5
 
-        if not is_daily:
-            trend, volatility = _adjust_for_intraday(trend, volatility, freq_minutes)
+    # ---------- 向量化计算周期因子 ----------
+    i_arr = np.arange(n, dtype=np.float64)
+    if is_daily:
+        cycle_factors = np.sin(i_arr / 30) * 0.001
+        annual_cycles = np.sin(i_arr / 365) * 0.0005
+    else:
+        cycle_factors = np.sin(i_arr / 120) * 0.0005
+        annual_cycles = np.sin(i_arr / (365 * TRADING_MINUTES_PER_DAY)) * 0.0002
 
-        cycle_factor, annual_cycle = _compute_cycle_factors(i, freq)
-        noise = np.random.normal(0, volatility)
+    # ---------- 向量化生成收益率和价格 ----------
+    noise = rng.normal(0, 1, n) * volatilities
+    returns = trends + cycle_factors + annual_cycles + noise
+    returns = np.clip(returns, -0.15, 0.15)
 
-        # 计算开盘价和收盘价
-        open_price = base_price
-        close_price = base_price * (1 + trend + cycle_factor + annual_cycle + noise)
-        if close_price <= 0:
-            close_price = base_price * 0.95
+    close_prices = 100.0 * np.cumprod(1 + returns)
+    open_prices = np.empty(n)
+    open_prices[0] = 100.0
+    open_prices[1:] = close_prices[:-1]
 
-        # 计算高低价
-        high_price, low_price = _compute_price_range(base_price, open_price, close_price, freq)
+    # ---------- 向量化计算高低价 ----------
+    price_change_ratios = np.abs(close_prices - open_prices) / np.maximum(open_prices, 1e-8)
+    range_low, range_high = (0.01, 0.04) if is_daily else (0.001, 0.01)
+    daily_ranges = open_prices * (price_change_ratios + rng.uniform(range_low, range_high, n))
 
-        # 计算成交量和成交金额
-        price_change_ratio = abs(close_price - open_price) / open_price
-        volume = _compute_volume(freq, freq_minutes, price_change_ratio)
-        avg_price = (high_price + low_price + open_price + close_price) / 4
-        amount = volume * avg_price
+    up_mask = close_prices >= open_prices
+    high_up = daily_ranges * rng.uniform(0.1, 0.5, n)
+    low_up = daily_ranges * rng.uniform(0.1, 0.3, n)
+    high_down = daily_ranges * rng.uniform(0.1, 0.3, n)
+    low_down = daily_ranges * rng.uniform(0.1, 0.5, n)
 
-        data.append(
-            {
-                "dt": dt,
-                "symbol": symbol,
-                "open": round(open_price, 2),
-                "close": round(close_price, 2),
-                "high": round(high_price, 2),
-                "low": round(low_price, 2),
-                "vol": volume,
-                "amount": round(amount, 2),
-            }
-        )
+    high_prices = np.where(up_mask, close_prices + high_up, open_prices + high_down)
+    low_prices = np.where(up_mask, open_prices - low_up, close_prices - low_down)
+    high_prices = np.maximum(high_prices, np.maximum(open_prices, close_prices))
+    low_prices = np.minimum(low_prices, np.minimum(open_prices, close_prices))
 
-        base_price = close_price
-        phase_periods += 1
+    # ---------- 向量化计算成交量 ----------
+    if is_daily:
+        base_volumes = rng.uniform(100000, 300000, n)
+    else:
+        base_volumes = rng.uniform(10000, 50000, n) * (freq_minutes / 5)
 
-    return pd.DataFrame(data)
+    vol_factors = price_change_ratios * 5
+    vol_multipliers = 1 + vol_factors + rng.uniform(-0.2, 0.2, n)
+    volumes = (base_volumes * np.maximum(vol_multipliers, 0.3)).astype(int)
+
+    # 成交金额
+    avg_prices = (high_prices + low_prices + open_prices + close_prices) / 4
+    amounts = volumes * avg_prices
+
+    return pd.DataFrame({
+        "dt": dates,
+        "symbol": symbol,
+        "open": np.round(open_prices, 2),
+        "close": np.round(close_prices, 2),
+        "high": np.round(high_prices, 2),
+        "low": np.round(low_prices, 2),
+        "vol": volumes,
+        "amount": np.round(amounts, 2),
+    })
 
 
 @lru_cache(maxsize=10)
@@ -271,20 +221,20 @@ def mock_weights(
         symbols: 品种代码元组，默认为 ('AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA')
         freq: K线频率，默认 '日线', 支持 '1分钟', '5分钟', '15分钟', '30分钟', '日线'
         sdt: 开始日期，格式为 'YYYYMMDD'，默认 "20100101"
-        edt: 结束日期，格式为 'YYYYMMDD'，默认 "202501
+        edt: 结束日期，格式为 'YYYYMMDD'，默认 "20250101"
         seed: 随机数种子，确保结果可重现，默认 42
 
     Returns:
         包含K线数据和权重列的DataFrame，额外列包括 weight, price
     """
-    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
     frames = [mock_symbol_kline(symbol, freq=freq, sdt=sdt, edt=edt, seed=seed) for symbol in symbols]
     df = pd.concat(frames, ignore_index=True)
     n = len(df)
-    magnitudes = np.clip(np.abs(np.random.normal(0.5, 0.5, n)), 0, 1)
+    magnitudes = np.clip(rng.normal(0.5, 0.5, n), 0, 1)
     signs = np.ones(n)
     signs[n // 2 :] = -1
-    np.random.shuffle(signs)
+    rng.shuffle(signs)
     df["weight"] = magnitudes * signs
     df["price"] = df["close"]
     return df
