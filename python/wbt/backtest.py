@@ -9,6 +9,68 @@ from wbt._df_convert import arrow_bytes_to_pd_df, pandas_to_arrow_bytes, polars_
 from wbt._wbt import PyWeightBacktest, daily_performance
 
 
+# Canonical field order for all stats output (from design doc)
+STATS_FIELD_ORDER = [
+    "绝对收益",
+    "年化收益",
+    "夏普比率",
+    "卡玛比率",
+    "新高占比",
+    "单笔盈亏比",
+    "单笔收益",
+    "日胜率",
+    "周胜率",
+    "月胜率",
+    "季胜率",
+    "年胜率",
+    "最大回撤",
+    "年化波动率",
+    "下行波动率",
+    "新高间隔",
+    "交易次数",
+    "年化交易次数",
+    "持仓K线数",
+    "交易胜率",
+    "多头占比",
+    "空头占比",
+    "品种数量",
+    "开始日期",
+    "结束日期",
+]
+
+
+def _reorder_stats(d: dict[str, object]) -> dict[str, object]:
+    """Reorder dict keys to follow canonical stats field order."""
+    ordered: dict[str, object] = {}
+    for key in STATS_FIELD_ORDER:
+        if key in d:
+            ordered[key] = d[key]
+    # Append any remaining keys not in the canonical order
+    for key in d:
+        if key not in ordered:
+            ordered[key] = d[key]
+    return ordered
+
+
+def _to_date_key(value: object) -> int | None:
+    """Convert date input to YYYYMMDD integer for Rust backend.
+
+    Supports: str ("2020-01-01" or "20200101"), pd.Timestamp, datetime, int, None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        # "20200101" format
+        if len(value) == 8 and value.isdigit():
+            return int(value)
+        # "2020-01-01" or ISO format
+        return int(pd.Timestamp(value).strftime("%Y%m%d"))
+    # pd.Timestamp, datetime, etc. — cast via str
+    return int(pd.Timestamp(str(value)).strftime("%Y%m%d"))
+
+
 WEIGH_DATA_TYPE = pd.DataFrame | pl.DataFrame | pl.LazyFrame | str | Path
 
 class WeightBacktest:
@@ -134,7 +196,7 @@ class WeightBacktest:
             '交易次数': 120, '年化交易次数': 18.46, '持仓K线数': 972.81, '交易胜率': 0.3717,
             '多头占比': 0.5028, '空头占比': 0.4611, '品种数量': 9}
         """
-        return self._inner.stats()
+        return _reorder_stats(self._inner.stats())
 
     @property
     def symbol_dict(self) -> list:
@@ -258,27 +320,29 @@ class WeightBacktest:
     @property
     def long_stats(self) -> dict:
         """多头收益统计（从 Rust 端计算）"""
-        return self._inner.long_stats()
+        return _reorder_stats(self._inner.long_stats())
 
     @property
     def short_stats(self) -> dict:
         """空头收益统计（从 Rust 端计算）"""
-        return self._inner.short_stats()
+        return _reorder_stats(self._inner.short_stats())
 
-    def segment_stats(self, sdt: int | None = None, edt: int | None = None, kind: str = "多空") -> dict:
+    def segment_stats(self, sdt: str | int | pd.Timestamp | None = None, edt: str | int | pd.Timestamp | None = None, kind: str = "多空") -> dict:
         """分段统计
 
-        :param sdt: int | None, 开始日期 date_key (YYYYMMDD 格式整数)，None 表示从头开始
-        :param edt: int | None, 结束日期 date_key，None 表示到末尾
+        :param sdt: str | None, 开始日期，支持 "2020-01-01"、"20200101"、pd.Timestamp 格式，None 表示从头开始
+        :param edt: str | None, 结束日期，同上格式，None 表示到末尾
         :param kind: str, "多空" | "多头" | "空头"
         :return: dict, 统计指标
         """
-        return self._inner.segment_stats(sdt, edt, kind)
+        sdt_int = _to_date_key(sdt)
+        edt_int = _to_date_key(edt)
+        return _reorder_stats(self._inner.segment_stats(sdt_int, edt_int, kind))
 
     @property
     def long_alpha_stats(self) -> dict:
         """波动率调整后的多头超额收益统计"""
-        return self._inner.long_alpha_stats()
+        return _reorder_stats(self._inner.long_alpha_stats())
 
     @property
     def pairs(self) -> pd.DataFrame:
