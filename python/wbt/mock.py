@@ -157,6 +157,7 @@ def _compute_volume(freq: str, freq_minutes: int, price_change_ratio: float) -> 
     return int(base_volume * max(volume_multiplier, 0.3))
 
 
+@lru_cache(maxsize=10)
 def mock_symbol_kline(
     symbol: str,
     freq: str,
@@ -258,6 +259,8 @@ def mock_symbol_kline(
 def mock_weights(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     freq: str = "日线",
+    sdt: str = "20100101",
+    edt: str = "20250101",
     seed: int = 42,
 ) -> pd.DataFrame:
     """生成包含权重信息的K线数据。
@@ -266,14 +269,16 @@ def mock_weights(
 
     Args:
         symbols: 品种代码元组，默认为 ('AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA')
-        freq: K线频率，默认 '日线'
+        freq: K线频率，默认 '日线', 支持 '1分钟', '5分钟', '15分钟', '30分钟', '日线'
+        sdt: 开始日期，格式为 'YYYYMMDD'，默认 "20100101"
+        edt: 结束日期，格式为 'YYYYMMDD'，默认 "202501
         seed: 随机数种子，确保结果可重现，默认 42
 
     Returns:
         包含K线数据和权重列的DataFrame，额外列包括 weight, price
     """
     np.random.seed(seed)
-    frames = [mock_symbol_kline(symbol, freq=freq, seed=seed) for symbol in symbols]
+    frames = [mock_symbol_kline(symbol, freq=freq, sdt=sdt, edt=edt, seed=seed) for symbol in symbols]
     df = pd.concat(frames, ignore_index=True)
     df["weight"] = np.random.normal(-1, 1, len(df)).clip(-1, 1)
     df["price"] = df["close"]
