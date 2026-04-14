@@ -4,12 +4,12 @@ import argparse
 import statistics
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_PATH = Path("/Volumes/jun/全A日线测试_20170101_20250429.feather")
@@ -63,14 +63,16 @@ def summarize_value(value: Any) -> str:
     return type(value).__name__
 
 
-def load_backtest_classes() -> tuple[type[Any], type[Any], Callable[..., dict[str, Any]], Callable[..., dict[str, Any]]]:
+def load_backtest_classes() -> tuple[
+    type[Any], type[Any], Callable[..., dict[str, Any]], Callable[..., dict[str, Any]]
+]:
     sys.path.insert(0, str(DEFAULT_ORIG_PYTHON))
-    from rs_czsc._trader.weight_backtest import WeightBacktest as OrigWeightBacktest
     from rs_czsc._rs_czsc import daily_performance as orig_daily_performance
+    from rs_czsc._trader.weight_backtest import WeightBacktest as OrigWeightBacktest
 
     sys.path.insert(0, str(REPO_ROOT / "python"))
-    from wbt.backtest import WeightBacktest as WbtWeightBacktest
     from wbt._wbt import daily_performance as wbt_daily_performance
+    from wbt.backtest import WeightBacktest as WbtWeightBacktest
 
     return WbtWeightBacktest, OrigWeightBacktest, wbt_daily_performance, orig_daily_performance
 
@@ -154,7 +156,7 @@ def main() -> int:
     parser.add_argument("--yearly-days", type=int, default=252)
     args = parser.parse_args()
 
-    WbtWeightBacktest, OrigWeightBacktest, wbt_daily_performance, orig_daily_performance = load_backtest_classes()
+    WbtWeightBacktest, OrigWeightBacktest, wbt_daily_performance, orig_daily_performance = load_backtest_classes()  # noqa: N806
 
     print(f"Loading data from {args.data_path}")
     dfw = pd.read_feather(args.data_path)

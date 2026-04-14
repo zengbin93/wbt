@@ -15,6 +15,12 @@ def pandas_to_arrow_bytes(df: pd.DataFrame | pd.Series) -> bytes:
     返回:
         bytes: 序列化后的 Arrow 字节流
     """
+    # 将 datetime 列转换为毫秒精度（Rust 后端不支持微秒精度）
+    dt_cols = df.select_dtypes(include=["datetime64"]).columns
+    if len(dt_cols) > 0:
+        df = df.copy()
+        df[dt_cols] = df[dt_cols].astype("datetime64[ms]")
+
     # 将 Pandas DataFrame 转换为 PyArrow Table
     table = pa.Table.from_pandas(df)
 

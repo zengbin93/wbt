@@ -3,6 +3,7 @@
 Creates a small deterministic dataset (2 symbols x 20 bars) with known
 weights and prices so that every metric can be hand-verified.
 """
+
 from __future__ import annotations
 
 import math
@@ -33,16 +34,94 @@ def _build_deterministic_dfw() -> pd.DataFrame:
     rows = []
     base_date = datetime(2024, 1, 2, 9, 30, 0)
     # Fixed weights and prices for SYM_A and SYM_B
-    weights_a = [0.3, 0.3, -0.2, -0.2, 0.5, 0.5, -0.1, -0.1, 0.4, 0.4,
-                 -0.3, -0.3, 0.2, 0.2, -0.4, -0.4, 0.1, 0.1, -0.5, -0.5]
-    weights_b = [-0.2, -0.2, 0.4, 0.4, -0.3, -0.3, 0.2, 0.2, -0.1, -0.1,
-                 0.5, 0.5, -0.4, -0.4, 0.3, 0.3, -0.2, -0.2, 0.1, 0.1]
-    prices_a = [100.0, 101.0, 100.5, 99.5, 100.0, 102.0, 101.5, 100.0,
-                101.0, 103.0, 102.0, 100.5, 101.0, 102.5, 101.0, 99.0,
-                100.0, 101.5, 100.0, 98.5]
-    prices_b = [50.0, 50.5, 51.0, 50.0, 49.5, 50.0, 51.0, 52.0,
-                51.5, 51.0, 52.0, 53.0, 52.5, 51.5, 52.0, 53.0,
-                52.5, 52.0, 53.0, 54.0]
+    weights_a = [
+        0.3,
+        0.3,
+        -0.2,
+        -0.2,
+        0.5,
+        0.5,
+        -0.1,
+        -0.1,
+        0.4,
+        0.4,
+        -0.3,
+        -0.3,
+        0.2,
+        0.2,
+        -0.4,
+        -0.4,
+        0.1,
+        0.1,
+        -0.5,
+        -0.5,
+    ]
+    weights_b = [
+        -0.2,
+        -0.2,
+        0.4,
+        0.4,
+        -0.3,
+        -0.3,
+        0.2,
+        0.2,
+        -0.1,
+        -0.1,
+        0.5,
+        0.5,
+        -0.4,
+        -0.4,
+        0.3,
+        0.3,
+        -0.2,
+        -0.2,
+        0.1,
+        0.1,
+    ]
+    prices_a = [
+        100.0,
+        101.0,
+        100.5,
+        99.5,
+        100.0,
+        102.0,
+        101.5,
+        100.0,
+        101.0,
+        103.0,
+        102.0,
+        100.5,
+        101.0,
+        102.5,
+        101.0,
+        99.0,
+        100.0,
+        101.5,
+        100.0,
+        98.5,
+    ]
+    prices_b = [
+        50.0,
+        50.5,
+        51.0,
+        50.0,
+        49.5,
+        50.0,
+        51.0,
+        52.0,
+        51.5,
+        51.0,
+        52.0,
+        53.0,
+        52.5,
+        51.5,
+        52.0,
+        53.0,
+        52.5,
+        52.0,
+        53.0,
+        54.0,
+    ]
 
     for d in range(20):
         dt_str = (base_date + timedelta(days=d)).strftime("%Y-%m-%d %H:%M:%S")
@@ -62,20 +141,19 @@ def dfw() -> pd.DataFrame:
 
 @pytest.fixture(scope="module")
 def bt(dfw: pd.DataFrame) -> WeightBacktest:
-    return WeightBacktest(dfw, digits=DIGITS, fee_rate=FEE_RATE, n_jobs=1,
-                          weight_type="ts", yearly_days=YEARLY_DAYS)
+    return WeightBacktest(dfw, digits=DIGITS, fee_rate=FEE_RATE, n_jobs=1, weight_type="ts", yearly_days=YEARLY_DAYS)
 
 
 # ============================================================================
 # Helper: Python reference implementation of daily_performance metrics
 # ============================================================================
 
+
 def _python_daily_perf(returns: np.ndarray, yearly_days: int = 252) -> dict:
     """Pure-Python reference for the key daily_performance metrics."""
     n = len(returns)
     if n == 0:
-        return {"absolute_return": 0, "annual_returns": 0, "sharpe": 0,
-                "max_drawdown": 0, "daily_win_rate": 0}
+        return {"absolute_return": 0, "annual_returns": 0, "sharpe": 0, "max_drawdown": 0, "daily_win_rate": 0}
 
     cumsum = np.cumsum(returns)
     absolute_return = float(cumsum[-1])
@@ -109,6 +187,7 @@ def _python_daily_perf(returns: np.ndarray, yearly_days: int = 252) -> dict:
 # ============================================================================
 # 1. Stats dict: absolute_return, annual, sharpe, max_drawdown, daily_win_rate
 # ============================================================================
+
 
 class TestStatsBasicMetrics:
     """Validate core stats metrics against Python reference calculations."""
@@ -171,6 +250,7 @@ class TestStatsBasicMetrics:
 # 2. Period win rates: week, month, quarter, year
 # ============================================================================
 
+
 class TestPeriodWinRates:
     """Validate period win rates against Python groupby calculations."""
 
@@ -180,12 +260,11 @@ class TestPeriodWinRates:
         dr = bt.daily_return
         df = dr[["date", "total"]].copy()
         df["date"] = pd.to_datetime(df["date"])
-        df["week_key"] = df["date"].dt.isocalendar().year.astype(str) + "-" + df["date"].dt.isocalendar().week.astype(str)
+        df["week_key"] = (
+            df["date"].dt.isocalendar().year.astype(str) + "-" + df["date"].dt.isocalendar().week.astype(str)
+        )
         weekly = df.groupby("week_key")["total"].sum()
-        if len(weekly) > 0:
-            expected = (weekly > 0).sum() / len(weekly)
-        else:
-            expected = 0.0
+        expected = (weekly > 0).sum() / len(weekly) if len(weekly) > 0 else 0.0
         assert stats["周胜率"] == pytest.approx(expected, abs=0.001)
 
     def test_month_win_rate(self, bt: WeightBacktest) -> None:
@@ -196,10 +275,7 @@ class TestPeriodWinRates:
         df["date"] = pd.to_datetime(df["date"])
         df["month_key"] = df["date"].dt.to_period("M")
         monthly = df.groupby("month_key")["total"].sum()
-        if len(monthly) > 0:
-            expected = (monthly > 0).sum() / len(monthly)
-        else:
-            expected = 0.0
+        expected = (monthly > 0).sum() / len(monthly) if len(monthly) > 0 else 0.0
         assert stats["月胜率"] == pytest.approx(expected, abs=0.001)
 
     def test_quarter_win_rate(self, bt: WeightBacktest) -> None:
@@ -210,10 +286,7 @@ class TestPeriodWinRates:
         df["date"] = pd.to_datetime(df["date"])
         df["q_key"] = df["date"].dt.to_period("Q")
         quarterly = df.groupby("q_key")["total"].sum()
-        if len(quarterly) > 0:
-            expected = (quarterly > 0).sum() / len(quarterly)
-        else:
-            expected = 0.0
+        expected = (quarterly > 0).sum() / len(quarterly) if len(quarterly) > 0 else 0.0
         assert stats["季胜率"] == pytest.approx(expected, abs=0.001)
 
     def test_year_win_rate(self, bt: WeightBacktest) -> None:
@@ -242,6 +315,7 @@ class TestPeriodWinRates:
 # ============================================================================
 # 3. Trade metrics: 交易次数, 年化交易次数, 单笔盈亏比, 单笔收益, 交易胜率
 # ============================================================================
+
 
 class TestTradeMetrics:
     """Validate trade-related metrics against pairs data."""
@@ -310,10 +384,7 @@ class TestTradeMetrics:
             avg_win = wins.mean() if len(wins) > 0 else 0.0
             avg_loss = losses.mean() if len(losses) > 0 else 0.0
 
-        if abs(avg_loss) > 1e-10:
-            expected = avg_win / abs(avg_loss)
-        else:
-            expected = 0.0
+        expected = avg_win / abs(avg_loss) if abs(avg_loss) > 1e-10 else 0.0
         assert stats["单笔盈亏比"] == pytest.approx(expected, abs=0.01)
 
     def test_single_trade_profit(self, bt: WeightBacktest) -> None:
@@ -337,6 +408,7 @@ class TestTradeMetrics:
 # 4. Long/Short rates: 多头占比, 空头占比
 # ============================================================================
 
+
 class TestLongShortRates:
     """Validate long/short weight proportions."""
 
@@ -348,7 +420,6 @@ class TestLongShortRates:
     def test_long_rate_from_weights(self, bt: WeightBacktest) -> None:
         """多头占比 = fraction of weight rows where weight > 0."""
         stats = bt.stats
-        dailys = bt.dailys
         # In TS mode, long_rate = long_weight_rows / total_weight_rows
         # We can check from the dailys: rows where long_edge != 0 or long_return != 0
         # But actually Rust computes it from the raw weight data.
@@ -379,6 +450,7 @@ class TestLongShortRates:
 # ============================================================================
 # 5. Long stats vs Short stats
 # ============================================================================
+
 
 class TestLongShortStats:
     """Verify long_stats and short_stats use correct return columns."""
@@ -447,6 +519,7 @@ class TestLongShortStats:
 # ============================================================================
 # 6. Segment stats
 # ============================================================================
+
 
 class TestSegmentStats:
     """Verify segment_stats date filtering and consistency."""
@@ -644,10 +717,26 @@ class TestSegmentStats:
         """segment_stats should return all standard metric keys."""
         seg = bt.segment_stats(sdt=20240105, edt=20240115)
         expected_keys = [
-            "绝对收益", "年化收益", "夏普比率", "卡玛比率", "新高占比",
-            "单笔盈亏比", "单笔收益", "日胜率", "周胜率", "月胜率", "季胜率", "年胜率",
-            "最大回撤", "年化波动率", "下行波动率", "新高间隔",
-            "交易次数", "年化交易次数", "持仓K线数", "交易胜率",
+            "绝对收益",
+            "年化收益",
+            "夏普比率",
+            "卡玛比率",
+            "新高占比",
+            "单笔盈亏比",
+            "单笔收益",
+            "日胜率",
+            "周胜率",
+            "月胜率",
+            "季胜率",
+            "年胜率",
+            "最大回撤",
+            "年化波动率",
+            "下行波动率",
+            "新高间隔",
+            "交易次数",
+            "年化交易次数",
+            "持仓K线数",
+            "交易胜率",
         ]
         for k in expected_keys:
             assert k in seg, f"Missing key in segment_stats: {k}"
@@ -656,6 +745,7 @@ class TestSegmentStats:
 # ============================================================================
 # 7. Long alpha stats
 # ============================================================================
+
 
 class TestLongAlphaStats:
     """Verify vol-adjusted long alpha calculations."""
@@ -703,9 +793,20 @@ class TestLongAlphaStats:
         """long_alpha_stats should have all expected keys."""
         alpha_stats = bt.long_alpha_stats
         expected_keys = [
-            "绝对收益", "年化收益", "夏普比率", "卡玛比率", "新高占比",
-            "日胜率", "周胜率", "月胜率", "季胜率", "年胜率",
-            "最大回撤", "年化波动率", "下行波动率", "新高间隔",
+            "绝对收益",
+            "年化收益",
+            "夏普比率",
+            "卡玛比率",
+            "新高占比",
+            "日胜率",
+            "周胜率",
+            "月胜率",
+            "季胜率",
+            "年胜率",
+            "最大回撤",
+            "年化波动率",
+            "下行波动率",
+            "新高间隔",
         ]
         for k in expected_keys:
             assert k in alpha_stats, f"Missing key: {k}"
@@ -777,10 +878,7 @@ class TestLongAlphaStats:
         ad = ref["alpha_daily"]
         mean_a = np.mean(ad)
         std_a = np.std(ad, ddof=0)
-        if std_a > 1e-15:
-            expected = max(-5.0, min(10.0, mean_a / std_a * math.sqrt(YEARLY_DAYS)))
-        else:
-            expected = 0.0
+        expected = max(-5.0, min(10.0, mean_a / std_a * math.sqrt(YEARLY_DAYS))) if std_a > 1e-15 else 0.0
         assert alpha_stats["夏普比率"] == pytest.approx(expected, abs=0.01)
 
     def test_max_drawdown(self, bt: WeightBacktest) -> None:
@@ -830,7 +928,9 @@ class TestLongAlphaStats:
 
         # Week win rate on alpha
         df_tmp = pd.DataFrame({"date": dates, "alpha": ad})
-        df_tmp["week_key"] = df_tmp["date"].dt.isocalendar().year.astype(str) + "-" + df_tmp["date"].dt.isocalendar().week.astype(str)
+        df_tmp["week_key"] = (
+            df_tmp["date"].dt.isocalendar().year.astype(str) + "-" + df_tmp["date"].dt.isocalendar().week.astype(str)
+        )
         weekly = df_tmp.groupby("week_key")["alpha"].sum()
         expected_week = (weekly > 0).sum() / len(weekly) if len(weekly) > 0 else 0.0
         assert alpha_stats["周胜率"] == pytest.approx(expected_week, abs=0.001)
@@ -863,10 +963,7 @@ class TestLongAlphaStats:
         alpha_stats = bt.long_alpha_stats
         ad = ref["alpha_daily"]
         neg = ad[ad < 0]
-        if len(neg) > 0:
-            expected = np.std(neg, ddof=0) * math.sqrt(YEARLY_DAYS)
-        else:
-            expected = 0.0
+        expected = np.std(neg, ddof=0) * math.sqrt(YEARLY_DAYS) if len(neg) > 0 else 0.0
         assert alpha_stats["下行波动率"] == pytest.approx(expected, abs=0.001)
 
     def test_alpha_calmar_ratio(self, bt: WeightBacktest) -> None:
@@ -882,10 +979,7 @@ class TestLongAlphaStats:
         running_max = np.maximum.accumulate(cumsum)
         dd = running_max - cumsum
         max_dd = float(np.max(dd)) if len(dd) > 0 else 0.0
-        if max_dd > 1e-10:
-            expected = max(-10.0, min(20.0, annual_ret / max_dd))
-        else:
-            expected = 10.0
+        expected = max(-10.0, min(20.0, annual_ret / max_dd)) if max_dd > 1e-10 else 10.0
         # Rust computes calmar from round4(annual)/unrounded_maxdd then rounds
         assert alpha_stats["卡玛比率"] == pytest.approx(expected, rel=0.02)
 
@@ -958,6 +1052,7 @@ class TestLongAlphaStats:
 # 8. Cross-check: rust daily_performance standalone function
 # ============================================================================
 
+
 class TestDailyPerformanceStandalone:
     """Verify the standalone daily_performance function against known values."""
 
@@ -995,6 +1090,7 @@ class TestDailyPerformanceStandalone:
 # 9. Internal consistency: dailys -> daily_return
 # ============================================================================
 
+
 class TestInternalConsistency:
     """Verify internal data consistency across different views."""
 
@@ -1012,23 +1108,23 @@ class TestInternalConsistency:
         pivot_mean = pivot.mean(axis=1)  # TS mode = mean
 
         # Align dates
-        dr_dates = pd.to_datetime(dr["date"])
-        pivot_dates = pd.to_datetime(pivot_mean.index)
+        pd.to_datetime(dr["date"])
+        pd.to_datetime(pivot_mean.index)
         # Both should have same dates
         assert len(dr) == len(pivot_mean)
 
         np.testing.assert_allclose(
-            dr["total"].values, pivot_mean.values, atol=1e-6,
-            err_msg="daily_return.total should equal mean of per-symbol returns"
+            dr["total"].values,
+            pivot_mean.values,
+            atol=1e-6,
+            err_msg="daily_return.total should equal mean of per-symbol returns",
         )
 
     def test_long_return_plus_short_return_equals_return(self, bt: WeightBacktest) -> None:
         """For each row in dailys: long_return + short_return = return."""
         dailys = bt.dailys
         combined = dailys["long_return"] + dailys["short_return"]
-        pd.testing.assert_series_equal(
-            dailys["return"], combined, check_names=False, atol=1e-8
-        )
+        pd.testing.assert_series_equal(dailys["return"], combined, check_names=False, atol=1e-8)
 
     def test_symbols_count(self, bt: WeightBacktest) -> None:
         """品种数量 should match len(symbols)."""
@@ -1039,6 +1135,7 @@ class TestInternalConsistency:
 # ============================================================================
 # 10. Volatility metrics
 # ============================================================================
+
 
 class TestVolatilityMetrics:
     """Verify volatility-related metrics."""
@@ -1078,10 +1175,7 @@ class TestVolatilityMetrics:
         dr = bt.daily_return
         total_returns = dr["total"].values
         neg_returns = total_returns[total_returns < 0]
-        if len(neg_returns) > 0:
-            expected = np.std(neg_returns, ddof=0) * math.sqrt(YEARLY_DAYS)
-        else:
-            expected = 0.0
+        expected = np.std(neg_returns, ddof=0) * math.sqrt(YEARLY_DAYS) if len(neg_returns) > 0 else 0.0
         assert stats["下行波动率"] == pytest.approx(expected, abs=0.001)
 
     def test_new_high_ratio(self, bt: WeightBacktest) -> None:

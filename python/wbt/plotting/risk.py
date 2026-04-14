@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -49,7 +48,7 @@ def plot_drawdown(
             y=drawdown,
             fill="tozeroy",
             fillcolor=COLOR_DRAWDOWN,
-            line=dict(color="rgba(255,59,59,0.6)", width=1),
+            line={"color": "rgba(255,59,59,0.6)", "width": 1},
             name="回撤",
         ),
         secondary_y=False,
@@ -61,7 +60,7 @@ def plot_drawdown(
             x=df["date"],
             y=cumsum,
             mode="lines",
-            line=dict(color=COLOR_TOTAL, width=1.5),
+            line={"color": COLOR_TOTAL, "width": 1.5},
             name="累计收益",
         ),
         secondary_y=True,

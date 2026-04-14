@@ -6,16 +6,11 @@ from plotly.subplots import make_subplots
 
 from ._common import (
     COLOR_DRAWDOWN,
-    COLOR_LONG,
-    COLOR_NEGATIVE,
-    COLOR_POSITIVE,
     COLOR_RETURN,
-    COLOR_SHORT,
     COLOR_TOTAL,
     apply_default_layout,
     figure_to_html,
 )
-from .returns import plot_monthly_heatmap
 
 
 def plot_backtest_overview(
@@ -67,7 +62,7 @@ def plot_backtest_overview(
             y=drawdown,
             fill="tozeroy",
             fillcolor=COLOR_DRAWDOWN,
-            line=dict(color="rgba(255,59,59,0.6)", width=1),
+            line={"color": "rgba(255,59,59,0.6)", "width": 1},
             name="回撤",
         ),
         row=1,
@@ -79,7 +74,7 @@ def plot_backtest_overview(
             x=df["date"],
             y=cumsum,
             mode="lines",
-            line=dict(color=COLOR_TOTAL, width=1.5),
+            line={"color": COLOR_TOTAL, "width": 1.5},
             name="累计收益",
         ),
         row=1,
@@ -89,8 +84,8 @@ def plot_backtest_overview(
 
     # --- Top-right: histogram ---
     series = df[col].dropna() * 100
-    mean_val = float(series.mean())
-    std_val = float(series.std())
+    float(series.mean())
+    float(series.std())
 
     fig.add_trace(
         go.Histogram(
@@ -134,7 +129,7 @@ def plot_backtest_overview(
         height=700,
         title=title,
         title_font_size=14,
-        margin=dict(l=60, r=40, t=80, b=60),
+        margin={"l": 60, "r": 40, "t": 80, "b": 60},
     )
     return figure_to_html(fig) if to_html else fig
 
@@ -179,19 +174,19 @@ def plot_colored_table(
 
     fig.add_trace(
         go.Table(
-            header=dict(
-                values=["指标", "数值"],
-                fill_color="#3498db",
-                font_color="white",
-                align="center",
-                font_size=13,
-            ),
-            cells=dict(
-                values=[keys, fmt_values],
-                fill_color=[["white"] * len(keys), cell_colors],
-                align=["left", "right"],
-                font_size=12,
-            ),
+            header={
+                "values": ["指标", "数值"],
+                "fill_color": "#3498db",
+                "font_color": "white",
+                "align": "center",
+                "font_size": 13,
+            },
+            cells={
+                "values": [keys, fmt_values],
+                "fill_color": [["white"] * len(keys), cell_colors],
+                "align": ["left", "right"],
+                "font_size": 12,
+            },
         )
     )
 
@@ -238,7 +233,7 @@ def plot_long_short_comparison(
                         x=df["date"],
                         y=df[col].cumsum(),
                         mode="lines",
-                        line=dict(color=color, width=1.5),
+                        line={"color": color, "width": 1.5},
                         name=name,
                     ),
                     row=1,
@@ -261,18 +256,18 @@ def plot_long_short_comparison(
 
     fig.add_trace(
         go.Table(
-            header=dict(
-                values=["指标", "多空", "多头", "空头"],
-                fill_color="#3498db",
-                font_color="white",
-                align="center",
-                font_size=12,
-            ),
-            cells=dict(
-                values=[metric_names, col_total, col_long, col_short],
-                align=["left", "right", "right", "right"],
-                font_size=11,
-            ),
+            header={
+                "values": ["指标", "多空", "多头", "空头"],
+                "fill_color": "#3498db",
+                "font_color": "white",
+                "align": "center",
+                "font_size": 12,
+            },
+            cells={
+                "values": [metric_names, col_total, col_long, col_short],
+                "align": ["left", "right", "right", "right"],
+                "font_size": 11,
+            },
         ),
         row=1,
         col=2,
@@ -283,7 +278,7 @@ def plot_long_short_comparison(
         height=500,
         title=title,
         title_font_size=14,
-        margin=dict(l=60, r=40, t=80, b=60),
+        margin={"l": 60, "r": 40, "t": 80, "b": 60},
     )
     fig.update_yaxes(tickformat=".1%", row=1, col=1)
     return figure_to_html(fig) if to_html else fig
