@@ -154,6 +154,20 @@ impl PyWeightBacktest {
         Ok(PyBytes::new(py, &df_bytes))
     }
 
+    #[pyo3(signature = (min_days=120))]
+    fn yearly_return<'py>(
+        &mut self,
+        py: Python<'py>,
+        min_days: usize,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let mut df = self
+            .inner
+            .yearly_return_df(min_days)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let df_bytes = df_to_pyarrow(&mut df)?;
+        Ok(PyBytes::new(py, &df_bytes))
+    }
+
     fn dailys<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
         let df = self
             .inner

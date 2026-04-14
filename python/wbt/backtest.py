@@ -226,6 +226,29 @@ class WeightBacktest:
         """
         return self._map_symbols(arrow_bytes_to_pd_df(self._inner.daily_return()))
 
+    def yearly_return(self, min_days: int = 120) -> pd.DataFrame:
+        """计算每个 symbol 的年度收益（按年复利）
+
+        基于 daily_return 宽表按年分组，用 (1+r1)*(1+r2)*...*(1+rn) - 1 公式计算。
+        策略整体收益用 symbol='total' 表示。
+
+        :param min_days: int, default 120，每年最少交易日数量；不足的 (year, symbol) 会被跳过
+        :return: pd.DataFrame，列为 ['year', 'symbol', 'return']，按 (year, symbol) 升序排序
+
+            样例如下：
+            ====  ========  ===========
+            year  symbol         return
+            ====  ========  ===========
+            2017  DLj9001    0.1542
+            2017  SQag9001  -0.0318
+            2017  total      0.0612
+            2018  DLj9001   -0.0205
+            2018  SQag9001   0.0876
+            2018  total      0.0336
+            ====  ========  ===========
+        """
+        return arrow_bytes_to_pd_df(self._inner.yearly_return(min_days))
+
     @property
     def dailys(self) -> pd.DataFrame:
         """品种每日的交易信息

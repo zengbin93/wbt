@@ -14,6 +14,7 @@ pub mod period_win_rates;
 mod report;
 pub mod trade_dir;
 pub mod utils;
+pub mod yearly_return;
 
 pub use utils::WeightType;
 
@@ -235,6 +236,15 @@ impl WeightBacktest {
         Ok(self.pairs_cache.as_mut())
     }
 
+    /// 按需构建年度收益长表：`[year, symbol, return]`
+    ///
+    /// 基于 `daily_return_df()` 的宽表按年聚合；`total` 列作为 `symbol="total"` 行保留。
+    /// `min_days` 为每年最少交易日数量，不足的 `(year, symbol)` 组合跳过。
+    pub fn yearly_return_df(&mut self, min_days: usize) -> Result<DataFrame, WbtError> {
+        let wide = self.daily_return_df()?;
+        yearly_return::compute_yearly_returns(wide, min_days)
+    }
+
     /// 按需构建 alpha DataFrame（从 DailyTotals 直接计算）
     pub fn alpha_df(&self) -> Result<DataFrame, WbtError> {
         let report = self
@@ -443,6 +453,49 @@ mod tests {
         let df = raw_example_data();
         let wb = WeightBacktest::new(df, 2, Some(0.001)).unwrap();
         assert_eq!(wb.fee_rate, 0.001);
+    }
+
+    #[test]
+    fn yearly_return_df_end_to_end_minimal() {
+        // 基于 raw_example_data（5 天 / 2019 年 / 单 symbol DLi9001）
+        // min_days=1 应返回两行：(2019, DLi9001) 和 (2019, total)
+        let df = raw_example_data();
+        let mut wb = WeightBacktest::new(df, 2, None).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let y = wb.yearly_return_df(1).unwrap();
+        assert_eq!(y.height(), 2);
+
+        let years: Vec<i32> = y
+            .column("year")
+            .unwrap()
+            .as_materialized_series()
+            .i32()
+            .unwrap()
+            .into_no_null_iter()
+            .collect();
+        assert_eq!(years, vec![2019, 2019]);
+
+        let syms: Vec<String> = y
+            .column("symbol")
+            .unwrap()
+            .as_materialized_series()
+            .str()
+            .unwrap()
+            .into_no_null_iter()
+            .map(|s: &str| s.to_string())
+            .collect();
+        assert_eq!(syms, vec!["DLi9001".to_string(), "total".to_string()]);
+    }
+
+    #[test]
+    fn yearly_return_df_filters_when_below_min_days() {
+        // 5 天数据远不够 120 → 空结果
+        let df = raw_example_data();
+        let mut wb = WeightBacktest::new(df, 2, None).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+        let y = wb.yearly_return_df(120).unwrap();
+        assert_eq!(y.height(), 0);
     }
 
     #[test]
