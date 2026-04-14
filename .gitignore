@@ -220,3 +220,4 @@ python/wbt/lib_wbt.dylib.dSYM/
 wbt.code-workspace
 .idea/
 uv.lock
+.DS_Store
