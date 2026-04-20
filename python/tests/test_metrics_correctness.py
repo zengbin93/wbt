@@ -997,23 +997,25 @@ class TestLongAlphaStats:
         assert alpha_stats["新高占比"] == pytest.approx(expected, abs=0.001)
 
     def test_alpha_new_high_interval(self, bt: WeightBacktest) -> None:
-        """新高间隔 of alpha cumsum."""
+        """新高间隔 of alpha cumsum = 最长「严格水下」连续天数 (cum < running_max)。"""
         ref = self._python_alpha(bt)
         if ref is None:
             pytest.skip("Vol too small")
         alpha_stats = bt.long_alpha_stats
         ad = ref["alpha_daily"]
         cumsum = np.cumsum(ad)
-        max_cum = float("-inf")
-        current_interval = 0
-        max_interval = 0
-        for c in cumsum:
-            if c > max_cum:
-                max_cum = c
-                max_interval = max(max_interval, current_interval)
-                current_interval = 0
-            current_interval += 1
-        assert alpha_stats["新高间隔"] == pytest.approx(float(max_interval), abs=0.001)
+        running_max = np.maximum.accumulate(cumsum)
+        underwater = cumsum < running_max
+        max_streak = 0
+        streak = 0
+        for u in underwater:
+            if u:
+                streak += 1
+                if streak > max_streak:
+                    max_streak = streak
+            else:
+                streak = 0
+        assert alpha_stats["新高间隔"] == pytest.approx(float(max_streak), abs=0.001)
 
     def test_alpha_quarter_win_rate(self, bt: WeightBacktest) -> None:
         """季胜率 of alpha series."""
@@ -1194,26 +1196,27 @@ class TestVolatilityMetrics:
         assert stats["新高占比"] == pytest.approx(expected, abs=0.001)
 
     def test_new_high_interval(self, bt: WeightBacktest) -> None:
-        """新高间隔 = max interval between consecutive new highs.
+        """新高间隔 = 最长「严格水下」连续 bar 数 (cum < running_max)。
 
-        Rust tracks current_interval (bars since last new high) and records
-        the max interval seen when a new high is reached. The final trailing
-        interval (from last new high to end) is NOT included — this measures
-        the worst gap between two consecutive new highs.
+        语义与 czsc 漏洞文档「方法二：正确算法」一致：直接统计 cumsum 累计序列
+        相对 running-max 的严格低位连续长度，末尾未封闭水下段自然纳入（因为
+        只要一直 < running_max 就会持续累加，循环末尾 streak 即为尾段长度）。
         """
         stats = bt.stats
         dr = bt.daily_return
         total_returns = dr["total"].values
         cumsum = np.cumsum(total_returns)
+        running_max = np.maximum.accumulate(cumsum)
+        underwater = cumsum < running_max
 
-        max_cum = float("-inf")
-        current_interval = 0
-        max_interval = 0
-        for c in cumsum:
-            if c > max_cum:
-                max_cum = c
-                max_interval = max(max_interval, current_interval)
-                current_interval = 0
-            current_interval += 1
+        max_streak = 0
+        streak = 0
+        for u in underwater:
+            if u:
+                streak += 1
+                if streak > max_streak:
+                    max_streak = streak
+            else:
+                streak = 0
 
-        assert stats["新高间隔"] == pytest.approx(float(max_interval), abs=0.001)
+        assert stats["新高间隔"] == pytest.approx(float(max_streak), abs=0.001)

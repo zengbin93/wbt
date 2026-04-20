@@ -117,7 +117,10 @@ pub fn daily_performance(
     let mut m2 = 0.0;
     let mut max_cum_return: f64 = f64::NEG_INFINITY;
     let mut zero_drawdown_count = 0;
-    let mut current_interval = 0;
+    // 新高间隔 = 最长「严格水下」连续 bar 数（cum_return < running_max）。
+    // 语义与 czsc 漏洞对照文档「方法二」保持一致：只数水下天数本身，
+    // 不把新高当日或起始 bar 计入。
+    let mut current_uw_streak: i32 = 0;
     let mut new_high_interval: i32 = 0;
     let mut win_count = 0;
     let mut cum_win = 0.0;
@@ -139,15 +142,13 @@ pub fn daily_performance(
         lr_sum_cum_return += cum_return;
         lr_sum_xy += (i as f64) * cum_return;
 
-        if cum_return > max_cum_return {
+        if cum_return >= max_cum_return {
             max_cum_return = cum_return;
-            new_high_interval = new_high_interval.max(current_interval);
-            current_interval = 0;
-        }
-        current_interval += 1;
-
-        if max_cum_return - cum_return <= 0.0 {
+            current_uw_streak = 0;
             zero_drawdown_count += 1;
+        } else {
+            current_uw_streak += 1;
+            new_high_interval = new_high_interval.max(current_uw_streak);
         }
 
         match daily_return {
@@ -410,8 +411,9 @@ mod tests {
         // mean_win = 0.03/2 = 0.015, mean_loss = -0.005/1 = -0.005
         // daily_profit_loss_ratio = 0.015/0.005 = 3.0
         //
-        // new_high_interval: day0 new high (interval=0), day1 no, day2 new high (interval=2)
-        //   => max interval = 2
+        // new_high_interval = 最长水下连续天数:
+        //   cum = [0.01, 0.005, 0.025], running_max = [0.01, 0.01, 0.025]
+        //   underwater = [F, T, F] → 最长水下段 = 1
         // zero_drawdown_count = 2 (day0 and day2), ratio = 2/3
         //
         // sorted: [-0.005, 0.01, 0.02], cumsum: [-0.005, 0.005, 0.025]
@@ -428,7 +430,7 @@ mod tests {
         assert_eq!(dp.daily_profit_loss_ratio, 3.0);
         assert_eq!(dp.annual_volatility, 0.1631);
         assert_eq!(dp.non_zero_coverage, 1.0);
-        assert_eq!(dp.new_high_interval, 2.0);
+        assert_eq!(dp.new_high_interval, 1.0);
         assert_eq!(dp.new_high_ratio, 0.6667);
         assert_eq!(dp.break_even_point, 0.6667);
         assert_eq!(dp.drawdown_risk, 0.0307);
@@ -504,6 +506,53 @@ mod tests {
         // annual_returns = mean * yearly_days, so ratio should be 365/252
         let ratio = dp365.annual_returns as f64 / dp252.annual_returns as f64;
         assert!((ratio - 365.0 / 252.0).abs() < 0.01);
+    }
+
+    /// 尾段水下（last new high 之后再也未创新高）必须纳入 new_high_interval。
+    /// 2 天新高 + 5 天水下：cum = [.01,.03,.025,.022,.020,.019,.018]，
+    /// underwater = [F,F,T,T,T,T,T]，最长水下段 = 5。
+    /// 修复前仅捕获两次新高之间的 interval(=1)，漏掉 5 天尾段。
+    #[test]
+    fn new_high_interval_includes_trailing_underwater() {
+        let returns = [0.01, 0.02, -0.005, -0.003, -0.002, -0.001, -0.001];
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp.new_high_interval, 5.0);
+    }
+
+    /// 早期内部水下 + 尾段更长水下：取最长段（与 czsc bug 文件「方法二」同口径）。
+    #[test]
+    fn new_high_interval_trailing_longer_than_interior() {
+        // 3 天新高 → 2 天内部水下 → 1 天新高 → 6 天尾段水下
+        // underwater 最长段 = 6（尾段）
+        let returns = [0.01, 0.01, 0.01, -0.002, -0.001, 0.02, -0.001, -0.001, -0.001, -0.001, -0.001, -0.001];
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp.new_high_interval, 6.0);
+    }
+
+    /// 无回撤场景（每天创新高）：从未水下，新高间隔 = 0。
+    #[test]
+    fn new_high_interval_all_new_highs() {
+        let returns = [0.01, 0.02, 0.03, 0.04];
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp.new_high_interval, 0.0);
+    }
+
+    /// V 型回到 peak（cum 严格等于 running_max，tie）应该终止水下段，不计入。
+    /// cum = [0.05, 0.03, 0.01, 0.03, 0.05]，running_max 末端回到 0.05，最长水下 = 3。
+    #[test]
+    fn new_high_interval_tie_at_peak_terminates_streak() {
+        let returns = [0.05, -0.02, -0.02, 0.02, 0.02];
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp.new_high_interval, 3.0);
+    }
+
+    /// 极长单段水下：1 个新高 + N 个严格水下 bar，新高间隔 = N。
+    #[test]
+    fn new_high_interval_long_single_underwater_segment() {
+        let mut returns = vec![0.10];
+        returns.extend(std::iter::repeat_n(-0.0001, 100));
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp.new_high_interval, 100.0);
     }
 
     // --- daily_performance_drawdown ---

@@ -88,8 +88,8 @@ class TestDailyPerformanceEdgeCases:
         dp = daily_performance(np.array([0.01, 0.02, 0.03, 0.04]), yearly_days=252)
         assert dp["最大回撤"] == 0.0
         assert dp["新高占比"] == 1.0
-        # 新高间隔 = 1: every bar is a new high, interval between highs = 1 bar
-        assert dp["新高间隔"] == 1.0
+        # 新高间隔 = 最长「严格水下」天数。全正收益每天创新高，从未水下 → 0。
+        assert dp["新高间隔"] == 0.0
 
     def test_all_negative(self) -> None:
         """All negative returns: max_drawdown > 0, win_rate = 0."""
