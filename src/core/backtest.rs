@@ -206,7 +206,7 @@ impl WeightBacktest {
                 .map_err(WbtError::Polars)?
                 .into_column(),
         );
-        for (sym, values) in dailys_soa.symbol_dict.iter().zip(per_symbol.into_iter()) {
+        for (sym, values) in dailys_soa.symbol_dict.iter().zip(per_symbol) {
             columns.push(Series::new(sym.as_str().into(), values).into_column());
         }
         columns.push(Series::new("total".into(), total_values).into_column());
