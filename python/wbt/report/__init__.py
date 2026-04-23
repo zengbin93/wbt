@@ -1,5 +1,4 @@
-"""权重回测 HTML 报告生成模块。
-"""
+"""权重回测 HTML 报告生成模块。"""
 
 from __future__ import annotations
 

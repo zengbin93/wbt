@@ -379,9 +379,7 @@ class HtmlReportBuilder:
         self.sections.append(("header", header_html))
         return self
 
-    def add_metrics(
-        self, metrics: list[dict[str, Any]], title: str = "核心绩效指标"
-    ) -> HtmlReportBuilder:
+    def add_metrics(self, metrics: list[dict[str, Any]], title: str = "核心绩效指标") -> HtmlReportBuilder:
         """添加绩效指标卡片
 
         :param metrics: 指标列表，每个元素为 {"label": str, "value": str, "is_positive": bool}
@@ -459,8 +457,7 @@ class HtmlReportBuilder:
             return self
 
         tabs_html = (
-            '                <div class="chart-card">\n'
-            '                    <ul class="nav nav-tabs" role="tablist">\n'
+            '                <div class="chart-card">\n                    <ul class="nav nav-tabs" role="tablist">\n'
         )
         tabs_html += "\n".join([tab[1]["button"] for tab in chart_tabs])
         tabs_html += "\n                    </ul>\n"
@@ -508,9 +505,7 @@ class HtmlReportBuilder:
         if max_rows and len(df) > max_rows:
             df = df.head(max_rows)
 
-        table_html = df.to_html(
-            classes="table table-striped table-hover", index=False, border=0, justify="center"
-        )
+        table_html = df.to_html(classes="table table-striped table-hover", index=False, border=0, justify="center")
 
         section_html = f"""    <!-- {title} -->
     <section class="mb-4">
@@ -528,9 +523,7 @@ class HtmlReportBuilder:
         self.sections.append(("table", section_html))
         return self
 
-    def add_section(
-        self, title: str, content: str, icon: str = "bi-file-text"
-    ) -> HtmlReportBuilder:
+    def add_section(self, title: str, content: str, icon: str = "bi-file-text") -> HtmlReportBuilder:
         """添加自定义章节
 
         :param title: 章节标题
@@ -661,7 +654,6 @@ class HtmlReportBuilder:
 </body>
 </html>
 """
-
 
     def save(self, file_path: str) -> str:
         """保存 HTML 报告到文件

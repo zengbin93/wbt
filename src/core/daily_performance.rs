@@ -524,7 +524,9 @@ mod tests {
     fn new_high_interval_trailing_longer_than_interior() {
         // 3 天新高 → 2 天内部水下 → 1 天新高 → 6 天尾段水下
         // underwater 最长段 = 6（尾段）
-        let returns = [0.01, 0.01, 0.01, -0.002, -0.001, 0.02, -0.001, -0.001, -0.001, -0.001, -0.001, -0.001];
+        let returns = [
+            0.01, 0.01, 0.01, -0.002, -0.001, 0.02, -0.001, -0.001, -0.001, -0.001, -0.001, -0.001,
+        ];
         let dp = daily_performance(&returns, Some(252)).unwrap();
         assert_eq!(dp.new_high_interval, 6.0);
     }

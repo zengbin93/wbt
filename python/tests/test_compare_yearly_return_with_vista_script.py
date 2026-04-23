@@ -51,9 +51,7 @@ def test_yearly_return_matches_vista_row_by_row_on_real_data() -> None:
     result = module.run_comparison(dfw, min_days=120, n_jobs=4, vista_root=VISTA_ROOT)
 
     # 行数必须一致
-    assert result.wbt_rows == result.vista_rows > 0, (
-        f"rows mismatch: wbt={result.wbt_rows}, vista={result.vista_rows}"
-    )
+    assert result.wbt_rows == result.vista_rows > 0, f"rows mismatch: wbt={result.wbt_rows}, vista={result.vista_rows}"
     # 允许的最大绝对误差 = TOLERANCE (1e-12)；实测 0.0（bit-exact）
     assert result.matched, f"return values differ: max_abs_diff={result.max_abs_diff:.3e}"
     # 额外断言：本仓库最佳水平是 bit-exact（不是 1e-12 内近似），若未来偶然退化也能抓到

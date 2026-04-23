@@ -21,12 +21,15 @@ pub fn compute_yearly_returns(wide_df: &DataFrame, min_days: usize) -> Result<Da
     use std::collections::BTreeMap;
 
     // 1. date 列 → year 向量
-    let date_ca = wide_df.column("date")?.as_materialized_series().date()?.clone();
+    let date_ca = wide_df
+        .column("date")?
+        .as_materialized_series()
+        .date()?
+        .clone();
     let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
     let mut years: Vec<i32> = Vec::with_capacity(date_ca.len());
     for opt in date_ca.physical().iter() {
-        let days =
-            opt.ok_or_else(|| WbtError::NoneValue("date column contains null".into()))?;
+        let days = opt.ok_or_else(|| WbtError::NoneValue("date column contains null".into()))?;
         let nd = epoch + chrono::Duration::days(days as i64);
         years.push(nd.year());
     }
@@ -37,7 +40,11 @@ pub fn compute_yearly_returns(wide_df: &DataFrame, min_days: usize) -> Result<Da
         .iter()
         .filter_map(|n| {
             let s = n.as_str();
-            if s == "date" { None } else { Some(s.to_string()) }
+            if s == "date" {
+                None
+            } else {
+                Some(s.to_string())
+            }
         })
         .collect();
 
@@ -154,10 +161,7 @@ mod tests {
         assert_eq!(y, 2020);
         assert_eq!(s, "A");
         let expected = 1.01_f64 * 1.02 * 0.99 - 1.0;
-        assert!(
-            (r - expected).abs() < 1e-12,
-            "expected {expected}, got {r}"
-        );
+        assert!((r - expected).abs() < 1e-12, "expected {expected}, got {r}");
     }
 
     #[test]
@@ -229,8 +233,7 @@ mod tests {
         );
         let out = compute_yearly_returns(&df, 1).unwrap();
         assert_eq!(out.height(), 4);
-        let rows: Vec<(i32, String)> =
-            (0..4).map(|i| (row(&out, i).0, row(&out, i).1)).collect();
+        let rows: Vec<(i32, String)> = (0..4).map(|i| (row(&out, i).0, row(&out, i).1)).collect();
         assert_eq!(
             rows,
             vec![
@@ -244,10 +247,7 @@ mod tests {
 
     #[test]
     fn empty_when_all_below_min_days() {
-        let df = wide(
-            &["2020-01-02"],
-            &[("A", vec![Some(0.01)])],
-        );
+        let df = wide(&["2020-01-02"], &[("A", vec![Some(0.01)])]);
         let out = compute_yearly_returns(&df, 10).unwrap();
         assert_eq!(out.height(), 0);
         // schema 仍然正确

@@ -140,9 +140,7 @@ def test_html_builder_save_writes_file(tmp_path: Path) -> None:
 # ============================================================
 
 
-def test_generate_backtest_report_writes_valid_html(
-    sample_dfw: pd.DataFrame, tmp_path: Path
-) -> None:
+def test_generate_backtest_report_writes_valid_html(sample_dfw: pd.DataFrame, tmp_path: Path) -> None:
     out_path = tmp_path / "backtest_report.html"
     returned = generate_backtest_report(sample_dfw, output_path=str(out_path), title="测试报告", n_jobs=1)
     assert returned == str(out_path)
@@ -181,9 +179,7 @@ def test_generate_backtest_report_rejects_bad_input(tmp_path: Path) -> None:
         generate_backtest_report(bad, output_path=str(tmp_path / "x.html"))
 
 
-def test_generate_backtest_report_contains_all_11_metric_labels(
-    sample_dfw: pd.DataFrame, tmp_path: Path
-) -> None:
+def test_generate_backtest_report_contains_all_11_metric_labels(sample_dfw: pd.DataFrame, tmp_path: Path) -> None:
     """B 数据：HTML 中包含 czsc 原版 11 个绩效指标的 label"""
     out = tmp_path / "r.html"
     generate_backtest_report(sample_dfw, output_path=str(out), n_jobs=1)

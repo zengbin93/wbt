@@ -64,13 +64,7 @@ def _prepare_config(kwargs: dict) -> dict[str, Any]:
     :param kwargs: 用户传入的参数
     :return: 配置字典
     """
-    default_config = {
-        "fee_rate": 0.0002,
-        "digits": 2,
-        "weight_type": "ts",
-        "yearly_days": 252,
-        "n_jobs": 1
-    }
+    default_config = {"fee_rate": 0.0002, "digits": 2, "weight_type": "ts", "yearly_days": 252, "n_jobs": 1}
 
     return {**default_config, **kwargs}
 
@@ -95,10 +89,7 @@ def _build_report_params(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, 
 
 
 def generate_backtest_report(
-    df: pd.DataFrame,
-    output_path: str | None = None,
-    title: str = "权重回测报告",
-    **kwargs
+    df: pd.DataFrame, output_path: str | None = None, title: str = "权重回测报告", **kwargs
 ) -> str:
     """生成权重回测的 HTML 报告
 
@@ -142,8 +133,9 @@ def generate_backtest_report(
     return output_path
 
 
-def _build_and_save_report(title: str, df: pd.DataFrame, config: dict[str, Any],
-                           metrics: list, charts: dict, output_path: str) -> None:
+def _build_and_save_report(
+    title: str, df: pd.DataFrame, config: dict[str, Any], metrics: list, charts: dict, output_path: str
+) -> None:
     """构建并保存报告
 
     :param title: 报告标题
@@ -193,13 +185,11 @@ def _generate_main_charts(dret: pd.DataFrame) -> dict:
     :param dret: 日收益数据
     :return: 图表字典
     """
-    config = {'responsive': True, 'displayModeBar': True, 'scrollZoom': True}
+    config = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
     fig_stats = plot_backtest_stats(dret, ret_col="total", title="", template="plotly")
     fig_stats.update_layout(height=1000, autosize=True)
 
-    return {
-        "backtest_stats": fig_stats.to_html(include_plotlyjs=True, full_html=False, config=config)
-    }
+    return {"backtest_stats": fig_stats.to_html(include_plotlyjs=True, full_html=False, config=config)}
 
 
 class LongShortComparisonChart:
@@ -233,14 +223,9 @@ class LongShortComparisonChart:
         dfs["weight"] = dfs["weight"].clip(upper=0)  # 只保留空头
 
         dfb = df_base.copy()
-        dfb['weight'] = 1  # 基准等权
+        dfb["weight"] = 1  # 基准等权
 
-        self._strategy_data = {
-            "原始策略": df_base,
-            "策略多头": dfl,
-            "策略空头": dfs,
-            "基准等权": dfb
-        }
+        self._strategy_data = {"原始策略": df_base, "策略多头": dfl, "策略空头": dfs, "基准等权": dfb}
         return self._strategy_data
 
     def _create_backtests(self) -> dict:
@@ -260,7 +245,7 @@ class LongShortComparisonChart:
                 fee_rate=self.config["fee_rate"],
                 digits=self.config["digits"],
                 weight_type=weight_type,
-                yearly_days=self.config["yearly_days"]
+                yearly_days=self.config["yearly_days"],
             )
         self._backtests = wbs
         return wbs
@@ -306,7 +291,7 @@ class LongShortComparisonChart:
             df_stats = self._aggregate_strategy_stats()
 
             # 生成图表
-            plot_config = {'responsive': True, 'displayModeBar': True, 'scrollZoom': True}
+            plot_config = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
             fig_ls = plot_long_short_comparison(df_dailys, df_stats, title="多空收益对比", template="plotly")
             fig_ls.update_layout(height=1000, autosize=True)
 
