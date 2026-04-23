@@ -1,6 +1,6 @@
 [package]
 name = "wbt"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 description = "Weight-based backtesting engine for quantitative trading"
 license = "MIT"
@@ -16,7 +16,7 @@ name = "wbt"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-pyo3 = { version = "0.25", features = ["extension-module"] }
+pyo3 = { version = "0.25", features = ["extension-module", "abi3-py310", "generate-import-lib"] }
 numpy = "0.25"
 polars = { version = "0.46", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings", "parquet", "csv"] }
 rayon = "1.10"

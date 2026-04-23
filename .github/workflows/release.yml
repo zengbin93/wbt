@@ -10,11 +10,27 @@ permissions:
 
 jobs:
   build-wheels:
-    name: Build wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build wheels (${{ matrix.platform.os }}-${{ matrix.platform.target }})
+    runs-on: ${{ matrix.platform.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        platform:
+          - os: ubuntu-latest
+            target: x86_64
+            interpreter: "-i python3.12"
+          - os: ubuntu-latest
+            target: aarch64
+            interpreter: "-i python3.12"
+          - os: windows-latest
+            target: x86_64
+            interpreter: ""
+          - os: macos-latest
+            target: x86_64
+            interpreter: ""
+          - os: macos-latest
+            target: aarch64
+            interpreter: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,12 +39,14 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --strip --out dist
+          args: --release --strip --out dist ${{ matrix.platform.interpreter }}
+          target: ${{ matrix.platform.target }}
           manylinux: auto
+          working-directory: python
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}
-          path: dist/*.whl
+          name: wheels-${{ matrix.platform.os }}-${{ matrix.platform.target }}
+          path: python/dist/*.whl
 
   build-sdist:
     name: Build sdist
