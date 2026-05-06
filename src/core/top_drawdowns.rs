@@ -34,9 +34,7 @@ pub fn top_drawdowns(
         )));
     }
     if returns.is_empty() {
-        return Err(WbtError::Unexpected(anyhow!(
-            "returns must not be empty"
-        )));
+        return Err(WbtError::Unexpected(anyhow!("returns must not be empty")));
     }
 
     let top = top.unwrap_or(10);
