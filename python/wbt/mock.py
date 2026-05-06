@@ -26,6 +26,7 @@ def _stable_symbol_offset(symbol: str) -> int:
     digest = hashlib.md5(symbol.encode("utf-8")).digest()
     return int.from_bytes(digest[:4], "big") % 1000
 
+
 # 支持的K线频率
 SUPPORTED_FREQS = ("1分钟", "5分钟", "15分钟", "30分钟", "日线")
 
