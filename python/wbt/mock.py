@@ -5,10 +5,26 @@
 
 from __future__ import annotations
 
+import hashlib
 from functools import lru_cache
 
 import numpy as np
 import pandas as pd
+
+
+def _stable_symbol_offset(symbol: str) -> int:
+    """Per-symbol seed offset, stable across Python processes.
+
+    Python's built-in ``hash(str)`` is randomized via ``PYTHONHASHSEED``
+    starting Python 3.3, so naively using ``hash(symbol) % 1000`` made
+    ``mock_symbol_kline('000001', ..., seed=42)`` return different
+    OHLCV across processes. czsc's deterministic-snapshot tests
+    (and any reproducibility-dependent caller) require a stable hash;
+    md5 of the UTF-8 encoded symbol gives one without changing the
+    bit-width of the offset.
+    """
+    digest = hashlib.md5(symbol.encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") % 1000
 
 # 支持的K线频率
 SUPPORTED_FREQS = ("1分钟", "5分钟", "15分钟", "30分钟", "日线")
@@ -118,7 +134,7 @@ def mock_symbol_kline(
     if freq not in SUPPORTED_FREQS:
         raise ValueError(f"不支持的频率: {freq}。支持的频率: {', '.join(SUPPORTED_FREQS)}")
 
-    rng = np.random.default_rng(seed + hash(symbol) % 1000)
+    rng = np.random.default_rng(seed + _stable_symbol_offset(symbol))
 
     start_date = pd.to_datetime(sdt, format="%Y%m%d")
     end_date = pd.to_datetime(edt, format="%Y%m%d")

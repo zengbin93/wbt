@@ -12,6 +12,7 @@ mod evaluate_pairs;
 pub mod native_engine;
 pub mod period_win_rates;
 mod report;
+pub mod top_drawdowns;
 pub mod trade_dir;
 pub mod utils;
 pub mod yearly_return;

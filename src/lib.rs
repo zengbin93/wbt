@@ -317,6 +317,64 @@ pub fn daily_performance<'py>(
 }
 
 // ---------------------------------------------------------------------------
+// top_drawdowns standalone function
+// ---------------------------------------------------------------------------
+
+/// Identify the top-N drawdown windows in a return series. Input is
+/// an Arrow IPC stream encoding a DataFrame with columns
+/// ``date`` (Date or Datetime) and ``returns`` (f64); output is the
+/// same encoding for the result DataFrame whose schema is
+/// 回撤开始 / 回撤结束 / 回撤修复 / 净值回撤 / 回撤天数 / 恢复天数 / 新高间隔.
+#[pyfunction]
+#[pyo3(signature = (returns, top))]
+pub fn top_drawdowns<'py>(
+    py: Python<'py>,
+    returns: Bound<'py, PyBytes>,
+    top: usize,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let data = returns.as_bytes();
+    let df_in = pyarrow_to_df(data)?;
+
+    let dt_col = df_in
+        .column("date")
+        .map_err(|e| PyException::new_err(format!("missing 'date' column: {e}")))?;
+    let dt_type = dt_col.dtype();
+    let dates: Vec<chrono::NaiveDate> = match dt_type {
+        DataType::Datetime(_, _) => dt_col
+            .datetime()
+            .map_err(|e| PyException::new_err(e.to_string()))?
+            .as_datetime_iter()
+            .flatten()
+            .map(|d| d.date())
+            .collect(),
+        DataType::Date => dt_col
+            .date()
+            .map_err(|e| PyException::new_err(e.to_string()))?
+            .as_date_iter()
+            .flatten()
+            .collect(),
+        _ => {
+            return Err(PyException::new_err(format!(
+                "Unsupported date dtype: {dt_type:?} (expected Date or Datetime)"
+            )));
+        }
+    };
+
+    let returns_vec: Vec<f64> = df_in
+        .column("returns")
+        .map_err(|e| PyException::new_err(format!("missing 'returns' column: {e}")))?
+        .f64()
+        .map_err(|e| PyException::new_err(e.to_string()))?
+        .into_no_null_iter()
+        .collect();
+
+    let mut df_out = crate::core::top_drawdowns::top_drawdowns(&returns_vec, &dates, Some(top))
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+    let bytes = df_to_pyarrow(&mut df_out)?;
+    Ok(PyBytes::new(py, &bytes))
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -324,5 +382,6 @@ pub fn daily_performance<'py>(
 fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyWeightBacktest>()?;
     m.add_function(wrap_pyfunction!(daily_performance, m)?)?;
+    m.add_function(wrap_pyfunction!(top_drawdowns, m)?)?;
     Ok(())
 }
