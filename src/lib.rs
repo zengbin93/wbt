@@ -89,7 +89,7 @@ impl PyWeightBacktest {
 
         let mut inner = WeightBacktest::new(df, digits, fee_rate)
             .map_err(|e| PyException::new_err(e.to_string()))?;
-        py.allow_threads(|| {
+        py.detach(|| {
             inner
                 .backtest(n_jobs, weight_type, yearly_days)
                 .map_err(|e| PyException::new_err(e.to_string()))
@@ -215,7 +215,7 @@ impl PyWeightBacktest {
         let weight_type_enum = WeightType::from_str(weight_type).unwrap_or(WeightType::TS);
         let mut inner = WeightBacktest::from_file(path, digits, fee_rate)
             .map_err(|e| PyException::new_err(e.to_string()))?;
-        py.allow_threads(|| {
+        py.detach(|| {
             inner
                 .backtest(n_jobs, weight_type_enum, yearly_days)
                 .map_err(|e| PyException::new_err(e.to_string()))
@@ -283,7 +283,7 @@ pub fn daily_performance<'py>(
     py: Python<'py>,
     daily_returns: numpy::PyReadonlyArray1<'py, f64>,
     yearly_days: Option<usize>,
-) -> PyResult<PyObject> {
+) -> PyResult<Bound<'py, PyDict>> {
     let daily_returns = daily_returns
         .as_slice()
         .map_err(|e| PyException::new_err(e.to_string()))?;
@@ -313,7 +313,7 @@ pub fn daily_performance<'py>(
         dp.length_adjusted_average_max_drawdown,
     )?;
 
-    Ok(py_dict.into())
+    Ok(py_dict)
 }
 
 // ---------------------------------------------------------------------------

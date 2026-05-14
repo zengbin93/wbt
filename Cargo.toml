@@ -1,6 +1,6 @@
 [package]
 name = "wbt"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 description = "Weight-based backtesting engine for quantitative trading"
 license = "MIT"
@@ -16,18 +16,18 @@ name = "wbt"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-pyo3 = { version = "0.25", features = ["extension-module", "abi3-py310", "generate-import-lib"] }
-numpy = "0.25"
-polars = { version = "0.46", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings", "parquet", "csv"] }
-rayon = "1.10"
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310", "generate-import-lib"] }
+numpy = "0.28"
+polars = { version = "0.53", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings", "parquet", "csv"] }
+rayon = "1.12"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-strum = "0.26"
-strum_macros = "0.26"
-hashbrown = "0.15"
+strum = "0.28"
+strum_macros = "0.28"
+hashbrown = "0.17"
 
 [profile.release]
 lto = "fat"

@@ -82,7 +82,7 @@ pub fn compute_yearly_returns(wide_df: &DataFrame, min_days: usize) -> Result<Da
     let sorted_symbols: Vec<String> = idx.iter().map(|&i| out_symbols[i].clone()).collect();
     let sorted_returns: Vec<f64> = idx.iter().map(|&i| out_returns[i]).collect();
 
-    DataFrame::new(vec![
+    DataFrame::new_infer_height(vec![
         Series::new("year".into(), sorted_years).into_column(),
         Series::new("symbol".into(), sorted_symbols).into_column(),
         Series::new("return".into(), sorted_returns).into_column(),
@@ -115,7 +115,7 @@ mod tests {
         for (name, values) in symbol_cols {
             cols.push(Series::new((*name).into(), values.clone()).into_column());
         }
-        DataFrame::new(cols).unwrap()
+        DataFrame::new_infer_height(cols).unwrap()
     }
 
     fn row(df: &DataFrame, i: usize) -> (i32, String, f64) {

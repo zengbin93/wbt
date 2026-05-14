@@ -86,7 +86,7 @@ impl WeightBacktest {
             let perm_idx = IdxCa::new(PlSmallStr::from("idx"), &perm);
             let sym_id_vals: Vec<u32> = perm.iter().map(|&i| sym_ids[i as usize]).collect();
 
-            DataFrame::new(vec![
+            DataFrame::new_infer_height(vec![
                 Column::new("sym_id".into(), sym_id_vals),
                 dfw.column("dt")?
                     .as_materialized_series()
@@ -269,7 +269,7 @@ impl WeightBacktest {
             .map(|i| dt.strategy_means[i] - dt.benchmark_means[i])
             .collect();
 
-        DataFrame::new(vec![
+        DataFrame::new_infer_height(vec![
             Series::new("date".into(), dr_dates)
                 .cast(&DataType::Date)
                 .map_err(WbtError::Polars)?
@@ -316,7 +316,7 @@ impl WeightBacktest {
             DataType::Datetime(TimeUnit::Nanoseconds, _) => Ok(Self::sort_by_dt(df)?),
             DataType::Datetime(TimeUnit::Milliseconds, _) => {
                 let dt_cast = dt_col.cast(&DataType::Datetime(TimeUnit::Milliseconds, None))?;
-                let _ = df.replace("dt", dt_cast)?;
+                let _ = df.replace("dt", dt_cast.into())?;
                 Ok(Self::sort_by_dt(df)?)
             }
             DataType::Int64 => {
@@ -326,7 +326,7 @@ impl WeightBacktest {
                     .map(|opt_ts| opt_ts.map(|ts| ts * 1000));
                 let dt_s = Series::from_iter(parsed_col)
                     .cast(&DataType::Datetime(TimeUnit::Milliseconds, None))?;
-                let _ = df.replace("dt", dt_s)?;
+                let _ = df.replace("dt", dt_s.into())?;
                 Ok(Self::sort_by_dt(df)?)
             }
             DataType::String => {
@@ -365,7 +365,7 @@ impl WeightBacktest {
             .into_iter()
             .map(|opt| opt.map(|val| (val * 10000.0).round() / 10000.0))
             .collect::<Float64Chunked>();
-        let _ = df.replace("weight", rounded.into_series())?;
+        let _ = df.replace("weight", rounded.into_series().into())?;
         Ok(())
     }
 }
@@ -725,7 +725,7 @@ mod tests {
         let dt_series = Series::new("dt".into(), dates)
             .cast(&DataType::Datetime(TimeUnit::Nanoseconds, None))
             .unwrap();
-        let df = DataFrame::new(vec![
+        let df = DataFrame::new_infer_height(vec![
             dt_series.into_column(),
             Series::new("symbol".into(), &["A", "A"]).into_column(),
             Series::new("weight".into(), &[0.5_f64, 0.0]).into_column(),

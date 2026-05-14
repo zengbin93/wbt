@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn report_to_value() {
         let stats = make_stats_report();
-        let daily_return = DataFrame::new(vec![
+        let daily_return = DataFrame::new_infer_height(vec![
             polars::prelude::Series::new("date".into(), &[0_i32])
                 .cast(&polars::prelude::DataType::Date)
                 .unwrap()

@@ -211,7 +211,7 @@ impl WeightBacktest {
         }
         columns.push(Series::new("total".into(), total_values).into_column());
 
-        DataFrame::new(columns).map_err(WbtError::Polars)
+        DataFrame::new_infer_height(columns).map_err(WbtError::Polars)
     }
 
     /// 执行回测逻辑并计算性能指标
@@ -297,7 +297,7 @@ impl WeightBacktest {
                 (nd - epoch).num_days() as i32
             })
             .collect();
-        let daily_return_df = DataFrame::new(vec![
+        let daily_return_df = DataFrame::new_infer_height(vec![
             Series::new("date".into(), dr_dates)
                 .cast(&DataType::Date)
                 .map_err(WbtError::Polars)?

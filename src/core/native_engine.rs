@@ -93,7 +93,7 @@ impl DailysSoA {
             .cast(&DataType::Date)
             .map_err(WbtError::Polars)?;
 
-        Ok(DataFrame::new(vec![
+        Ok(DataFrame::new_infer_height(vec![
             sym_series.into_column(),
             date_series.into_column(),
             Series::new("n1b".into(), &self.n1b).into_column(),
@@ -173,7 +173,7 @@ impl PairsSoA {
             .cast(&DataType::Datetime(self.time_unit, None))
             .map_err(WbtError::Polars)?;
 
-        Ok(DataFrame::new(vec![
+        Ok(DataFrame::new_infer_height(vec![
             sym_series.into_column(),
             Series::new("交易方向".into(), &self.dirs).into_column(),
             open_dt_series.into_column(),
@@ -457,7 +457,7 @@ impl NativeEngine {
 
         let dt_col = dfw.column("dt")?.as_materialized_series().datetime()?;
         let time_unit = dt_col.time_unit();
-        let dt_ca = dt_col.rechunk();
+        let dt_ca = dt_col.phys.rechunk();
         let dt_slice = dt_ca.cont_slice().unwrap();
 
         let weight_col = dfw.column("weight")?.as_materialized_series().f64()?;

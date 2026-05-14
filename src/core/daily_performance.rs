@@ -504,7 +504,7 @@ mod tests {
         let dp252 = daily_performance(&returns, Some(252)).unwrap();
         let dp365 = daily_performance(&returns, Some(365)).unwrap();
         // annual_returns = mean * yearly_days, so ratio should be 365/252
-        let ratio = dp365.annual_returns as f64 / dp252.annual_returns as f64;
+        let ratio = dp365.annual_returns / dp252.annual_returns;
         assert!((ratio - 365.0 / 252.0).abs() < 0.01);
     }
 
