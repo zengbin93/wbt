@@ -173,6 +173,18 @@ uv run basedpyright
 - Python 中文文档：python/README_CN.md
 - 设计记录：docs/desgin.md
 
+## 相关开源项目
+
+wbt 处于一组量化研究工具的生态中，几个最相关的项目如下：
+
+- [**czsc**](https://github.com/waditu/czsc) — 基于缠论的综合性量化交易 Python 框架，覆盖信号、策略、Trader、EDA 与可视化；自 v1.0.x 起将核心算法用 Rust 实现并通过 PyO3 暴露（`czsc._native`）。**与 wbt 的关系：** wbt 从 czsc 迁移了 5 个评估 / 工具函数（`cal_yearly_days`、`rolling_daily_performance`、`weights_simple_ensemble`、`cal_trade_price`、`log_strategy_info`），并保持数值口径与 czsc 对齐（见 `python/tests/test_compare_with_czsc_script.py`）；czsc 端的策略天然产出可被 wbt 消费的权重表。
+
+- [**wmr**](https://github.com/zengbin93/wmr) — 基于 ClickHouse 与 DuckDB 的策略持仓权重管理系统，专注于大规模权重数据的持久化、版本管理与查询。**与 wbt 的关系：** wmr 是权重表的数据层（存储 / 检索），wbt 是把权重表转化为回测指标、日序列与 HTML 报告的计算层。
+
+- [**talib-rs**](https://github.com/0xcjun/talib-rs) — 纯 Rust 实现的技术分析库，定位为经典 C 版 TA-Lib 的 drop-in 替代（结果逐位对齐、SIMD 加速、无 C 依赖）。**与 wbt 的关系：** Rust 侧的同侪项目——wbt 聚焦权重回测与绩效指标，talib-rs 覆盖标准技术指标。当策略需要"指标计算 + 权重回测"同时在 Rust/Python 栈里完成时，两者可组合使用。
+
+整体上，三者勾勒出一条典型的研究到评估管线：**czsc**（信号与策略）→ **wmr**（权重存储）→ **wbt**（回测与指标），**talib-rs** 则在沿线提供可复用的 Rust 原生指标计算能力。
+
 ## License
 
 [MIT](LICENSE)

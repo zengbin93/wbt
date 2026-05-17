@@ -173,6 +173,18 @@ uv run basedpyright
 - Chinese Python guide: python/README_CN.md
 - Design notes: docs/desgin.md
 
+## Related Open-Source Projects
+
+wbt sits in a small ecosystem of quantitative-research tools. The most closely related projects:
+
+- [**czsc**](https://github.com/waditu/czsc) — A comprehensive Python framework for Chan Theory (缠论) quantitative trading: signals, strategies, traders, EDA, and plotting. Since v1.0.x its core algorithms are implemented in Rust and exposed via PyO3 (`czsc._native`). **Relation to wbt:** wbt migrated 5 evaluation/utility functions from czsc (`cal_yearly_days`, `rolling_daily_performance`, `weights_simple_ensemble`, `cal_trade_price`, `log_strategy_info`) and keeps numerical results aligned with the czsc reference (see `python/tests/test_compare_with_czsc_script.py`). czsc strategies naturally emit the weight tables that wbt consumes.
+
+- [**wmr**](https://github.com/zengbin93/wmr) — A strategy weight management system backed by ClickHouse and DuckDB, focused on persisting, versioning, and querying per-strategy position weights at scale. **Relation to wbt:** wmr is the data layer for weight tables (storage / retrieval); wbt is the compute layer that turns those tables into backtest metrics, daily series, and HTML reports.
+
+- [**talib-rs**](https://github.com/0xcjun/talib-rs) — A pure-Rust technical-analysis library, designed as a drop-in replacement for the classic C TA-Lib (bit-exact results, SIMD-accelerated, no C dependency). **Relation to wbt:** a peer project on the Rust side — wbt focuses on weight-driven backtesting and performance metrics, while talib-rs covers canonical TA indicators. The two compose well when a strategy needs both indicator computation and weight-based backtesting inside the same Rust/Python pipeline.
+
+Together they sketch a typical research-to-evaluation pipeline: **czsc** (signals & strategies) → **wmr** (weight storage) → **wbt** (backtest & metrics), with **talib-rs** providing reusable Rust-native indicator computation along the way.
+
 ## License
 
 [MIT](LICENSE)
