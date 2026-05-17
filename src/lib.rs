@@ -378,17 +378,22 @@ pub fn top_drawdowns<'py>(
 // cal_yearly_days standalone function
 // ---------------------------------------------------------------------------
 
+/// 计算年度交易日数量。输入为毫秒 unix 时间戳列表，返回年度交易日数。
 #[pyfunction]
 #[pyo3(signature = (timestamps_ms))]
 pub fn cal_yearly_days(timestamps_ms: Vec<i64>) -> PyResult<i64> {
-    use chrono::DateTime;
+    use chrono::{DateTime, NaiveDate};
     if timestamps_ms.is_empty() {
         return Err(PyException::new_err("输入的日期数量必须大于0"));
     }
-    let dates: Vec<chrono::NaiveDate> = timestamps_ms
+    let dates: Vec<NaiveDate> = timestamps_ms
         .iter()
         .filter_map(|ms| DateTime::from_timestamp_millis(*ms).map(|d| d.naive_utc().date()))
         .collect();
+    let dropped = timestamps_ms.len() - dates.len();
+    if dropped > 0 {
+        log::warn!("cal_yearly_days: 丢弃了 {dropped} 个无法解析为日期的时间戳");
+    }
     if dates.is_empty() {
         return Err(PyException::new_err("输入的日期数量必须大于0"));
     }
