@@ -401,6 +401,68 @@ pub fn cal_yearly_days(timestamps_ms: Vec<i64>) -> PyResult<i64> {
 }
 
 // ---------------------------------------------------------------------------
+// rolling_daily_performance standalone function
+// ---------------------------------------------------------------------------
+
+/// 计算滚动日收益的各项指标。输入为含 `dt` + `ret_col` 两列的 Arrow IPC 字节流，返回同格式 DataFrame。
+#[pyfunction]
+#[pyo3(signature = (data, ret_col, window=252, min_periods=100, yearly_days=None))]
+pub fn rolling_daily_performance<'py>(
+    py: Python<'py>,
+    data: Bound<'py, PyBytes>,
+    ret_col: &str,
+    window: i64,
+    min_periods: usize,
+    yearly_days: Option<usize>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let df_in = pyarrow_to_df(data.as_bytes())?;
+
+    let dt_col = df_in
+        .column("dt")
+        .map_err(|e| PyException::new_err(format!("missing 'dt' column: {e}")))?;
+    let dates: Vec<chrono::NaiveDate> = match dt_col.dtype() {
+        DataType::Datetime(_, _) => dt_col
+            .datetime()
+            .map_err(|e| PyException::new_err(e.to_string()))?
+            .as_datetime_iter()
+            .flatten()
+            .map(|d| d.date())
+            .collect(),
+        DataType::Date => dt_col
+            .date()
+            .map_err(|e| PyException::new_err(e.to_string()))?
+            .as_date_iter()
+            .flatten()
+            .collect(),
+        other => {
+            return Err(PyException::new_err(format!(
+                "Unsupported dt dtype: {other:?} (expected Date or Datetime)"
+            )));
+        }
+    };
+
+    let returns: Vec<f64> = df_in
+        .column(ret_col)
+        .map_err(|e| PyException::new_err(format!("missing '{ret_col}' column: {e}")))?
+        .f64()
+        .map_err(|e| PyException::new_err(e.to_string()))?
+        .into_iter()
+        .map(|opt| opt.unwrap_or(f64::NAN))
+        .collect();
+
+    let mut df_out = crate::core::rolling_daily_performance::rolling_daily_performance(
+        dates,
+        returns,
+        window,
+        min_periods,
+        yearly_days,
+    )
+    .map_err(|e| PyException::new_err(e.to_string()))?;
+    let bytes = df_to_pyarrow(&mut df_out)?;
+    Ok(PyBytes::new(py, &bytes))
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -413,5 +475,6 @@ fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(daily_performance, m)?)?;
     m.add_function(wrap_pyfunction!(top_drawdowns, m)?)?;
     m.add_function(wrap_pyfunction!(cal_yearly_days, m)?)?;
+    m.add_function(wrap_pyfunction!(rolling_daily_performance, m)?)?;
     Ok(())
 }
