@@ -420,6 +420,11 @@ pub fn rolling_daily_performance<'py>(
     let dt_col = df_in
         .column("dt")
         .map_err(|e| PyException::new_err(format!("missing 'dt' column: {e}")))?;
+    if dt_col.null_count() > 0 {
+        return Err(PyException::new_err(
+            "'dt' column contains nulls; fill or drop them before calling rolling_daily_performance",
+        ));
+    }
     let dates: Vec<chrono::NaiveDate> = match dt_col.dtype() {
         DataType::Datetime(_, _) => dt_col
             .datetime()
@@ -441,6 +446,9 @@ pub fn rolling_daily_performance<'py>(
         }
     };
 
+    // Null returns are converted to NaN here; the Rust core then maps NaN → 0,
+    // matching czsc's `df[ret_col].fillna(0)` behavior. This intentionally diverges
+    // from `top_drawdowns`, which rejects nulls via `into_no_null_iter`.
     let returns: Vec<f64> = df_in
         .column(ret_col)
         .map_err(|e| PyException::new_err(format!("missing '{ret_col}' column: {e}")))?
