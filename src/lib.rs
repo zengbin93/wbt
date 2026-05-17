@@ -375,13 +375,38 @@ pub fn top_drawdowns<'py>(
 }
 
 // ---------------------------------------------------------------------------
+// cal_yearly_days standalone function
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (timestamps_ms))]
+pub fn cal_yearly_days(timestamps_ms: Vec<i64>) -> PyResult<i64> {
+    use chrono::DateTime;
+    if timestamps_ms.is_empty() {
+        return Err(PyException::new_err("输入的日期数量必须大于0"));
+    }
+    let dates: Vec<chrono::NaiveDate> = timestamps_ms
+        .iter()
+        .filter_map(|ms| DateTime::from_timestamp_millis(*ms).map(|d| d.naive_utc().date()))
+        .collect();
+    if dates.is_empty() {
+        return Err(PyException::new_err("输入的日期数量必须大于0"));
+    }
+    Ok(crate::core::cal_yearly_days::cal_yearly_days(&dates))
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
 #[pymodule]
 fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Bridge Rust log::warn! → Python logging (loguru 用户可一行接管)
+    let _ = pyo3_log::try_init();
+
     m.add_class::<PyWeightBacktest>()?;
     m.add_function(wrap_pyfunction!(daily_performance, m)?)?;
     m.add_function(wrap_pyfunction!(top_drawdowns, m)?)?;
+    m.add_function(wrap_pyfunction!(cal_yearly_days, m)?)?;
     Ok(())
 }
