@@ -6,6 +6,7 @@ use report::Report;
 use std::path::Path;
 
 mod backtest;
+pub mod cal_yearly_days;
 pub mod daily_performance;
 pub mod errors;
 mod evaluate_pairs;
@@ -16,7 +17,6 @@ pub mod top_drawdowns;
 pub mod trade_dir;
 pub mod utils;
 pub mod yearly_return;
-pub mod cal_yearly_days;
 
 pub use utils::WeightType;
 

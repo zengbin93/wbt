@@ -59,8 +59,7 @@ mod tests {
         }
         // 加一个 2024 年初的日期保证 max-min > 365
         dates.push(d(2024, 2, 1));
-        let result = cal_yearly_days(&dates);
-        assert!(result >= 250 && result <= 260, "got {}", result);
+        assert_eq!(cal_yearly_days(&dates), 260);
     }
 
     #[test]
