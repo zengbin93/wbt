@@ -121,16 +121,31 @@ Accepted Python inputs:
 - wb.segment_stats(...): metrics for arbitrary date windows.
 - wb.long_alpha_stats: volatility-scaled long-side alpha metrics.
 
+## Standalone Utility Functions
+
+Beyond the `WeightBacktest` class, wbt exposes several stand-alone helpers at the top level:
+
+- `daily_performance(returns, yearly_days=252)`: full performance metrics on a daily return series (Rust core).
+- `top_drawdowns(returns, top=10)`: top-N drawdown windows (Rust core).
+- `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`: rolling-window daily performance (Rust core).
+- `cal_yearly_days(dts)`: infer yearly trading-day count from a date series (Rust core).
+- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False)`: ensemble multiple strategy weights (`mean` / `vote` / `sum_clip`).
+- `cal_trade_price(df, digits=None, windows=(5, 10, 15, 20, 30, 60))`: TWAP / VWAP and next-bar trade-price table grouped by symbol.
+- `log_strategy_info(strategy, df)`: pretty-print per-symbol weight summaries via loguru.
+- `mock_symbol_kline(...)` / `mock_weights(...)`: generators for quick experiments.
+
+The Rust-backed helpers emit warnings (e.g. short-span fallback in `cal_yearly_days`) via the `log` crate; `pyo3-log` bridges them into Python's standard `logging` module, so any loguru `InterceptHandler` setup will receive them transparently.
+
+## HTML Report Generation
+
+`wbt.generate_backtest_report(wb, output_path)` produces a self-contained HTML report combining the `wbt.report._plot_backtest` chart family (cumulative returns, drawdown analysis, daily return distribution, monthly heatmap, backtest stats overview, colored metric table, long/short comparison).
+
 ## Plotting
 
-Plot functions are available under wbt.plotting in the Python package, including:
+Two plotting surfaces are available in the Python package:
 
-- cumulative return curves
-- monthly heatmap
-- drawdown chart
-- daily return distribution
-- trade-pair analysis
-- integrated overview dashboard
+- `wbt.plotting`: focused single-purpose figures — `plot_cumulative_returns`, `plot_drawdown`, `plot_daily_return_dist`, `plot_monthly_heatmap`, `plot_symbol_returns`, `plot_pairs_analysis`, `plot_backtest_overview`, `plot_colored_table`, `plot_long_short_comparison`.
+- `wbt.report`: report-grade composite charts (used internally by `generate_backtest_report`) — `plot_backtest_stats`, `plot_drawdown_analysis`, `plot_daily_return_distribution`, plus reusable helpers like `HtmlReportBuilder` and `get_performance_metrics_cards`.
 
 ## Development Workflow
 

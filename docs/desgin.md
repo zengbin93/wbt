@@ -91,3 +91,29 @@
 2. segment_stats 中 sdt 和 edt 参数应该以 str 为主，兼容 timestamp 之类的格式，不要用 int 
 
 3. 在 wbt\python\scripts\quick_start.ipynb 中提供 plotting 函数的使用案例，并直接运行出来
+
+## 20260517
+
+从 czsc 库迁移 5 个常用函数到 wbt，并把可发布行为保持一致。
+
+1. 业务逻辑全部下沉到 Rust（针对 Rust 核心 + Python 适配的两个函数），Python 侧只做 pandas ↔ Arrow IPC 格式适配；Rust 端的 warning 通过 `log` + `pyo3-log` 桥接到 Python `logging`，loguru 用户配一次 `InterceptHandler` 即可接管。
+
+2. 模块组织：每个函数在 `python/wbt/utils/` 下独立一个 `.py` 文件，由 `utils/__init__.py` 汇总后再由顶层 `wbt/__init__.py` 透传。
+
+3. 新增 API 清单：
+
+   | API | 来源 | 实现层 | 说明 |
+   |---|---|---|---|
+   | `cal_yearly_days(dts)` | `czsc.eda` | Rust core + Python adapter | 年度交易日数，跨度 <365 天时回退 252 并发 warning |
+   | `rolling_daily_performance(df, ret_col, window, min_periods, yearly_days)` | `czsc.utils.analysis.stats` | Rust core + Python adapter | 滚动窗口日度绩效；自动排序、NaN→0、自动推断 yearly_days |
+   | `weights_simple_ensemble(df, weight_cols, method, only_long)` | `czsc.eda` | 纯 Python | 多策略权重集成（mean / vote / sum_clip） |
+   | `cal_trade_price(df, digits, windows)` | `czsc.eda` | 纯 Python | TWAP / VWAP 与下根 K 线交易价表 |
+   | `log_strategy_info(strategy, df)` | `czsc.utils.log` | 纯 Python | 用 loguru 打印每个品种的权重摘要 |
+
+4. 依赖变更：Rust 端新增 `log = "0.4"` + `pyo3-log = "0.13"`（兼容 pyo3 0.28）；Python 端新增 `loguru`。
+
+5. 关键质量门：cargo test 142 / cargo clippy clean / pytest 230 / ruff clean / basedpyright clean。
+
+6. 兼容性：所有改动是 additive，没有移除或重命名既有 API。
+
+实施计划与逐 task review 记录见 `docs/superpowers/plans/2026-05-17-czsc-functions-migration.md`。

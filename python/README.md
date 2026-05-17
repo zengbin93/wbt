@@ -119,35 +119,66 @@ Notes:
 
 ## Main API Surface
 
-Imports:
+Top-level imports (all reachable from `import wbt`):
 
 ```python
-from wbt import WeightBacktest, backtest, daily_performance
+from wbt import (
+    # Backtest engine
+    WeightBacktest, backtest,
+    # Performance metrics (Rust-backed)
+    daily_performance,
+    top_drawdowns,
+    rolling_daily_performance,
+    cal_yearly_days,
+    # Strategy utilities (pure Python)
+    weights_simple_ensemble,
+    cal_trade_price,
+    log_strategy_info,
+    # Reporting
+    generate_backtest_report,
+    # Test data
+    mock_symbol_kline, mock_weights,
+)
 ```
 
-Primary class and helper:
+Primary class and helpers:
 
-- WeightBacktest(...): main entry.
-- backtest(...): convenience wrapper returning WeightBacktest.
-- daily_performance(...): standalone metric utility.
+- `WeightBacktest(...)`: main backtest engine entry.
+- `backtest(...)`: convenience wrapper returning a `WeightBacktest`.
+- `daily_performance(returns, yearly_days=252)`: standalone metric utility on a daily-return array.
+- `top_drawdowns(returns, top=10)`: top-N drawdown windows.
+- `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`: rolling-window daily performance.
+- `cal_yearly_days(dts)`: infer yearly trading-day count from a date series.
+- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False, **kwargs)`: ensemble multiple strategy weights (`mean` / `vote` / `sum_clip`).
+- `cal_trade_price(df, digits=None, windows=(5, 10, 15, 20, 30, 60))`: TWAP / VWAP and next-bar trade-price table grouped by symbol.
+- `log_strategy_info(strategy, df)`: pretty-print per-symbol weight summaries via loguru.
+- `generate_backtest_report(wb, output_path)`: render a self-contained HTML report.
+- `mock_symbol_kline(...)` / `mock_weights(...)`: generators for quick experiments.
 
-Core properties and methods:
+Core `WeightBacktest` properties and methods:
 
-- stats, long_stats, short_stats
-- daily_return, long_daily_return, short_daily_return
-- dailys, pairs
-- alpha, alpha_stats, bench_stats
-- segment_stats(sdt, edt, kind)
-- long_alpha_stats
-- get_symbol_daily(symbol), get_symbol_pairs(symbol)
+- `stats`, `long_stats`, `short_stats`
+- `daily_return`, `long_daily_return`, `short_daily_return`
+- `dailys`, `pairs`
+- `alpha`, `alpha_stats`, `bench_stats`
+- `segment_stats(sdt, edt, kind)`
+- `long_alpha_stats`
+- `get_symbol_daily(symbol)`, `get_symbol_pairs(symbol)`
+
+### Logging Note
+
+`cal_yearly_days` and `rolling_daily_performance` emit warnings from Rust (e.g. short-span fallback) via the `log` crate. The package initializes `pyo3-log` at module load, so those warnings show up through Python's standard `logging`. If you use loguru, install an [`InterceptHandler`](https://loguru.readthedocs.io/en/stable/overview.html#entirely-compatible-with-standard-logging) once to route them into your loguru sinks.
 
 ## Plotting Utilities
 
-All plotting helpers are under wbt.plotting.
+Two plotting surfaces are provided:
+
+### `wbt.plotting` — single-purpose figures
 
 ```python
 from wbt.plotting import (
     plot_backtest_overview,
+    plot_colored_table,
     plot_cumulative_returns,
     plot_daily_return_dist,
     plot_drawdown,
@@ -158,6 +189,24 @@ from wbt.plotting import (
 )
 ```
 
+### `wbt.report` — report-grade composite charts
+
+```python
+from wbt.report import (
+    HtmlReportBuilder,
+    LongShortComparisonChart,
+    generate_backtest_report,
+    get_performance_metrics_cards,
+    plot_backtest_stats,
+    plot_colored_table,
+    plot_cumulative_returns,
+    plot_daily_return_distribution,
+    plot_drawdown_analysis,
+    plot_long_short_comparison,
+    plot_monthly_heatmap,
+)
+```
+
 Typical usage:
 
 ```python
@@ -165,8 +214,14 @@ fig1 = plot_cumulative_returns(wb.daily_return)
 fig2 = plot_drawdown(wb.daily_return)
 fig3 = plot_pairs_analysis(wb.pairs)
 
+# Composite stats overview (3-in-1 layout)
+fig4 = plot_backtest_stats(wb.daily_return, ret_col="total")
+
 # Optional HTML export
 html = plot_backtest_overview(wb.daily_return, to_html=True)
+
+# Full HTML report file
+generate_backtest_report(wb, "report.html")
 ```
 
 ## Quality And Testing
@@ -186,19 +241,40 @@ uv run basedpyright
 repo-root/
 |-- Cargo.toml
 |-- src/
+|   |-- lib.rs                       # PyO3 bindings (pyfunctions, _wbt pymodule)
+|   `-- core/
+|       |-- cal_yearly_days.rs       # Rust core for cal_yearly_days
+|       |-- daily_performance.rs
+|       |-- rolling_daily_performance.rs
+|       |-- top_drawdowns.rs
+|       `-- ...                      # backtest engine internals
 `-- python/
     `-- wbt/
-        |-- __init__.py
-        |-- _df_convert.py
-        |-- _wbt.pyi
-        |-- backtest.py
-        `-- plotting/
+        |-- __init__.py              # top-level exports
+        |-- _df_convert.py           # pandas <-> Arrow IPC helpers
+        |-- _wbt.pyi                 # Rust extension stubs
+        |-- backtest.py              # WeightBacktest class
+        |-- mock.py                  # mock_symbol_kline / mock_weights
+        |-- top_drawdowns.py         # adapter for _wbt.top_drawdowns
+        |-- utils/                   # adapters + pure-Python utilities
+        |   |-- __init__.py
+        |   |-- cal_yearly_days.py
+        |   |-- rolling_daily_performance.py
+        |   |-- weights_simple_ensemble.py
+        |   |-- cal_trade_price.py
+        |   `-- log_strategy_info.py
+        |-- plotting/                # single-purpose plotly charts
+        |   |-- __init__.py
+        |   |-- _common.py
+        |   |-- returns.py
+        |   |-- risk.py
+        |   |-- trades.py
+        |   `-- overview.py
+        `-- report/                  # HTML report + composite charts
             |-- __init__.py
-            |-- _common.py
-            |-- returns.py
-            |-- risk.py
-            |-- trades.py
-            `-- overview.py
+            |-- _generator.py
+            |-- _plot_backtest.py
+            `-- html_builder.py
 ```
 
 ## License
