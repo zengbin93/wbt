@@ -85,8 +85,14 @@ fn build_dataframe(
     let nh_int: Vec<f64> = perfs.iter().map(|p| p.new_high_interval).collect();
     let nh_ratio: Vec<f64> = perfs.iter().map(|p| p.new_high_ratio).collect();
     let dd_risk: Vec<f64> = perfs.iter().map(|p| p.drawdown_risk).collect();
-    let ann_lr: Vec<Option<f64>> = perfs.iter().map(|p| p.annual_lin_reg_cumsum_return).collect();
-    let la_mdd: Vec<f64> = perfs.iter().map(|p| p.length_adjusted_average_max_drawdown).collect();
+    let ann_lr: Vec<Option<f64>> = perfs
+        .iter()
+        .map(|p| p.annual_lin_reg_cumsum_return)
+        .collect();
+    let la_mdd: Vec<f64> = perfs
+        .iter()
+        .map(|p| p.length_adjusted_average_max_drawdown)
+        .collect();
 
     DataFrame::new_infer_height(vec![
         Series::new("绝对收益".into(), abs_ret).into_column(),
@@ -122,19 +128,16 @@ mod tests {
 
     #[test]
     fn mismatched_lengths_return_error() {
-        let res = rolling_daily_performance(
-            vec![d(2024, 1, 1)],
-            vec![0.01, 0.02],
-            252,
-            1,
-            Some(252),
-        );
+        let res =
+            rolling_daily_performance(vec![d(2024, 1, 1)], vec![0.01, 0.02], 252, 1, Some(252));
         assert!(matches!(res, Err(PolarsError::ComputeError(_))));
     }
 
     #[test]
     fn min_periods_skips_warmup() {
-        let dates: Vec<NaiveDate> = (0..400).map(|i| d(2022, 1, 1) + chrono::Duration::days(i)).collect();
+        let dates: Vec<NaiveDate> = (0..400)
+            .map(|i| d(2022, 1, 1) + chrono::Duration::days(i))
+            .collect();
         let returns: Vec<f64> = (0..400).map(|i| (i as f64) * 0.0001).collect();
         let df = rolling_daily_performance(dates, returns, 252, 100, Some(252)).unwrap();
         assert_eq!(df.height(), 300); // 400 - 100
@@ -166,7 +169,9 @@ mod tests {
 
     #[test]
     fn yearly_days_auto_inferred_when_none() {
-        let dates: Vec<NaiveDate> = (0..400).map(|i| d(2022, 1, 1) + chrono::Duration::days(i)).collect();
+        let dates: Vec<NaiveDate> = (0..400)
+            .map(|i| d(2022, 1, 1) + chrono::Duration::days(i))
+            .collect();
         let returns: Vec<f64> = vec![0.001; 400];
         let df = rolling_daily_performance(dates, returns, 252, 100, None).unwrap();
         assert!(df.height() > 0);
@@ -174,7 +179,9 @@ mod tests {
 
     #[test]
     fn unsorted_input_is_sorted_internally() {
-        let mut dates: Vec<NaiveDate> = (0..400).map(|i| d(2022, 1, 1) + chrono::Duration::days(i)).collect();
+        let mut dates: Vec<NaiveDate> = (0..400)
+            .map(|i| d(2022, 1, 1) + chrono::Duration::days(i))
+            .collect();
         dates.reverse();
         let returns: Vec<f64> = vec![0.001; 400];
         let df = rolling_daily_performance(dates, returns, 252, 100, Some(252)).unwrap();

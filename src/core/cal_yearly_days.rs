@@ -43,7 +43,9 @@ mod tests {
 
     #[test]
     fn span_less_than_one_year_returns_252() {
-        let dates: Vec<NaiveDate> = (1..=200).map(|i| d(2024, 1, 1) + chrono::Duration::days(i)).collect();
+        let dates: Vec<NaiveDate> = (1..=200)
+            .map(|i| d(2024, 1, 1) + chrono::Duration::days(i))
+            .collect();
         assert_eq!(cal_yearly_days(&dates), 252);
     }
 
@@ -65,7 +67,9 @@ mod tests {
     #[test]
     fn clamped_to_365() {
         // 极端情况：连续每天都有数据（>365 天/年时仍钳到 365）
-        let dates: Vec<NaiveDate> = (0..800).map(|i| d(2020, 1, 1) + chrono::Duration::days(i)).collect();
+        let dates: Vec<NaiveDate> = (0..800)
+            .map(|i| d(2020, 1, 1) + chrono::Duration::days(i))
+            .collect();
         assert!(cal_yearly_days(&dates) <= 365);
     }
 }
