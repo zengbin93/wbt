@@ -2472,7 +2472,7 @@ requires-dist = [
     { name = "loguru" },
     { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.0,<2.0" },
     { name = "numpy" },
-    { name = "pandas" },
+    { name = "pandas", specifier = ">=2.2" },
     { name = "plotly" },
     { name = "polars" },
     { name = "pyarrow" },
@@ -2485,7 +2485,8 @@ provides-extras = ["dev"]
 dev = [
     { name = "ipython", specifier = ">=8.39.0" },
     { name = "jupyter", specifier = ">=1.1.1" },
-    { name = "pandas-stubs", specifier = ">=2.3.3.260113" },
+    { name = "pandas-stubs", marker = "python_full_version < '3.11'", specifier = ">=2.3,<3" },
+    { name = "pandas-stubs", marker = "python_full_version >= '3.11'", specifier = ">=3.0" },
 ]
 
 [[package]]

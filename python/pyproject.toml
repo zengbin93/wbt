@@ -9,7 +9,7 @@ description = "Weight-based backtesting engine for quantitative trading"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["numpy", "pandas", "pyarrow", "polars", "plotly", "loguru"]
+dependencies = ["numpy", "pandas>=2.2", "pyarrow", "polars", "plotly", "loguru"]
 
 [project.optional-dependencies]
 dev = ["basedpyright", "maturin>=1.0,<2.0", "pytest", "ruff"]
@@ -64,5 +64,6 @@ exclude = ["tests/manual"]
 dev = [
     "ipython>=8.39.0",
     "jupyter>=1.1.1",
-    "pandas-stubs>=2.3.3.260113",
+    "pandas-stubs>=3.0; python_version>='3.11'",
+    "pandas-stubs>=2.3,<3; python_version<'3.11'",
 ]

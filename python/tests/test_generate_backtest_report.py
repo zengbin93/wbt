@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from wbt import WeightBacktest, generate_backtest_report
-from wbt.report import HtmlReportBuilder
+from wbt.report import HtmlReportBuilder, plot_cumulative_returns
 from wbt.report._generator import (
     _normalize_stats_for_czsc_view,
     _validate_input_data,
@@ -195,3 +195,17 @@ def test_generate_backtest_report_contains_all_11_metric_labels(sample_dfw: pd.D
         "空头占比",
     ]:
         assert label in html, f"missing metric label: {label}"
+
+
+# ============================================================
+# plot_cumulative_returns: datetime64 precision compatibility
+# ============================================================
+
+
+@pytest.mark.parametrize("unit", ["ns", "us", "ms", "s"])
+def test_plot_cumulative_returns_accepts_any_datetime_precision(unit: str) -> None:
+    """pandas 3.0 默认 datetime64[us]，不应硬编码 ns 精度。"""
+    idx = pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]).astype(f"datetime64[{unit}]")
+    df = pd.DataFrame({"total": [0.01, -0.005, 0.02]}, index=idx)
+    fig = plot_cumulative_returns(df)
+    assert fig is not None

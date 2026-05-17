@@ -185,7 +185,7 @@ def plot_cumulative_returns(
     :param include_plotlyjs: 转换 HTML 时是否包含 plotly.js 库，默认 True
     :return: Figure 对象或 HTML 字符串
     """
-    assert dret.index.dtype == "datetime64[ns]", "index必须是datetime64[ns]类型"
+    assert pd.api.types.is_datetime64_any_dtype(dret.index), "index 必须是 datetime64 类型"
     assert dret.index.is_unique, "df 的索引必须唯一"
     assert dret.index.is_monotonic_increasing, "df 的索引必须单调递增"
 
