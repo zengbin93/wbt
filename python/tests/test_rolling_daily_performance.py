@@ -42,3 +42,15 @@ def test_explicit_yearly_days_affects_output() -> None:
     assert len(out_252) == 300
     # yearly_days 影响年化指标计算；两次结果在年化列上应该不同
     assert not out_252["年化"].equals(out_365["年化"])
+
+
+def test_null_dt_rejected() -> None:
+    """dt 列含 NaT 时应被 Rust pre-flight check 拒绝，抛 Python 异常。"""
+    import pytest
+
+    from wbt.utils.rolling_daily_performance import rolling_daily_performance
+
+    df = _sample_df()
+    df.loc[5, "dt"] = pd.NaT  # 注入一个 NaT
+    with pytest.raises(Exception):  # noqa: B017
+        rolling_daily_performance(df, "ret", window=252, min_periods=100)

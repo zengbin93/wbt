@@ -24,7 +24,7 @@ def rolling_daily_performance(
     :param df: 日收益数据，columns 含 ['dt', ret_col]，或 index 为 datetime
     :param ret_col: 收益列名
     :param window: 滚动窗口（自然天数）
-    :param min_periods: 最小样本数
+    :param min_periods: 预热跳过的行数（前 min_periods 个 edt 不出结果，从第 min_periods+1 行开始计算）
     :param yearly_days: 年度交易日数；None 时由 Rust 调 cal_yearly_days 推断
     """
     if isinstance(df.index, pd.DatetimeIndex):
