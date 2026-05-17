@@ -129,8 +129,8 @@ Python 侧支持输入：
 - `top_drawdowns(returns, top=10)`：Top-N 回撤窗口（Rust 核心）。
 - `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`：滚动窗口日度绩效（Rust 核心）。
 - `cal_yearly_days(dts)`：根据日期序列自动推断年度交易日数（Rust 核心）。
-- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False)`：多策略权重集成（`mean` / `vote` / `sum_clip`）。
-- `cal_trade_price(df, digits=None, windows=(5, 10, 15, 20, 30, 60))`：按品种计算 TWAP / VWAP 与下根 K 线交易价表。
+- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False, **kwargs)`：多策略权重集成（`mean` / `vote` / `sum_clip`）。返回新 DataFrame（不修改入参 `df`）。`sum_clip` 模式可通过 kwargs 传 `clip_min=-1, clip_max=1`。
+- `cal_trade_price(df, digits=None, **kwargs)`：按品种计算 TWAP / VWAP 与下根 K 线交易价表。kwargs 支持 `windows=(5, 10, 15, 20, 30, 60)` 与 `copy=True`。
 - `log_strategy_info(strategy, df)`：用 loguru 打印每个品种的权重摘要。
 - `mock_symbol_kline(...)` / `mock_weights(...)`：快速实验的模拟数据生成器。
 

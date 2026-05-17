@@ -129,8 +129,8 @@ Beyond the `WeightBacktest` class, wbt exposes several stand-alone helpers at th
 - `top_drawdowns(returns, top=10)`: top-N drawdown windows (Rust core).
 - `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`: rolling-window daily performance (Rust core).
 - `cal_yearly_days(dts)`: infer yearly trading-day count from a date series (Rust core).
-- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False)`: ensemble multiple strategy weights (`mean` / `vote` / `sum_clip`).
-- `cal_trade_price(df, digits=None, windows=(5, 10, 15, 20, 30, 60))`: TWAP / VWAP and next-bar trade-price table grouped by symbol.
+- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False, **kwargs)`: ensemble multiple strategy weights (`mean` / `vote` / `sum_clip`). Returns a new DataFrame (input `df` is not mutated). `sum_clip` mode additionally accepts `clip_min=-1, clip_max=1` via kwargs.
+- `cal_trade_price(df, digits=None, **kwargs)`: TWAP / VWAP and next-bar trade-price table grouped by symbol. Accepts `windows=(5, 10, 15, 20, 30, 60)` and `copy=True` via kwargs.
 - `log_strategy_info(strategy, df)`: pretty-print per-symbol weight summaries via loguru.
 - `mock_symbol_kline(...)` / `mock_weights(...)`: generators for quick experiments.
 
