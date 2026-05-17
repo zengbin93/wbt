@@ -56,3 +56,18 @@ def test_invalid_method_raises() -> None:
 
     with pytest.raises(ValueError, match="method 参数错误"):
         weights_simple_ensemble(_sample(), ["w1", "w2"], method="unknown")
+
+
+def test_input_df_not_mutated() -> None:
+    from wbt.utils.weights_simple_ensemble import weights_simple_ensemble
+
+    df = _sample()
+    before_cols = list(df.columns)
+    before_snapshot = df.copy()
+    out = weights_simple_ensemble(df, ["w1", "w2", "w3"], method="mean")
+
+    assert "weight" in out.columns
+    assert "weight" not in df.columns, "weights_simple_ensemble 不应修改入参 df 的列"
+    assert list(df.columns) == before_cols
+    pd.testing.assert_frame_equal(df, before_snapshot)
+    assert out is not df, "应返回新 DataFrame 而非原对象"

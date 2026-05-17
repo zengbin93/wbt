@@ -16,11 +16,15 @@ def weights_simple_ensemble(
     """用朴素的方法集成多个策略的权重。
 
     method: mean / vote / sum_clip；kwargs.clip_min / clip_max 仅对 sum_clip 生效。
+
+    返回新 DataFrame；不会修改传入的 ``df``。
     """
     method = method.lower()
     missing = set(weight_cols) - set(df.columns)
     assert not missing, f"数据中不包含全部权重列，缺失：{missing}"
     assert "weight" not in df.columns, "数据中已经包含 weight 列，请先删除"
+
+    df = df.copy()
 
     if method == "mean":
         df["weight"] = df[weight_cols].mean(axis=1).fillna(0)
