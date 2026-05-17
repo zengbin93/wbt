@@ -29,7 +29,7 @@ strum = "0.28"
 strum_macros = "0.28"
 hashbrown = "0.17"
 log = "0.4"
-pyo3-log = "0.12"
+pyo3-log = "0.13"
 
 [profile.release]
 lto = "fat"

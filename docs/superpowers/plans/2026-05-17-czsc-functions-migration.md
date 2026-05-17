@@ -41,7 +41,7 @@
 
 ```toml
 log = "0.4"
-pyo3-log = "0.12"
+pyo3-log = "0.13"
 ```
 
 - [ ] **Step 2: 在 python/pyproject.toml 的 dependencies 列表追加 loguru**
