@@ -32,9 +32,7 @@ def test_vote_method() -> None:
 def test_sum_clip_method() -> None:
     from wbt.utils.weights_simple_ensemble import weights_simple_ensemble
 
-    df = weights_simple_ensemble(
-        _sample(), ["w1", "w2", "w3"], method="sum_clip", clip_min=-0.5, clip_max=0.5
-    )
+    df = weights_simple_ensemble(_sample(), ["w1", "w2", "w3"], method="sum_clip", clip_min=-0.5, clip_max=0.5)
     assert df["weight"].tolist() == [0.5, 0.0, 0.0, 0.5]
 
 
