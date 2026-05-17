@@ -16,6 +16,7 @@ pub mod top_drawdowns;
 pub mod trade_dir;
 pub mod utils;
 pub mod yearly_return;
+pub mod cal_yearly_days;
 
 pub use utils::WeightType;
 
