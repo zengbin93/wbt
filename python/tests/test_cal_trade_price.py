@@ -50,3 +50,18 @@ def test_tp_close_equals_close() -> None:
     bars = _bars()
     out = cal_trade_price(bars)
     assert (out["TP_CLOSE"] == bars["close"]).all()
+
+
+def test_twap_numeric_and_tail_fill() -> None:
+    """验证 TWAP 计算数值正确，且尾部 NaN 用 close 填充。"""
+    from wbt.utils.cal_trade_price import cal_trade_price
+
+    bars = _bars(n=10)  # close = [101, 102, ..., 110]
+    out = cal_trade_price(bars, windows=(3,))
+
+    # 第 0 行的 TP_TWAP3 = mean(close[2..4]) = mean([103, 104, 105]) = 103.0
+    assert out["TP_TWAP3"].iloc[0] == 103.0
+
+    # 尾部 3 行 TWAP 计算结果为 NaN，应被 fillna 替换为对应 close
+    for idx in (7, 8, 9):
+        assert out["TP_TWAP3"].iloc[idx] == out["close"].iloc[idx]
