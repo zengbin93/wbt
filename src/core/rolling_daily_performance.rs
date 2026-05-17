@@ -10,7 +10,7 @@ use polars::prelude::*;
 /// 2. 按 dates 升序排序（不要求调用方预排）；
 /// 3. returns 中的 NaN 视为 0；
 /// 4. yearly_days 未提供时，调用 cal_yearly_days 自动推断；
-/// 5. 滚动窗口：跳过前 min_periods 个点，每个 edt 取 (edt-window, edt] 区间。
+/// 5. 滚动窗口：跳过前 min_periods 个点，每个 edt 取 [edt-window, edt] 区间（两端闭）。
 pub fn rolling_daily_performance(
     dates: Vec<NaiveDate>,
     returns: Vec<f64>,
@@ -18,7 +18,11 @@ pub fn rolling_daily_performance(
     min_periods: usize,
     yearly_days: Option<usize>,
 ) -> PolarsResult<DataFrame> {
-    assert_eq!(dates.len(), returns.len(), "dates 与 returns 长度必须一致");
+    if dates.len() != returns.len() {
+        return Err(PolarsError::ComputeError(
+            "dates 与 returns 长度必须一致".into(),
+        ));
+    }
 
     let mut indexed: Vec<(NaiveDate, f64)> = dates
         .into_iter()
@@ -117,9 +121,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "dates 与 returns 长度必须一致")]
-    fn mismatched_lengths_panic() {
-        let _ = rolling_daily_performance(vec![d(2024, 1, 1)], vec![0.01, 0.02], 252, 1, Some(252));
+    fn mismatched_lengths_return_error() {
+        let res = rolling_daily_performance(
+            vec![d(2024, 1, 1)],
+            vec![0.01, 0.02],
+            252,
+            1,
+            Some(252),
+        );
+        assert!(matches!(res, Err(PolarsError::ComputeError(_))));
     }
 
     #[test]
@@ -132,13 +142,26 @@ mod tests {
 
     #[test]
     fn nan_returns_treated_as_zero() {
-        let dates: Vec<NaiveDate> = (0..400).map(|i| d(2022, 1, 1) + chrono::Duration::days(i)).collect();
+        let dates: Vec<NaiveDate> = (0..400)
+            .map(|i| d(2022, 1, 1) + chrono::Duration::days(i))
+            .collect();
         let mut returns: Vec<f64> = vec![0.001; 400];
-        returns[10] = f64::NAN;
-        returns[200] = f64::NAN;
-        // 不应 panic
+        // Scatter NaN across the series so every rolling window contains at least one
+        for i in (10..400).step_by(20) {
+            returns[i] = f64::NAN;
+        }
         let df = rolling_daily_performance(dates, returns, 252, 100, Some(252)).unwrap();
         assert_eq!(df.height(), 300);
+
+        // 验证 NaN→0 后所有窗口的核心指标都是有限值（否则 NaN 会污染下游计算）
+        for col in ["年化", "夏普", "最大回撤"] {
+            let series = df.column(col).unwrap().as_materialized_series();
+            let f = series.f64().unwrap();
+            for opt in f.into_iter() {
+                let v = opt.expect("metric should be non-null");
+                assert!(v.is_finite(), "column {col} contains non-finite value");
+            }
+        }
     }
 
     #[test]
