@@ -1,0 +1,23 @@
+# Mirrors the CI "Rust Lint" job locally so failures are caught before push.
+# Enable once per clone:
+#   uv tool install pre-commit   # or: pipx install pre-commit / pip install pre-commit
+#   pre-commit install
+# Run manually across the repo:
+#   pre-commit run --all-files
+
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt --all -- --check
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy --all -- -D warnings -A non_snake_case
+        entry: cargo clippy --all -- -D warnings -A non_snake_case
+        language: system
+        types: [rust]
+        pass_filenames: false
