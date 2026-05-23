@@ -207,3 +207,93 @@ class TestPlotLongShortComparison:
 
         fig = plot_long_short_comparison(pd.DataFrame(), {}, {}, {})
         assert isinstance(fig, go.Figure)
+
+    def test_vol_normalized_subplot(self, wb):
+        """`wbt.report._plot_backtest.plot_long_short_comparison` 必须包含波动率归一后的中间子图。"""
+        import numpy as np
+        import pandas as pd
+
+        from wbt.report._plot_backtest import plot_long_short_comparison as report_plot
+
+        # 构造一个 2 列日收益透视表
+        dret = wb.daily_return.copy()
+        dret["dt"] = pd.to_datetime(dret["date"])
+        dret = dret.set_index("dt").drop(columns=["date"])
+        cols = [c for c in dret.columns if c != "total"][:2]
+        pivot = dret[cols]
+
+        stats_df = pd.DataFrame({"策略名称": cols, "年化": [0.0] * len(cols)})
+
+        target = 0.15
+        fig = report_plot(pivot, stats_df, target_volatility=target)
+        assert isinstance(fig, go.Figure)
+
+        layout_titles = [a.text for a in fig.layout.annotations if hasattr(a, "text") and a.text]
+        assert any("波动率调整" in t for t in layout_titles), layout_titles
+        assert hasattr(fig.layout, "xaxis2") and hasattr(fig.layout, "yaxis2")
+
+        # 校验中图的归一化逻辑：每条调整后日收益的年化波动率 ≈ target
+        yd = 252
+        for col in cols:
+            daily_ret = pivot[col]
+            annual_vol = daily_ret.std() * np.sqrt(yd)
+            if annual_vol == 0:
+                continue
+            scale = target / annual_vol
+            adj_vol = (daily_ret * scale).std() * np.sqrt(yd)
+            assert adj_vol == pytest.approx(target, rel=1e-9)
+
+    def test_vol_normalized_long_alpha_curve(self, wb):
+        """当透视表同时包含 '策略多头' 和 '基准等权' 时，中图必须出现 '多头超额' 曲线。"""
+        import numpy as np
+        import pandas as pd
+
+        from wbt.report._plot_backtest import plot_long_short_comparison as report_plot
+
+        # 构造一个 2 列透视表：'策略多头' + '基准等权'
+        dret = wb.daily_return.copy()
+        dret["dt"] = pd.to_datetime(dret["date"])
+        dret = dret.set_index("dt").drop(columns=["date"])
+        base = dret["total"]
+        pivot = pd.DataFrame(
+            {
+                "策略多头": base.clip(lower=0),
+                "基准等权": base * 0.5,  # 随便造个非零基准
+            }
+        )
+        stats_df = pd.DataFrame({"策略名称": list(pivot.columns), "年化": [0.0, 0.0]})
+
+        target = 0.20
+        fig = report_plot(pivot, stats_df, target_volatility=target)
+
+        # '多头超额' trace 必须存在
+        alpha_traces = [t for t in fig.data if getattr(t, "name", None) == "多头超额"]
+        assert len(alpha_traces) == 1, [t.name for t in fig.data]
+
+        # 数值校验：alpha = scaled(策略多头).cumsum() - scaled(基准等权).cumsum()
+        yd = 252
+        scales = {}
+        for col in pivot.columns:
+            annual_vol = pivot[col].std() * np.sqrt(yd)
+            scales[col] = target / annual_vol if annual_vol > 0 else 1.0
+        expected_alpha_cum = (pivot["策略多头"] * scales["策略多头"]).cumsum() - (
+            pivot["基准等权"] * scales["基准等权"]
+        ).cumsum()
+        np.testing.assert_allclose(alpha_traces[0].y, expected_alpha_cum.to_numpy())
+
+    def test_vol_normalized_no_long_alpha_when_columns_missing(self, wb):
+        """缺少 '策略多头' 或 '基准等权' 时不应渲染 '多头超额' 曲线。"""
+        import pandas as pd
+
+        from wbt.report._plot_backtest import plot_long_short_comparison as report_plot
+
+        dret = wb.daily_return.copy()
+        dret["dt"] = pd.to_datetime(dret["date"])
+        dret = dret.set_index("dt").drop(columns=["date"])
+        cols = [c for c in dret.columns if c != "total"][:2]
+        pivot = dret[cols]
+        stats_df = pd.DataFrame({"策略名称": cols, "年化": [0.0] * len(cols)})
+
+        fig = report_plot(pivot, stats_df)
+        alpha_traces = [t for t in fig.data if getattr(t, "name", None) == "多头超额"]
+        assert not alpha_traces

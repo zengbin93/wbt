@@ -7,6 +7,7 @@
 
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -639,8 +640,10 @@ def plot_long_short_comparison(
     template: TemplateType = "plotly",
     to_html: bool = False,
     include_plotlyjs: bool = True,
+    target_volatility: float = 0.2,
+    trading_days_per_year: int = 252,
 ) -> go.Figure | str:
-    """绘制多空收益对比图（累计收益曲线 + 绩效指标对比表）
+    """绘制多空收益对比图（累计收益曲线 + 波动率调整后收益 + 绩效指标对比表）
 
     :param dailys_pivot: 透视表格式的日收益数据，index为日期，columns为策略名，values为收益率
     :param stats_df: 绩效指标对比表，每行代表一个策略的指标
@@ -648,37 +651,88 @@ def plot_long_short_comparison(
     :param template: plotly 模板名称
     :param to_html: 是否转换为 HTML
     :param include_plotlyjs: 转换 HTML 时是否包含 plotly.js 库
+    :param target_volatility: 目标年化波动率，默认 0.2（20%），用于调整收益对比
+    :param trading_days_per_year: 年化交易日数量，默认 252
     :return: Figure 对象或 HTML 字符串
     """
-    # 创建 2x1 子图（上下布局），指定第二个子图为 table 类型
+    # 创建 3x1 子图（累计 / 波动率归一后累计 / 指标表）
+    subplot_title_adjusted = f"波动率调整后收益对比（目标波动率: {target_volatility:.0%}）"
     fig = make_subplots(
-        rows=2,
+        rows=3,
         cols=1,
-        subplot_titles=("累计收益曲线对比", "绩效指标对比"),
-        vertical_spacing=0.12,
-        row_heights=[0.55, 0.45],
-        specs=[[{"type": "xy"}], [{"type": "table"}]],
+        subplot_titles=("累计收益曲线对比", subplot_title_adjusted, "绩效指标对比"),
+        vertical_spacing=0.08,
+        row_heights=[0.35, 0.35, 0.30],
+        specs=[[{"type": "xy"}], [{"type": "xy"}], [{"type": "table"}]],
     )
 
-    # ========== 上图：累计收益曲线 ==========
+    # 颜色组：同一策略在上、中两图保持同色，并通过 legendgroup 联动显隐
+    colors = px.colors.qualitative.Plotly * 10
+
+    # ========== 上图：原始累计收益曲线 ==========
     df_cumsum = dailys_pivot.cumsum()
-    for col in df_cumsum.columns:
+    for i, col in enumerate(df_cumsum.columns):
         fig.add_trace(
             go.Scatter(
                 x=df_cumsum.index,
                 y=df_cumsum[col],
                 name=col,
                 mode="lines",
+                line={"color": colors[i]},
+                legendgroup=col,
             ),
             row=1,
             col=1,
         )
-
-    # 添加年度分隔线
     _add_year_boundary_lines(fig, df_cumsum.index, row=1, col=1, line_color="gray", opacity=0.5)
 
+    # ========== 中图：按目标波动率归一后的累计收益曲线 ==========
+    # 每条收益序列 scale = target_vol / annual_vol(series)，归一后年化波动率均 ≈ target_vol
+    yd_sqrt = np.sqrt(trading_days_per_year)
+    adjusted_returns = pd.DataFrame(index=dailys_pivot.index)
+    for col in dailys_pivot.columns:
+        daily_ret = dailys_pivot[col]
+        annual_vol = daily_ret.std() * yd_sqrt
+        scale = (target_volatility / annual_vol) if annual_vol > 0 else 1.0
+        adjusted_returns[col] = daily_ret * scale
+
+    df_adjusted_cumsum = adjusted_returns.cumsum()
+    for i, col in enumerate(df_adjusted_cumsum.columns):
+        fig.add_trace(
+            go.Scatter(
+                x=df_adjusted_cumsum.index,
+                y=df_adjusted_cumsum[col],
+                name=f"{col}(调整)",
+                mode="lines",
+                showlegend=False,
+                legendgroup=col,
+                line={"color": colors[i]},
+            ),
+            row=2,
+            col=1,
+        )
+
+    # 多头超额 = 波动率归一后的多头累计收益 - 波动率归一后的基准等权累计收益
+    long_col = "策略多头"
+    bench_col = "基准等权"
+    if long_col in df_adjusted_cumsum.columns and bench_col in df_adjusted_cumsum.columns:
+        alpha_cum = df_adjusted_cumsum[long_col] - df_adjusted_cumsum[bench_col]
+        fig.add_trace(
+            go.Scatter(
+                x=alpha_cum.index,
+                y=alpha_cum,
+                name="多头超额",
+                mode="lines",
+                line={"color": "#FF1493", "width": 3.5},
+                legendgroup="多头超额",
+            ),
+            row=2,
+            col=1,
+        )
+
+    _add_year_boundary_lines(fig, df_adjusted_cumsum.index, row=2, col=1, line_color="gray", opacity=0.5)
+
     # ========== 下图：使用 plot_colored_table 绘制绩效对比表 ==========
-    # 选择关键指标列
     key_cols = [
         "策略名称",
         "年化",
@@ -692,16 +746,11 @@ def plot_long_short_comparison(
         "多头占比",
         "空头占比",
     ]
-
-    # 过滤存在的列
     available_cols = [col for col in key_cols if col in stats_df.columns]
     table_df = stats_df[available_cols].copy()
-
-    # 设置策略名称为索引（如果存在）
     if "策略名称" in table_df.columns:
         table_df = table_df.set_index("策略名称")
 
-    # 调用 plot_colored_table 生成表格图表
     table_fig = plot_colored_table(
         table_df,
         title="",
@@ -710,24 +759,22 @@ def plot_long_short_comparison(
         to_html=False,
         good_high_columns=["年化", "夏普", "卡玛", "交易胜率", "单笔收益"],
     )
-
-    # 将表格的 trace 添加到主图中
     for trace in table_fig.data:
-        fig.add_trace(trace, row=2, col=1)
+        fig.add_trace(trace, row=3, col=1)
 
     # ========== 更新布局 ==========
     fig.update_layout(
         title=title,
         template=template,
-        height=1200,
+        height=1400,
         margin={"l": 20, "r": 20, "b": 20, "t": 60},
         hovermode="x unified",
         showlegend=True,
         legend={"x": 0.01, "y": 0.99, "bgcolor": "rgba(0,0,0,0)"},
     )
-
-    # 更新坐标轴标签
     fig.update_yaxes(title_text="累计收益", row=1, col=1)
     fig.update_xaxes(title_text="", row=1, col=1)
+    fig.update_yaxes(title_text="调整后累计收益", row=2, col=1)
+    fig.update_xaxes(title_text="", row=2, col=1)
 
     return _figure_to_html(fig, to_html, include_plotlyjs)

@@ -293,7 +293,8 @@ class LongShortComparisonChart:
             # 生成图表
             plot_config = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
             fig_ls = plot_long_short_comparison(df_dailys, df_stats, title="多空收益对比", template="plotly")
-            fig_ls.update_layout(height=1000, autosize=True)
+            # 多空对比图为三行子图（原始 / 波动率归一 / 指标表），需要 1400 高度避免压缩
+            fig_ls.update_layout(height=1400, autosize=True)
 
             return fig_ls.to_html(include_plotlyjs=False, full_html=False, config=plot_config)
 

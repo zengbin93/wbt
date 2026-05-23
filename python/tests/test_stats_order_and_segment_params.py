@@ -133,3 +133,17 @@ class TestSegmentStatsLongShortRate:
         stats = wb.segment_stats(sdt="2024-01-05", edt="2024-01-10")
         assert 0.0 <= stats["多头占比"] <= 1.0
         assert 0.0 <= stats["空头占比"] <= 1.0
+
+    def test_kind_single_side_zeros_opposite(self, wb: WeightBacktest) -> None:
+        """kind 单边视图必须把反向占比置 0。"""
+        long_only = wb.segment_stats(kind="多头")
+        assert long_only["空头占比"] == 0.0
+        assert long_only["多头占比"] > 0.0
+
+        short_only = wb.segment_stats(kind="空头")
+        assert short_only["多头占比"] == 0.0
+        assert short_only["空头占比"] > 0.0
+
+        # long_stats / short_stats 同样遵循单边语义
+        assert wb.long_stats["空头占比"] == 0.0
+        assert wb.short_stats["多头占比"] == 0.0

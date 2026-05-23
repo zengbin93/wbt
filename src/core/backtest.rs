@@ -288,7 +288,7 @@ impl WeightBacktest {
             TradeDir::Long,
             yearly_days,
             long_rate,
-            short_rate,
+            0.0,
             symbols_count,
         )?;
         let short_stats = build_stats_dict(
@@ -297,7 +297,7 @@ impl WeightBacktest {
             &pairs_soa,
             TradeDir::Short,
             yearly_days,
-            long_rate,
+            0.0,
             short_rate,
             symbols_count,
         )?;
@@ -443,10 +443,13 @@ impl WeightBacktest {
             seg_weight_rows += daily_totals.weight_rows_per_day[row];
         }
         let (long_rate, short_rate) = if seg_weight_rows > 0 {
-            (
-                (seg_long_count as f64 / seg_weight_rows as f64).round_to_4_digit(),
-                (seg_short_count as f64 / seg_weight_rows as f64).round_to_4_digit(),
-            )
+            let lr = (seg_long_count as f64 / seg_weight_rows as f64).round_to_4_digit();
+            let sr = (seg_short_count as f64 / seg_weight_rows as f64).round_to_4_digit();
+            match kind {
+                "多头" => (lr, 0.0),
+                "空头" => (0.0, sr),
+                _ => (lr, sr),
+            }
         } else {
             (0.0, 0.0)
         };
@@ -823,6 +826,20 @@ mod tests {
             assert!(lr + sr <= 1.0 + 1e-9, "多头+空头 > 1: {lr}+{sr}");
             assert_eq!(stats["品种数量"].as_i64().unwrap(), n_symbols);
         }
+
+        // kind 单边视图必须把反向占比置 0
+        let long_only = wb.segment_stats(None, None, "多头").unwrap();
+        assert_eq!(long_only["空头占比"].as_f64().unwrap(), 0.0);
+        assert!(long_only["多头占比"].as_f64().unwrap() > 0.0);
+
+        let short_only = wb.segment_stats(None, None, "空头").unwrap();
+        assert_eq!(short_only["多头占比"].as_f64().unwrap(), 0.0);
+        assert!(short_only["空头占比"].as_f64().unwrap() > 0.0);
+
+        // long_stats / short_stats 同样遵循单边语义
+        let report = wb.report.as_ref().unwrap();
+        assert_eq!(report.long_stats["空头占比"].as_f64().unwrap(), 0.0);
+        assert_eq!(report.short_stats["多头占比"].as_f64().unwrap(), 0.0);
 
         // 独立的每日计数向量必须与全局计数累计相等
         let dt = &wb.report.as_ref().unwrap().daily_totals;

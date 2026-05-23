@@ -360,7 +360,9 @@ class WeightBacktest:
         :param edt: str | None, 结束日期，同上格式，None 表示到末尾
         :param kind: str, "多空" | "多头" | "空头"
         :return: dict, 字段与 :attr:`stats` 同构（含 ``多头占比`` / ``空头占比`` / ``品种数量``）。
-            其中 ``多头占比`` / ``空头占比`` 按 [sdt, edt] 范围内权重行计算，不受 ``kind`` 影响。
+            ``多头占比`` / ``空头占比`` 遵循 ``kind`` 单边语义：
+            ``kind="多头"`` 时 ``空头占比`` 恒为 0；``kind="空头"`` 时 ``多头占比`` 恒为 0；
+            ``kind="多空"`` 时两者各自取 [sdt, edt] 范围内的实际权重行占比。
         """
         sdt_int = _to_date_key(sdt)
         edt_int = _to_date_key(edt)
