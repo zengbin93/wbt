@@ -67,12 +67,16 @@ fn aggregate_long_short_returns(
 // Helper: build stats dict from returns + pairs
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn build_stats_dict(
     date_keys: &[i32],
     returns: &[f64],
     pairs_soa: &PairsSoA,
     trade_dir: TradeDir,
     yearly_days: usize,
+    long_rate: f64,
+    short_rate: f64,
+    symbols_count: usize,
 ) -> Result<HashMap<String, Value>, WbtError> {
     let dp = daily_performance(returns, Some(yearly_days))?;
     let ep = evaluate_pairs_soa(pairs_soa, trade_dir)?;
@@ -109,6 +113,9 @@ fn build_stats_dict(
     m.insert("年化交易次数".into(), json!(annual_trade_count));
     m.insert("持仓K线数".into(), json!(ep.position_k_days));
     m.insert("交易胜率".into(), json!(ep.win_rate));
+    m.insert("多头占比".into(), json!(long_rate));
+    m.insert("空头占比".into(), json!(short_rate));
+    m.insert("品种数量".into(), json!(symbols_count));
     Ok(m)
 }
 
@@ -273,12 +280,16 @@ impl WeightBacktest {
         let (long_returns, short_returns) =
             aggregate_long_short_returns(&dailys_soa, &daily_totals, weight_type);
 
+        let symbols_count = self.symbols.len();
         let long_stats = build_stats_dict(
             &daily_totals.date_keys,
             &long_returns,
             &pairs_soa,
             TradeDir::Long,
             yearly_days,
+            long_rate,
+            short_rate,
+            symbols_count,
         )?;
         let short_stats = build_stats_dict(
             &daily_totals.date_keys,
@@ -286,6 +297,9 @@ impl WeightBacktest {
             &pairs_soa,
             TradeDir::Short,
             yearly_days,
+            long_rate,
+            short_rate,
+            symbols_count,
         )?;
 
         let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
@@ -414,12 +428,38 @@ impl WeightBacktest {
         };
         let filtered_pairs = filter_pairs_by_date(pairs_soa, actual_sdt, actual_edt);
 
+        // Per-day weight row counts → long/short rate within [actual_sdt, actual_edt].
+        // `weight_count_dates` is sorted ascending and decoupled from `date_keys`
+        // (which loses each symbol's last day due to symbol-day aggregation).
+        let wt_dates = &daily_totals.weight_count_dates;
+        let start_idx = wt_dates.partition_point(|&dk| dk < actual_sdt);
+        let end_idx = wt_dates.partition_point(|&dk| dk <= actual_edt);
+        let mut seg_long_count: u64 = 0;
+        let mut seg_short_count: u64 = 0;
+        let mut seg_weight_rows: u64 = 0;
+        for row in start_idx..end_idx {
+            seg_long_count += daily_totals.long_count_per_day[row];
+            seg_short_count += daily_totals.short_count_per_day[row];
+            seg_weight_rows += daily_totals.weight_rows_per_day[row];
+        }
+        let (long_rate, short_rate) = if seg_weight_rows > 0 {
+            (
+                (seg_long_count as f64 / seg_weight_rows as f64).round_to_4_digit(),
+                (seg_short_count as f64 / seg_weight_rows as f64).round_to_4_digit(),
+            )
+        } else {
+            (0.0, 0.0)
+        };
+
         build_stats_dict(
             &filtered_date_keys,
             &filtered_returns,
             &filtered_pairs,
             trade_dir,
             self.yearly_days,
+            long_rate,
+            short_rate,
+            self.symbols.len(),
         )
     }
 
@@ -757,6 +797,46 @@ mod tests {
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
         let stats = wb.segment_stats(None, None, "多头").unwrap();
         assert!(stats.contains_key("年化收益"));
+    }
+
+    /// segment_stats must include 多头占比 / 空头占比 / 品种数量 for every kind,
+    /// and the per-day count vec must sum to the global counts.
+    #[test]
+    fn segment_stats_contains_long_short_rate() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let n_symbols = wb.report.as_ref().unwrap().symbol_dict.len() as i64;
+        for kind in ["多空", "多头", "空头"] {
+            let stats = wb.segment_stats(None, None, kind).unwrap();
+            for key in ["多头占比", "空头占比", "品种数量"] {
+                assert!(
+                    stats.contains_key(key),
+                    "segment_stats(kind={kind}) missing {key}"
+                );
+            }
+            let lr = stats["多头占比"].as_f64().unwrap();
+            let sr = stats["空头占比"].as_f64().unwrap();
+            assert!((0.0..=1.0).contains(&lr), "多头占比 out of [0,1]: {lr}");
+            assert!((0.0..=1.0).contains(&sr), "空头占比 out of [0,1]: {sr}");
+            assert!(lr + sr <= 1.0 + 1e-9, "多头+空头 > 1: {lr}+{sr}");
+            assert_eq!(stats["品种数量"].as_i64().unwrap(), n_symbols);
+        }
+
+        // 独立的每日计数向量必须与全局计数累计相等
+        let dt = &wb.report.as_ref().unwrap().daily_totals;
+        let sum_long: u64 = dt.long_count_per_day.iter().sum();
+        let sum_short: u64 = dt.short_count_per_day.iter().sum();
+        let sum_total: u64 = dt.weight_rows_per_day.iter().sum();
+        assert_eq!(sum_long, dt.long_count);
+        assert_eq!(sum_short, dt.short_count);
+        assert_eq!(sum_total, dt.total_weight_rows);
+        assert_eq!(
+            dt.weight_count_dates.len(),
+            dt.weight_rows_per_day.len(),
+            "weight_count_dates length must match counts vec"
+        );
     }
 
     #[test]

@@ -48,6 +48,14 @@ pub struct DailyTotals {
     pub long_count: u64,
     pub short_count: u64,
     pub total_weight_rows: u64,
+    /// 用于 segment_stats 的每日 long/short/total 权重行计数。
+    /// `weight_count_dates` 是按 YYYYMMDD 升序的稀疏日期数组（覆盖所有出现过权重行的日期，
+    /// 与 `date_keys` 解耦——后者按 symbol-day 聚合，会丢掉每个 symbol 的最后一天）。
+    /// 三个 count 向量长度均与 `weight_count_dates` 一致。
+    pub weight_count_dates: Vec<i32>,
+    pub long_count_per_day: Vec<u64>,
+    pub short_count_per_day: Vec<u64>,
+    pub weight_rows_per_day: Vec<u64>,
     /// 未四舍五入的日均值（用于 alpha 统计计算，精度对齐 Polars mean）
     pub strategy_means: Vec<f64>,
     pub benchmark_means: Vec<f64>,
@@ -527,6 +535,9 @@ impl NativeEngine {
         let mut global_sum_by_day = vec![0.0f64; DAY_INDEX_CAPACITY];
         let mut global_n1b_by_day = vec![0.0f64; DAY_INDEX_CAPACITY];
         let mut global_active_by_day = vec![0u32; DAY_INDEX_CAPACITY];
+        let mut global_long_count_by_day = vec![0u64; DAY_INDEX_CAPACITY];
+        let mut global_short_count_by_day = vec![0u64; DAY_INDEX_CAPACITY];
+        let mut global_weight_rows_by_day = vec![0u64; DAY_INDEX_CAPACITY];
         let mut min_abs_day = 50000i32;
         let mut max_abs_day = -(DAY_INDEX_OFFSET as i32);
         let mut total_long_count = 0u64;
@@ -577,9 +588,29 @@ impl NativeEngine {
         let mut out_strategy_means = Vec::with_capacity(cap);
         let mut out_benchmark_means = Vec::with_capacity(cap);
 
-        for &w in weight_slice {
+        let mut min_wt_day = i32::MAX;
+        let mut max_wt_day = i32::MIN;
+        for (&w, &dt) in weight_slice.iter().zip(dt_slice.iter()) {
             total_weight_rows += 1;
-            if w > 0.0 {
+            let abs_day = dt_to_days_since_epoch(dt, time_unit);
+            let idx_signed = abs_day as i64 + DAY_INDEX_OFFSET;
+            if idx_signed >= 0 && (idx_signed as usize) < DAY_INDEX_CAPACITY {
+                let idx = idx_signed as usize;
+                global_weight_rows_by_day[idx] += 1;
+                if w > 0.0 {
+                    total_long_count += 1;
+                    global_long_count_by_day[idx] += 1;
+                } else if w < 0.0 {
+                    total_short_count += 1;
+                    global_short_count_by_day[idx] += 1;
+                }
+                if abs_day < min_wt_day {
+                    min_wt_day = abs_day;
+                }
+                if abs_day > max_wt_day {
+                    max_wt_day = abs_day;
+                }
+            } else if w > 0.0 {
                 total_long_count += 1;
             } else if w < 0.0 {
                 total_short_count += 1;
@@ -613,6 +644,34 @@ impl NativeEngine {
             }
         }
 
+        // 独立的每日权重行计数（覆盖所有出现权重的日期；不依赖 symbol-day 聚合）
+        let wt_cap = if min_wt_day <= max_wt_day {
+            (max_wt_day - min_wt_day + 1).max(0) as usize
+        } else {
+            0
+        };
+        let mut wt_dates: Vec<i32> = Vec::with_capacity(wt_cap);
+        let mut wt_long: Vec<u64> = Vec::with_capacity(wt_cap);
+        let mut wt_short: Vec<u64> = Vec::with_capacity(wt_cap);
+        let mut wt_total: Vec<u64> = Vec::with_capacity(wt_cap);
+        if min_wt_day <= max_wt_day {
+            for ad in min_wt_day..=max_wt_day {
+                let idx = ad as usize + DAY_INDEX_OFFSET as usize;
+                let cnt = global_weight_rows_by_day[idx];
+                if cnt > 0 {
+                    let d = chrono::DateTime::from_timestamp((ad as i64) * 86400, 0)
+                        .unwrap_or_default()
+                        .naive_utc()
+                        .date();
+                    let date_key = d.year() * 10000 + d.month() as i32 * 100 + d.day() as i32;
+                    wt_dates.push(date_key);
+                    wt_long.push(global_long_count_by_day[idx]);
+                    wt_short.push(global_short_count_by_day[idx]);
+                    wt_total.push(cnt);
+                }
+            }
+        }
+
         let daily_totals = DailyTotals {
             start_date_key: out_date_keys.first().copied().unwrap_or(0),
             end_date_key: out_date_keys.last().copied().unwrap_or(0),
@@ -622,6 +681,10 @@ impl NativeEngine {
             long_count: total_long_count,
             short_count: total_short_count,
             total_weight_rows,
+            weight_count_dates: wt_dates,
+            long_count_per_day: wt_long,
+            short_count_per_day: wt_short,
+            weight_rows_per_day: wt_total,
             strategy_means: out_strategy_means,
             benchmark_means: out_benchmark_means,
         };

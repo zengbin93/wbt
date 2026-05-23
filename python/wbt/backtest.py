@@ -359,7 +359,8 @@ class WeightBacktest:
         :param sdt: str | None, 开始日期，支持 "2020-01-01"、"20200101"、pd.Timestamp 格式，None 表示从头开始
         :param edt: str | None, 结束日期，同上格式，None 表示到末尾
         :param kind: str, "多空" | "多头" | "空头"
-        :return: dict, 统计指标
+        :return: dict, 字段与 :attr:`stats` 同构（含 ``多头占比`` / ``空头占比`` / ``品种数量``）。
+            其中 ``多头占比`` / ``空头占比`` 按 [sdt, edt] 范围内权重行计算，不受 ``kind`` 影响。
         """
         sdt_int = _to_date_key(sdt)
         edt_int = _to_date_key(edt)

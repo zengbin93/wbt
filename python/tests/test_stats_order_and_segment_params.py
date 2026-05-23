@@ -114,3 +114,22 @@ class TestSegmentStatsStrParams:
         stats = wb.segment_stats(sdt="20240101", edt="20240115")
         assert isinstance(stats, dict)
         assert "年化收益" in stats
+
+
+class TestSegmentStatsLongShortRate:
+    """segment_stats 必须在所有 kind 下输出 多头占比 / 空头占比 / 品种数量。"""
+
+    def test_all_kinds_contain_long_short_rate(self, wb: WeightBacktest) -> None:
+        for kind in ("多空", "多头", "空头"):
+            stats = wb.segment_stats(kind=kind)
+            for key in ("多头占比", "空头占比", "品种数量"):
+                assert key in stats, f"segment_stats(kind={kind!r}) missing {key!r}"
+            assert 0.0 <= stats["多头占比"] <= 1.0
+            assert 0.0 <= stats["空头占比"] <= 1.0
+            assert stats["多头占比"] + stats["空头占比"] <= 1.0 + 1e-9
+            assert stats["品种数量"] == len(wb.symbols)
+
+    def test_narrower_range_rate_in_unit_interval(self, wb: WeightBacktest) -> None:
+        stats = wb.segment_stats(sdt="2024-01-05", edt="2024-01-10")
+        assert 0.0 <= stats["多头占比"] <= 1.0
+        assert 0.0 <= stats["空头占比"] <= 1.0
