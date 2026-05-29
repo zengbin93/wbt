@@ -373,6 +373,45 @@ class WeightBacktest:
         """波动率调整后的多头超额收益统计"""
         return _reorder_stats(self._inner.long_alpha_stats())
 
+    def is_good_strategy(
+        self,
+        mode: str = "history",
+        target_vol: float = 0.20,
+        max_dd_threshold: float = 0.20,
+        min_year_days: int = 120,
+        recent_days: int = 252,
+    ) -> dict:
+        """判定策略能不能搞。
+
+        两种判定模式，业务口径与方案子文档一致：
+
+        - ``mode="history"``：每个完整自然年绝对收益 > 0 或波动率归一多头超额 > 0；
+          且全样本多头超额最大回撤 < ``max_dd_threshold``。
+        - ``mode="recent"``：过去 ``recent_days`` 天绝对收益 > 0 或波动率归一多头超额 > 0；
+          且过去窗口多头超额最大回撤 < ``max_dd_threshold`` **且** 严格小于"剔除 recent
+          窗口后"的历史最大回撤。两段计算窗口完全错开。
+
+        :param mode: 判定模式，``"history"`` 或 ``"recent"``。
+        :param target_vol: 波动率归一目标年化波动率（默认 0.20）。
+        :param max_dd_threshold: 多头超额最大回撤阈值（默认 0.20）。
+        :param min_year_days: 视为"完整自然年"所需的最少交易日数（默认 120）。
+        :param recent_days: ``"recent"`` 模式取序列尾部的日数（默认 252）。
+        :return: dict, 顶层 key 用英文 snake_case。
+
+            history 模式必含 key：``mode``、``is_good``、``reason``、``yearly_metrics``、
+            ``complete_year_count``、``history_alpha_max_drawdown``、``cond_yearly_passed``、
+            ``cond_history_dd_passed``。
+
+            recent 模式必含 key：``mode``、``is_good``、``reason``、``recent_start_date``、
+            ``recent_end_date``、``recent_actual_days``、``recent_abs_return``、
+            ``recent_alpha_return``、``recent_alpha_max_drawdown``、
+            ``history_alpha_max_drawdown_excl_recent``、``history_window_empty``、
+            ``cond_recent_return_passed``、``cond_recent_dd_passed``。
+
+            ``is_good`` 为 ``bool``；``yearly_metrics`` 为 list[dict]。
+        """
+        return self._inner.is_good_strategy(mode, target_vol, max_dd_threshold, min_year_days, recent_days)
+
     @property
     def pairs(self) -> pd.DataFrame:
         """所有交易对数据

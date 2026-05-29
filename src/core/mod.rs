@@ -10,6 +10,7 @@ pub mod cal_yearly_days;
 pub mod daily_performance;
 pub mod errors;
 mod evaluate_pairs;
+pub mod is_good_strategy;
 pub mod native_engine;
 pub mod period_win_rates;
 mod report;

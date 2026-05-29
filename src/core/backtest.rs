@@ -547,6 +547,64 @@ impl WeightBacktest {
         Ok(m)
     }
 
+    // -----------------------------------------------------------------------
+    // is_good_strategy
+    // -----------------------------------------------------------------------
+
+    /// 判定策略能不能搞。
+    ///
+    /// 业务口径与可调参数见 [`crate::core::is_good_strategy`] 模块文档。
+    /// 必须先调用 [`Self::backtest`]；否则返回 [`WbtError::NoneValue`]。
+    pub fn is_good_strategy(
+        &self,
+        mode: &str,
+        target_vol: f64,
+        max_dd_threshold: f64,
+        min_year_days: usize,
+        recent_days: usize,
+    ) -> Result<HashMap<String, Value>, WbtError> {
+        use crate::core::is_good_strategy::{Mode, judge};
+
+        let parsed_mode = match mode {
+            "history" => Mode::History,
+            "recent" => Mode::Recent,
+            other => {
+                return Err(WbtError::Io(format!(
+                    "invalid mode {other:?}; expected 'history' or 'recent'"
+                )));
+            }
+        };
+
+        let dailys_soa = self
+            .dailys_soa
+            .as_ref()
+            .ok_or_else(|| WbtError::NoneValue("dailys_soa not computed yet".into()))?;
+        let report = self
+            .report
+            .as_ref()
+            .ok_or_else(|| WbtError::NoneValue("report not computed yet".into()))?;
+        let weight_type = self
+            .weight_type
+            .ok_or_else(|| WbtError::NoneValue("weight_type not set".into()))?;
+
+        let daily_totals = &report.daily_totals;
+        let (long_returns, _short_returns) =
+            aggregate_long_short_returns(dailys_soa, daily_totals, weight_type);
+
+        judge(
+            parsed_mode,
+            &daily_totals.date_keys,
+            &daily_totals.strategy_means,
+            &daily_totals.benchmark_means,
+            &long_returns,
+            self.yearly_days,
+            target_vol,
+            max_dd_threshold,
+            min_year_days,
+            recent_days,
+        )
+    }
+
     /// 并行处理所有交易品种，返回 SoA 而非 DataFrame
     #[allow(clippy::type_complexity)]
     fn process_symbols(
@@ -864,6 +922,64 @@ mod tests {
         let alpha = wb.long_alpha_stats().unwrap();
         assert!(alpha.contains_key("年化收益"));
         assert!(alpha.contains_key("周胜率"));
+    }
+
+    #[test]
+    fn weight_backtest_is_good_strategy_history_end_to_end() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let r = wb
+            .is_good_strategy("history", 0.20, 0.20, 120, 252)
+            .expect("is_good_strategy history should succeed after backtest");
+        assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("history"));
+        assert!(r.get("is_good").and_then(|v| v.as_bool()).is_some());
+        assert!(r.contains_key("yearly_metrics"));
+        assert!(r.contains_key("history_alpha_max_drawdown"));
+        assert!(r.contains_key("cond_yearly_passed"));
+        assert!(r.contains_key("cond_history_dd_passed"));
+    }
+
+    #[test]
+    fn weight_backtest_is_good_strategy_recent_end_to_end() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let r = wb
+            .is_good_strategy("recent", 0.20, 0.20, 120, 252)
+            .expect("is_good_strategy recent should succeed after backtest");
+        assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("recent"));
+        assert!(r.contains_key("recent_abs_return"));
+        assert!(r.contains_key("recent_alpha_max_drawdown"));
+        assert!(r.contains_key("history_alpha_max_drawdown_excl_recent"));
+        assert!(r.contains_key("history_window_empty"));
+    }
+
+    #[test]
+    fn weight_backtest_is_good_strategy_returns_err_when_not_backtested() {
+        let df = make_test_dataframe();
+        let wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        let r = wb.is_good_strategy("history", 0.20, 0.20, 120, 252);
+        assert!(
+            r.is_err(),
+            "should error when backtest() has not been called"
+        );
+    }
+
+    #[test]
+    fn weight_backtest_is_good_strategy_rejects_invalid_mode() {
+        let df = make_test_dataframe();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+        let r = wb.is_good_strategy("xxx", 0.20, 0.20, 120, 252);
+        assert!(r.is_err(), "should error on invalid mode");
+        let msg = format!("{}", r.unwrap_err());
+        assert!(
+            msg.contains("xxx") || msg.contains("invalid mode"),
+            "msg: {msg}"
+        );
     }
 
     #[test]

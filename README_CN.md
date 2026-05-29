@@ -120,6 +120,7 @@ Python 侧支持输入：
 - wb.pairs：交易对级别评估数据。
 - wb.segment_stats(...)：任意时间区间统计。
 - wb.long_alpha_stats：波动率调整后的多头超额指标。
+- wb.is_good_strategy(mode="history" | "recent", ...)：客观判定一个策略能不能搞。返回 dict，含 `is_good`（bool）、`reason`、年度明细（history 模式）或最近窗口指标（recent 模式）以及各条件通过标记。可调参数：`target_vol`、`max_dd_threshold`、`min_year_days`、`recent_days`。`recent` 模式下，历史最大回撤在**剔除 recent 窗口后**的样本上计算，与 recent 窗口在时间上完全错开。
 
 ## 独立工具函数
 
