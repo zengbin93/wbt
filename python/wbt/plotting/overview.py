@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import pandas as pd
+from typing import TYPE_CHECKING
+
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -8,29 +9,23 @@ from ._common import (
     COLOR_DRAWDOWN,
     COLOR_RETURN,
     COLOR_TOTAL,
+    CURVE_COLORS,
+    add_year_boundaries,
     apply_default_layout,
     figure_to_html,
+    fmt_cell,
 )
+
+if TYPE_CHECKING:
+    from wbt.result import BacktestResult
 
 
 def plot_backtest_overview(
-    daily_return: pd.DataFrame,
-    col: str = "total",
+    result: BacktestResult,
     title: str | None = "回测概览",
     to_html: bool = False,
 ) -> go.Figure | str:
-    """2x2 subplots overview: drawdown+cumulative, daily return histogram, monthly heatmap.
-
-    Layout:
-      - Top-left  (row=1, col=1): drawdown fill + cumulative return (secondary_y)
-      - Top-right (row=1, col=2): daily return histogram
-      - Bottom    (row=2, col=1..2 span): monthly heatmap
-
-    :param daily_return: DataFrame from wb.daily_return
-    :param col: column to analyse
-    :param title: chart title
-    :param to_html: if True, return HTML string instead of Figure
-    """
+    """2x2 概览：回撤+累计 / 日收益分布 / 月度热力图。"""
     fig = make_subplots(
         rows=2,
         cols=2,
@@ -43,23 +38,16 @@ def plot_backtest_overview(
         horizontal_spacing=0.08,
     )
 
-    if daily_return.empty or col not in daily_return.columns:
+    curve = result.curves.get("多空")
+    if curve is None:
         apply_default_layout(fig, title=title, height=700)
         return figure_to_html(fig) if to_html else fig
 
-    df = daily_return.copy()
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.sort_values("date").reset_index(drop=True)
-
-    cumsum = df[col].cumsum()
-    running_max = cumsum.cummax()
-    drawdown = cumsum - running_max
-
-    # --- Top-left: drawdown + cumulative ---
+    # 回撤 + 累计
     fig.add_trace(
         go.Scatter(
-            x=df["date"],
-            y=drawdown,
+            x=result.dates,
+            y=curve.drawdown,
             fill="tozeroy",
             fillcolor=COLOR_DRAWDOWN,
             line={"color": "rgba(255,59,59,0.6)", "width": 1},
@@ -71,8 +59,8 @@ def plot_backtest_overview(
     )
     fig.add_trace(
         go.Scatter(
-            x=df["date"],
-            y=cumsum,
+            x=result.dates,
+            y=curve.cum,
             mode="lines",
             line={"color": COLOR_TOTAL, "width": 1.5},
             name="累计收益",
@@ -82,14 +70,10 @@ def plot_backtest_overview(
         secondary_y=True,
     )
 
-    # --- Top-right: histogram ---
-    series = df[col].dropna() * 100
-    float(series.mean())
-    float(series.std())
-
+    # 日收益分布
     fig.add_trace(
         go.Histogram(
-            x=series,
+            x=result.return_dist.values_pct,
             nbinsx=40,
             marker_color=COLOR_RETURN,
             opacity=0.7,
@@ -100,21 +84,14 @@ def plot_backtest_overview(
         col=2,
     )
 
-    # --- Bottom: monthly heatmap ---
-    df["year"] = df["date"].dt.year
-    df["month"] = df["date"].dt.month
-    pivot = df.groupby(["year", "month"])[col].sum().unstack(fill_value=0)
-    years = pivot.index.tolist()
-    months = [str(m) for m in pivot.columns.tolist()]
-    z = pivot.values.tolist()
-    text = [[f"{v * 100:.2f}%" for v in row] for row in z]
-
+    # 月度热力图
+    m = result.monthly
     fig.add_trace(
         go.Heatmap(
-            x=months,
-            y=[str(y) for y in years],
-            z=z,
-            text=text,
+            x=[str(mo) for mo in m.months],
+            y=[str(y) for y in m.years],
+            z=m.z.tolist(),
+            text=m.text.tolist(),
             texttemplate="%{text}",
             colorscale="RdYlGn",
             zmid=0,
@@ -135,20 +112,13 @@ def plot_backtest_overview(
 
 
 def plot_colored_table(
-    stats: dict,
+    result: BacktestResult,
     title: str | None = "绩效指标",
     to_html: bool = False,
 ) -> go.Figure | str:
-    """Display stats dict as a table with color-coded cells.
-
-    Positive numeric values get a red tint (COLOR_POSITIVE), negative get green tint (COLOR_NEGATIVE).
-
-    :param stats: dict from wb.stats
-    :param title: chart title
-    :param to_html: if True, return HTML string instead of Figure
-    """
+    """将 result.stats 渲染为带颜色的表格。正值红、负值绿。"""
     fig = go.Figure()
-
+    stats = result.stats
     if not stats:
         apply_default_layout(fig, title=title)
         return figure_to_html(fig) if to_html else fig
@@ -156,21 +126,13 @@ def plot_colored_table(
     keys = list(stats.keys())
     values = [stats[k] for k in keys]
 
-    def _fmt(v: object) -> str:
-        if isinstance(v, float):
-            return f"{v:.4f}"
-        return str(v)
-
     def _cell_color(v: object) -> str:
-        if isinstance(v, (int, float)):
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
             if v > 0:
                 return "rgba(231,76,60,0.12)"
             if v < 0:
                 return "rgba(46,204,113,0.12)"
         return "white"
-
-    fmt_values = [_fmt(v) for v in values]
-    cell_colors = [_cell_color(v) for v in values]
 
     fig.add_trace(
         go.Table(
@@ -182,8 +144,8 @@ def plot_colored_table(
                 "font_size": 13,
             },
             cells={
-                "values": [keys, fmt_values],
-                "fill_color": [["white"] * len(keys), cell_colors],
+                "values": [keys, [fmt_cell(v) for v in values]],
+                "fill_color": [["white"] * len(keys), [_cell_color(v) for v in values]],
                 "align": ["left", "right"],
                 "font_size": 12,
             },
@@ -195,90 +157,114 @@ def plot_colored_table(
 
 
 def plot_long_short_comparison(
-    daily_return: pd.DataFrame,
-    stats: dict,
-    long_stats: dict,
-    short_stats: dict,
+    result: BacktestResult,
     title: str | None = "多空对比",
     to_html: bool = False,
 ) -> go.Figure | str:
-    """Two panels: cumulative return curves (left), comparison table (right).
-
-    :param daily_return: DataFrame from wb.daily_return (must have 'total' column)
-    :param stats: overall stats dict from wb.stats
-    :param long_stats: long stats dict from wb.long_stats
-    :param short_stats: short stats dict from wb.short_stats
-    :param title: chart title
-    :param to_html: if True, return HTML string instead of Figure
-    """
+    """三行子图：原始累计曲线 / 波动率归一累计曲线（区分）+ 超额 / 指标对比表。"""
     fig = make_subplots(
-        rows=1,
-        cols=2,
-        column_widths=[0.6, 0.4],
-        specs=[[{"type": "xy"}, {"type": "table"}]],
-        subplot_titles=("累计收益曲线", "关键指标对比"),
+        rows=3,
+        cols=1,
+        subplot_titles=("累计收益曲线（原始）", "波动率归一后累计收益", "关键指标对比"),
+        vertical_spacing=0.08,
+        row_heights=[0.35, 0.35, 0.30],
+        specs=[[{"type": "xy"}], [{"type": "xy"}], [{"type": "table"}]],
     )
 
-    if not daily_return.empty:
-        df = daily_return.copy()
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.sort_values("date").reset_index(drop=True)
+    panel_keys = ["多空", "多头", "空头", "基准"]
 
-        for col, color, name in [
-            ("total", COLOR_TOTAL, "多空"),
-        ]:
-            if col in df.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["date"],
-                        y=df[col].cumsum(),
-                        mode="lines",
-                        line={"color": color, "width": 1.5},
-                        name=name,
-                    ),
-                    row=1,
-                    col=1,
-                )
+    # 上图：原始累计
+    for key in panel_keys:
+        curve = result.curves.get(key)
+        if curve is None:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=result.dates,
+                y=curve.cum,
+                name=key,
+                mode="lines",
+                line={"color": CURVE_COLORS.get(key)},
+                legendgroup=key,
+            ),
+            row=1,
+            col=1,
+        )
+    add_year_boundaries(fig, result.year_starts, row=1, col=1)
 
-    # Key metrics to compare
-    _metric_keys = ["年化", "夏普", "最大回撤", "卡玛", "日胜率", "绝对收益"]
+    # 中图：波动率归一累计（名称带「归一」以区分原始）
+    voladj = result.curves_voladj
+    for key in panel_keys:
+        curve = voladj.get(key)
+        if curve is None:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=result.dates,
+                y=curve.cum,
+                name=f"{key}(归一)",
+                mode="lines",
+                showlegend=False,
+                line={"color": CURVE_COLORS.get(key)},
+                legendgroup=key,
+            ),
+            row=2,
+            col=1,
+        )
+    # 策略超额（归一口径）：curves['超额'] = 整体策略(多空) − 基准，非多头超额
+    alpha_curve = voladj.get("超额")
+    if alpha_curve is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=result.dates,
+                y=alpha_curve.cum,
+                name="策略超额(归一)",
+                mode="lines",
+                line={"color": "#FF1493", "width": 3.0},
+                legendgroup="超额",
+            ),
+            row=2,
+            col=1,
+        )
+    add_year_boundaries(fig, result.year_starts, row=2, col=1)
+
+    # 下表：多空 / 多头 / 空头 指标对比
+    metric_keys = ["年化收益", "夏普比率", "卡玛比率", "最大回撤", "年化波动率", "日胜率"]
+    sides = {"多空": result.stats, **result.stats_by_side}
+    side_order = ["多空", "多头", "空头", "基准", "超额"]
+    side_order = [s for s in side_order if s in sides]
 
     def _get(d: dict, k: str) -> str:
-        v = d.get(k, "N/A")
-        if isinstance(v, float):
-            return f"{v:.4f}"
-        return str(v)
+        return fmt_cell(d.get(k, "N/A"))
 
-    metric_names = [k for k in _metric_keys if k in stats or k in long_stats or k in short_stats]
-    col_total = [_get(stats, k) for k in metric_names]
-    col_long = [_get(long_stats, k) for k in metric_names]
-    col_short = [_get(short_stats, k) for k in metric_names]
+    header = ["指标", *side_order]
+    columns: list[list[str]] = [metric_keys]
+    for s in side_order:
+        columns.append([_get(sides[s], k) for k in metric_keys])
 
     fig.add_trace(
         go.Table(
             header={
-                "values": ["指标", "多空", "多头", "空头"],
+                "values": header,
                 "fill_color": "#3498db",
                 "font_color": "white",
                 "align": "center",
                 "font_size": 12,
             },
-            cells={
-                "values": [metric_names, col_total, col_long, col_short],
-                "align": ["left", "right", "right", "right"],
-                "font_size": 11,
-            },
+            cells={"values": columns, "align": ["left", *["right"] * len(side_order)], "font_size": 11},
         ),
-        row=1,
-        col=2,
+        row=3,
+        col=1,
     )
 
     fig.update_layout(
         template="plotly_white",
-        height=500,
+        height=1100,
         title=title,
         title_font_size=14,
-        margin={"l": 60, "r": 40, "t": 80, "b": 60},
+        margin={"l": 40, "r": 40, "t": 60, "b": 40},
+        hovermode="x unified",
     )
-    fig.update_yaxes(tickformat=".1%", row=1, col=1)
+    fig.update_yaxes(title_text="累计收益", tickformat=".1%", row=1, col=1)
+    fig.update_yaxes(title_text="累计收益", tickformat=".1%", row=2, col=1)
     return figure_to_html(fig) if to_html else fig

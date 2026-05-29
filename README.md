@@ -118,6 +118,8 @@ Accepted Python inputs:
 - wb.daily_return and wb.dailys: daily series for analytics.
 - wb.alpha and wb.alpha_stats: strategy-vs-benchmark excess analysis.
 - wb.pairs: trade-pair table for per-trade evaluation.
+- wb.aggregated_pairs / wb.key_trades(top=3): open-close records deduplicated by (symbol, open time, close time), and the top-N best/worst trades per year (computed in Rust).
+- wb.to_result(target_vol=0.20) → BacktestResult: the standard input object for plotting and the strategy-review page (see "Plotting" below).
 - wb.segment_stats(...): metrics for arbitrary date windows.
 - wb.long_alpha_stats: volatility-scaled long-side alpha metrics.
 - wb.is_good_strategy(mode="history" | "recent", ...): objective verdict on whether a strategy is worth pursuing. Returns a dict with `is_good` (bool), `reason`, `alpha_degenerate` (bool), per-year breakdown (history mode) or recent-window metrics (recent mode), and condition flags. Adjustable parameters: `target_vol`, `max_dd_threshold`, `min_year_days`, `recent_days`, `min_history_days`. In `recent` mode, the historical max drawdown is computed on the segment **excluding** the recent window (with a configurable `min_history_days` floor), so the two never overlap by construction. Degenerate alpha (NaN/Inf or zero variance in long/bench) is reported via `alpha_degenerate=True` with all alpha-derived fields set to `None`, and `is_good=False` — no false-positive "zero drawdown" pass-through. Returned dict keys are stable alphabetical order; `history` and `recent` modes return **disjoint** key sets (dispatch on `mode`).
@@ -139,14 +141,23 @@ The Rust-backed helpers emit warnings (e.g. short-span fallback in `cal_yearly_d
 
 ## HTML Report Generation
 
-`wbt.generate_backtest_report(wb, output_path)` produces a self-contained HTML report combining the `wbt.report._plot_backtest` chart family (cumulative returns, drawdown analysis, daily return distribution, monthly heatmap, backtest stats overview, colored metric table, long/short comparison).
+`wbt.generate_backtest_report(df, output_path)` produces a self-contained HTML report (overview, long/short comparison, key-trades tabs). Internally it runs a single `wb.to_result()` pre-processing pass, then delegates to `wbt.plotting`.
 
 ## Plotting
 
-Two plotting surfaces are available in the Python package:
+Every plotting function takes a single **`BacktestResult`** as its standard input — all data is precomputed once, so the plotting layer performs zero data transformation:
 
-- `wbt.plotting`: focused single-purpose figures — `plot_cumulative_returns`, `plot_drawdown`, `plot_daily_return_dist`, `plot_monthly_heatmap`, `plot_symbol_returns`, `plot_pairs_analysis`, `plot_backtest_overview`, `plot_colored_table`, `plot_long_short_comparison`.
-- `wbt.report`: report-grade composite charts (used internally by `generate_backtest_report`) — `plot_backtest_stats`, `plot_drawdown_analysis`, `plot_daily_return_distribution`, plus reusable helpers like `HtmlReportBuilder` and `get_performance_metrics_cards`.
+```python
+result = wb.to_result()            # standard input object
+from wbt.plotting import plot_cumulative_returns, plot_key_trades
+fig = plot_cumulative_returns(result, keys=["多空", "多头", "空头"])
+plot_key_trades(result, to_html=True)
+result.to_dict(full=True)          # JSON-safe, for serving the review page over HTTP
+```
+
+- `BacktestResult` fields: `dates` / `year_starts` / `curves` (raw curves keyed 多空/多头/空头/基准/超额) / `curves_voladj` (volatility-normalized, lazy) / `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`, plus review fields `drawdowns` / `key_trades` / `verdict` (all lazy `cached_property`).
+- `wbt.plotting`: `plot_cumulative_returns`, `plot_drawdown`, `plot_daily_return_dist`, `plot_monthly_heatmap`, `plot_symbol_returns`, `plot_pairs_analysis`, `plot_backtest_overview`, `plot_colored_table`, `plot_long_short_comparison`, `plot_key_trades`, `plot_drawdowns_table`, `plot_verdict`.
+- `wbt.report`: `generate_backtest_report`, `HtmlReportBuilder`, `get_performance_metrics_cards`.
 
 ## Development Workflow
 

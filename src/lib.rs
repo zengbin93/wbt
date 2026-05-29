@@ -237,6 +237,38 @@ impl PyWeightBacktest {
         }
     }
 
+    /// 聚合去重后的开平记录表（Arrow IPC）。无 pairs 时返回空字节。
+    #[pyo3(text_signature = "($self)")]
+    fn aggregated_pairs<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        match self
+            .inner
+            .aggregated_pairs_df()
+            .map_err(|e| PyException::new_err(e.to_string()))?
+        {
+            Some(mut df) => {
+                let df_bytes = df_to_pyarrow(&mut df)?;
+                Ok(PyBytes::new(py, &df_bytes))
+            }
+            None => Ok(PyBytes::new(py, b"".as_slice())),
+        }
+    }
+
+    /// 每年最赚/最亏各 `top` 笔关键交易（Arrow IPC，含 year/kind 列）。无 pairs 时返回空字节。
+    #[pyo3(signature = (top=3))]
+    fn key_trades<'py>(&mut self, py: Python<'py>, top: usize) -> PyResult<Bound<'py, PyBytes>> {
+        match self
+            .inner
+            .key_trades_df(top)
+            .map_err(|e| PyException::new_err(e.to_string()))?
+        {
+            Some(mut df) => {
+                let df_bytes = df_to_pyarrow(&mut df)?;
+                Ok(PyBytes::new(py, &df_bytes))
+            }
+            None => Ok(PyBytes::new(py, b"".as_slice())),
+        }
+    }
+
     #[staticmethod]
     #[pyo3(signature = (path, digits=2, fee_rate=Some(0.0002), n_jobs=Some(4), weight_type="ts", yearly_days=252))]
     fn from_file<'py>(

@@ -2,6 +2,16 @@ from wbt._wbt import daily_performance
 from wbt.backtest import WeightBacktest, backtest
 from wbt.mock import mock_symbol_kline, mock_weights
 from wbt.report import generate_backtest_report
+from wbt.result import (
+    BacktestResult,
+    Curve,
+    KeyTrade,
+    KeyTrades,
+    MonthlyHeatmap,
+    PairsDist,
+    ReturnDist,
+    SymbolReturns,
+)
 from wbt.top_drawdowns import top_drawdowns
 from wbt.utils import (
     cal_trade_price,
@@ -12,6 +22,14 @@ from wbt.utils import (
 )
 
 __all__ = [
+    "BacktestResult",
+    "Curve",
+    "KeyTrade",
+    "KeyTrades",
+    "MonthlyHeatmap",
+    "PairsDist",
+    "ReturnDist",
+    "SymbolReturns",
     "WeightBacktest",
     "backtest",
     "cal_trade_price",

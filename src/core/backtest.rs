@@ -323,6 +323,7 @@ impl WeightBacktest {
         self.daily_return_cache = None;
         self.dailys_cache = None;
         self.pairs_cache = None;
+        self.agg_pairs_cache = None;
         self.weight_type = Some(weight_type);
         self.yearly_days = yearly_days;
         self.dailys_soa = Some(dailys_soa);

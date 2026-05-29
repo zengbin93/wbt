@@ -11,6 +11,7 @@ pub mod daily_performance;
 pub mod errors;
 mod evaluate_pairs;
 pub mod is_good_strategy;
+pub mod key_trades;
 pub mod native_engine;
 pub mod period_win_rates;
 mod report;
@@ -35,6 +36,8 @@ pub struct WeightBacktest {
     daily_return_cache: Option<DataFrame>,
     dailys_cache: Option<DataFrame>,
     pairs_cache: Option<DataFrame>,
+    /// 聚合开平记录缓存（aggregated_pairs / key_trades 共用，避免重复聚合）
+    agg_pairs_cache: Option<Vec<key_trades::AggRow>>,
     weight_type: Option<WeightType>,
     pub report: Option<Report>,
     /// 年化交易天数
@@ -120,6 +123,7 @@ impl WeightBacktest {
             daily_return_cache: None,
             dailys_cache: None,
             pairs_cache: None,
+            agg_pairs_cache: None,
             weight_type: None,
             report: None,
             yearly_days: 252,
@@ -238,6 +242,38 @@ impl WeightBacktest {
             self.pairs_cache = Some(df);
         }
         Ok(self.pairs_cache.as_mut())
+    }
+
+    /// 确保聚合开平记录已计算并缓存（aggregated_pairs / key_trades 共用，聚合只跑一次）。
+    fn ensure_agg_pairs(&mut self) -> Result<bool, WbtError> {
+        if self.pairs_soa.is_none() {
+            return Ok(false);
+        }
+        if self.agg_pairs_cache.is_none() {
+            let agg = key_trades::aggregate_pairs(self.pairs_soa.as_ref().unwrap());
+            self.agg_pairs_cache = Some(agg);
+        }
+        Ok(true)
+    }
+
+    /// 聚合去重后的开平记录表（按 `(symbol, 开仓时间, 平仓时间)` 聚合，记 `count`）。
+    pub fn aggregated_pairs_df(&mut self) -> Result<Option<DataFrame>, WbtError> {
+        if !self.ensure_agg_pairs()? {
+            return Ok(None);
+        }
+        let soa = self.pairs_soa.as_ref().unwrap();
+        let agg = self.agg_pairs_cache.as_ref().unwrap();
+        Ok(Some(key_trades::agg_to_df(soa, agg)?))
+    }
+
+    /// 每年最赚/最亏各 `top` 笔关键交易（扁平表，含 `year` / `kind` 列）。
+    pub fn key_trades_df(&mut self, top: usize) -> Result<Option<DataFrame>, WbtError> {
+        if !self.ensure_agg_pairs()? {
+            return Ok(None);
+        }
+        let soa = self.pairs_soa.as_ref().unwrap();
+        let agg = self.agg_pairs_cache.as_ref().unwrap();
+        Ok(Some(key_trades::key_trades_to_df(soa, agg, top)?))
     }
 
     /// 按需构建年度收益长表：`[year, symbol, return]`

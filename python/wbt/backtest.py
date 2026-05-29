@@ -73,6 +73,13 @@ def _to_date_key(value: object) -> int | None:
 WEIGH_DATA_TYPE = pd.DataFrame | pl.DataFrame | pl.LazyFrame | str | Path
 
 
+def _arrow_or_empty(arrow_bytes: bytes) -> pd.DataFrame:
+    """解码 Arrow 字节；空字节（无 pairs）返回空 DataFrame 而非抛错。"""
+    if not arrow_bytes:
+        return pd.DataFrame()
+    return arrow_bytes_to_pd_df(arrow_bytes)
+
+
 class WeightBacktest:
     """持仓权重回测
 
@@ -450,6 +457,34 @@ class WeightBacktest:
         - 持仓K线数: 持仓K线数量
         """
         return arrow_bytes_to_pd_df(self._inner.pairs())
+
+    @property
+    def aggregated_pairs(self) -> pd.DataFrame:
+        """聚合去重后的开平记录（按 symbol/开仓时间/平仓时间 聚合，记 count）
+
+        columns = ['symbol', '交易方向', '开仓时间', '平仓时间', '开仓价格',
+                   '平仓价格', '持仓K线数', '盈亏比例', 'count']
+        其中 盈亏比例 单位为 BP（与 :attr:`pairs` 一致），count 为被合并的原始记录数。
+        """
+        return _arrow_or_empty(self._inner.aggregated_pairs())
+
+    def key_trades(self, top: int = 3) -> pd.DataFrame:
+        """每年最赚/最亏各 top 笔关键交易（在聚合结果上按平仓年份取极值）
+
+        :param top: int, 每年每侧取的笔数，默认 3
+        :return: pd.DataFrame，在 :attr:`aggregated_pairs` 列基础上增加 ['year', 'kind']，
+            kind ∈ {'best', 'worst'}。
+        """
+        return _arrow_or_empty(self._inner.key_trades(top))
+
+    def to_result(self, target_vol: float = 0.20):
+        """组装绘图与审核页面统一输入 :class:`wbt.result.BacktestResult`。
+
+        :param target_vol: float, 波动率归一目标年化波动率，默认 0.20
+        """
+        from wbt.result import BacktestResult
+
+        return BacktestResult.from_backtest(self, target_vol=target_vol)
 
     def get_symbol_daily(self, symbol: str) -> pd.DataFrame:
         """获取某个合约的每日收益率
