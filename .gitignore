@@ -221,3 +221,4 @@ wbt.code-workspace
 .idea/
 uv.lock
 .DS_Store
+.claude/
