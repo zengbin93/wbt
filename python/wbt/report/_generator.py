@@ -1,7 +1,7 @@
-"""
-权重回测 HTML 报告生成器
+"""权重回测 HTML 报告生成器
 
-使用 Python f-string + plotly 绘图实现 WeightBacktest 回测结果的 HTML 报告生成。
+基于 BacktestResult 标准数据 + wbt.plotting 绘图函数生成 HTML 报告。
+所有数据预处理在 WeightBacktest.to_result() 一次完成，报告侧只做组合与布局。
 """
 
 from __future__ import annotations
@@ -12,108 +12,163 @@ from typing import Any
 import pandas as pd
 
 from wbt.backtest import WeightBacktest
-
-from ._plot_backtest import (
-    get_performance_metrics_cards,
-    plot_backtest_stats,
-    plot_long_short_comparison,
+from wbt.plotting import (
+    plot_cumulative_returns,
+    plot_daily_return_dist,
+    plot_drawdown,
+    plot_key_trades,
+    plot_monthly_heatmap,
+    plot_pairs_hold_dist,
+    plot_pairs_pnl_dist,
+    plot_stats_comparison,
+    plot_symbol_returns,
 )
+from wbt.result import BacktestResult
+
 from .html_builder import HtmlReportBuilder
 
-# czsc 的绘图/报告代码使用短名 key（年化/夏普/卡玛），
-# 而 wbt.WeightBacktest.stats 使用长名（年化收益/夏普比率/卡玛比率）。
-# 在迁移代码与 wbt.stats 的边界加一层 alias，避免改动 _plot_backtest 内部字节。
-_WBT_TO_CZSC_STATS_ALIASES = {
-    "年化": "年化收益",
-    "夏普": "夏普比率",
-    "卡玛": "卡玛比率",
-}
 
+def get_performance_metrics_cards(stats: dict[str, Any]) -> list[dict[str, Any]]:
+    """从 stats（中文长名字段）提取核心绩效指标卡。
 
-def _normalize_stats_for_czsc_view(stats: dict[str, Any]) -> dict[str, Any]:
-    """为 wb.stats 增加 czsc 短名 alias，保持 _plot_backtest 内部代码不改。"""
-    out = dict(stats)
-    for czsc_name, wbt_name in _WBT_TO_CZSC_STATS_ALIASES.items():
-        if czsc_name not in out and wbt_name in out:
-            out[czsc_name] = out[wbt_name]
-    return out
+    :param stats: WeightBacktest.stats / BacktestResult.stats
+    :return: 指标卡列表，元素为 {label, value, is_positive}
+    """
+
+    def g(key: str) -> float:
+        v = stats.get(key, 0)
+        return v if isinstance(v, (int, float)) else 0.0
+
+    return [
+        {"label": "年化收益率", "value": f"{g('年化收益'):.2%}", "is_positive": g("年化收益") > 0},
+        {"label": "单笔收益(BP)", "value": f"{g('单笔收益'):.2f}", "is_positive": g("单笔收益") > 0},
+        {"label": "交易胜率", "value": f"{g('交易胜率'):.2%}", "is_positive": g("交易胜率") > 0.5},
+        {"label": "持仓K线数", "value": f"{g('持仓K线数'):.0f}", "is_positive": True},
+        {"label": "最大回撤", "value": f"{g('最大回撤'):.2%}", "is_positive": g("最大回撤") < 0.1},
+        {"label": "年化", "value": f"{g('年化收益'):.2%}", "is_positive": g("年化收益") > 0},
+        {"label": "夏普", "value": f"{g('夏普比率'):.2f}", "is_positive": g("夏普比率") > 1},
+        {"label": "卡玛", "value": f"{g('卡玛比率'):.2f}", "is_positive": g("卡玛比率") > 1},
+        {"label": "年化波动率", "value": f"{g('年化波动率'):.2%}", "is_positive": g("年化波动率") < 0.2},
+        {"label": "多头占比", "value": f"{g('多头占比'):.2%}", "is_positive": True},
+        {"label": "空头占比", "value": f"{g('空头占比'):.2%}", "is_positive": True},
+    ]
 
 
 def _validate_input_data(df: pd.DataFrame) -> None:
-    """验证输入数据格式
-
-    :param df: 输入数据
-    :raises ValueError: 当数据格式不正确时
-    """
+    """验证输入数据格式。"""
     required_columns = ["dt", "symbol", "weight", "price"]
     missing_columns = [col for col in required_columns if col not in df.columns]
-
     if missing_columns:
         raise ValueError(f"数据缺少必需列: {missing_columns}")
-
     if len(df) == 0:
         raise ValueError("输入数据不能为空")
-
     if df[["weight", "price"]].isna().any().any():
         raise ValueError("权重和价格列不能包含空值")
 
 
 def _prepare_config(kwargs: dict) -> dict[str, Any]:
-    """准备配置参数
-
-    :param kwargs: 用户传入的参数
-    :return: 配置字典
-    """
     default_config = {"fee_rate": 0.0002, "digits": 2, "weight_type": "ts", "yearly_days": 252, "n_jobs": 1}
-
     return {**default_config, **kwargs}
 
 
-def _build_report_params(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, str]:
-    """构建报告参数
-
-    :param df: 权重数据
-    :param config: 配置参数
-    :return: 参数字典
-    """
-    # 容忍 dt 为字符串或 Timestamp（wbt 接受这两种输入形式）
-    dt_min = pd.to_datetime(df["dt"].min())
-    dt_max = pd.to_datetime(df["dt"].max())
+def _build_report_params(result: BacktestResult, config: dict[str, Any]) -> dict[str, str]:
     return {
-        "日期范围": f"{dt_min.strftime('%Y-%m-%d')} ~ {dt_max.strftime('%Y-%m-%d')}",
+        "日期范围": f"{result.start_date} ~ {result.end_date}",
         "手续费": f"{config['fee_rate'] * 10000:.2f} BP",
         "小数位": str(config["digits"]),
         "年交易日": str(config["yearly_days"]),
-        "标的数": str(df["symbol"].nunique()),
+        "标的数": str(result.symbol_count),
     }
+
+
+_PLOT_CONFIG = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
+
+
+def _safe_panel(name: str, build, *, include_plotlyjs: bool) -> str:
+    """生成单个图表面板的 HTML；任一面板失败降级为错误 div，不拖垮整份报告。"""
+    try:
+        fig = build()
+        fig.update_layout(autosize=True)
+        return fig.to_html(include_plotlyjs=include_plotlyjs, full_html=False, config=_PLOT_CONFIG)
+    except Exception as e:  # noqa: BLE001 — 面板级隔离，故意吞掉单图异常
+        return f"<div style='padding:20px;text-align:center;color:red;'>{name}生成失败: {e}</div>"
+
+
+# 每个标签页的面板定义：(标签名, [(小标题, 构图函数, 是否整行跨列), ...])
+def _tab_specs(result: BacktestResult):
+    return [
+        (
+            "回测概览",
+            [
+                ("回撤分析", lambda: plot_drawdown(result, title=""), True),
+                ("日收益分布", lambda: plot_daily_return_dist(result, title=""), False),
+                ("月度收益热力图", lambda: plot_monthly_heatmap(result, title=""), False),
+                ("品种收益分布", lambda: plot_symbol_returns(result, title=""), True),
+            ],
+        ),
+        (
+            "多空对比",
+            [
+                (
+                    "累计收益（原始）",
+                    lambda: plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"], title=""),
+                    False,
+                ),
+                (
+                    "波动率归一累计收益",
+                    lambda: plot_cumulative_returns(
+                        result, keys=["多空", "多头", "空头", "基准", "超额"], voladj=True, title=""
+                    ),
+                    False,
+                ),
+                ("关键指标对比", lambda: plot_stats_comparison(result, title=""), True),
+            ],
+        ),
+        (
+            "交易分析",
+            [
+                ("盈亏比例分布", lambda: plot_pairs_pnl_dist(result, title=""), False),
+                ("持仓K线数分布", lambda: plot_pairs_hold_dist(result, title=""), False),
+                ("关键交易（每年最赚/最亏）", lambda: plot_key_trades(result, title=""), True),
+            ],
+        ),
+    ]
+
+
+def _generate_chart_tabs(result: BacktestResult) -> list[tuple[str, list[tuple[str, str, bool]]]]:
+    """基于单个 BacktestResult 生成各标签页的图表 HTML 片段（不再额外回测）。
+
+    plotly.js 仅在全局第一个面板内联一次，其余面板复用，控制报告体积。
+    """
+    tabs: list[tuple[str, list[tuple[str, str, bool]]]] = []
+    first = True
+    for tab_name, panels in _tab_specs(result):
+        items: list[tuple[str, str, bool]] = []
+        for sub_title, build, full_width in panels:
+            html = _safe_panel(sub_title, build, include_plotlyjs=first)
+            items.append((sub_title, html, full_width))
+            first = False
+        tabs.append((tab_name, items))
+    return tabs
 
 
 def generate_backtest_report(
     df: pd.DataFrame, output_path: str | None = None, title: str = "权重回测报告", **kwargs
 ) -> str:
-    """生成权重回测的 HTML 报告
+    """生成权重回测的 HTML 报告。
 
     :param df: 包含 dt, symbol, weight, price 列的权重数据
-    :param output_path: HTML 文件输出路径，默认为当前目录下的 backtest_report.html
+    :param output_path: HTML 文件输出路径，默认当前目录 backtest_report.html
     :param title: 报告标题
-    :param kwargs: 回测参数和显示控制
-        - fee_rate: float, 单边交易成本，默认 0.0002
-        - digits: int, 权重小数位数，默认 2
-        - weight_type: str, 权重类型，默认 'ts'
-        - yearly_days: int, 年交易日天数，默认 252
-        - n_jobs: int, 并行进程数，默认 1
+    :param kwargs: fee_rate / digits / weight_type / yearly_days / n_jobs / target_vol
     :return: HTML 文件路径
-    :raises ValueError: 当输入数据格式不正确时
     """
-    # 验证输入数据
     _validate_input_data(df)
 
-    # 准备配置
     config = _prepare_config(kwargs)
     if output_path is None:
         output_path = os.path.join(os.getcwd(), "backtest_report.html")
 
-    # 创建回测实例
     wb = WeightBacktest(
         df,
         fee_rate=config["fee_rate"],
@@ -122,212 +177,21 @@ def generate_backtest_report(
         yearly_days=config["yearly_days"],
         n_jobs=config["n_jobs"],
     )
+    result = wb.to_result(target_vol=config.get("target_vol", 0.20))
 
-    # 提取数据（stats key 需对齐 czsc 短名，保留迁移代码字节一致）
-    metrics = get_performance_metrics_cards(_normalize_stats_for_czsc_view(wb.stats))
-    charts = _generate_charts(wb, df, config)
+    metrics = get_performance_metrics_cards(result.stats)
+    tabs = _generate_chart_tabs(result)
+    icons = ["bi-grid-1x2", "bi-arrows-collapse", "bi-star"]
 
-    # 构建报告
-    _build_and_save_report(title, df, config, metrics, charts, output_path)
-
-    return output_path
-
-
-def _build_and_save_report(
-    title: str, df: pd.DataFrame, config: dict[str, Any], metrics: list, charts: dict, output_path: str
-) -> None:
-    """构建并保存报告
-
-    :param title: 报告标题
-    :param df: 权重数据
-    :param config: 配置参数
-    :param metrics: 绩效指标
-    :param charts: 图表字典
-    :param output_path: 输出路径
-    """
     builder = HtmlReportBuilder(title=title)
-
-    # 添加头部
-    params = _build_report_params(df, config)
-    builder.add_header(params, subtitle="基于权重策略的回测分析与绩效评估")
-
-    # 添加绩效指标
+    builder.add_header(_build_report_params(result, config), subtitle="基于权重策略的回测分析与绩效评估")
     builder.add_metrics(metrics)
-
-    # 添加图表标签页
-    builder.add_chart_tab("回测统计", charts["backtest_stats"], "bi-grid-1x2", active=True)
-    builder.add_chart_tab("多空对比", charts["long_short_comparison"], "bi-arrows-collapse")
-
-    # 添加图表区域
+    for i, (tab_name, items) in enumerate(tabs):
+        builder.add_chart_grid_tab(
+            tab_name, items, cols=2, icon=icons[i] if i < len(icons) else "bi-graph-up", active=(i == 0)
+        )
     builder.add_charts_section()
-
-    # 添加页脚
     builder.add_footer()
-
-    # 保存文件
     builder.save(output_path)
 
-
-def _prepare_daily_returns(wb: WeightBacktest) -> pd.DataFrame:
-    """准备日收益数据
-
-    :param wb: WeightBacktest 对象
-    :return: 处理后的日收益数据
-    """
-    dret = wb.daily_return.copy()
-    dret["dt"] = pd.to_datetime(dret["date"])
-    return dret.set_index("dt").drop(columns=["date"])
-
-
-def _generate_main_charts(dret: pd.DataFrame) -> dict:
-    """生成主要图表
-
-    :param dret: 日收益数据
-    :return: 图表字典
-    """
-    config = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
-    fig_stats = plot_backtest_stats(dret, ret_col="total", title="", template="plotly")
-    fig_stats.update_layout(height=1000, autosize=True)
-
-    return {"backtest_stats": fig_stats.to_html(include_plotlyjs=True, full_html=False, config=config)}
-
-
-class LongShortComparisonChart:
-    """多空对比图表生成器"""
-
-    def __init__(self, df: pd.DataFrame, config: dict[str, Any]):
-        """初始化多空对比图表生成器
-
-        :param df: 原始权重数据
-        :param config: 配置参数
-        """
-        self.df = df
-        self.config = config
-        self._strategy_data = None
-        self._backtests = None
-
-    def _create_strategy_data(self) -> dict:
-        """创建多空策略数据
-
-        :return: 策略数据字典
-        """
-        if self._strategy_data is not None:
-            return self._strategy_data
-
-        df_base = self.df[["dt", "symbol", "weight", "price"]].copy()
-
-        dfl = df_base.copy()
-        dfl["weight"] = dfl["weight"].clip(lower=0)  # 只保留多头
-
-        dfs = df_base.copy()
-        dfs["weight"] = dfs["weight"].clip(upper=0)  # 只保留空头
-
-        dfb = df_base.copy()
-        dfb["weight"] = 1  # 基准等权
-
-        self._strategy_data = {"原始策略": df_base, "策略多头": dfl, "策略空头": dfs, "基准等权": dfb}
-        return self._strategy_data
-
-    def _create_backtests(self) -> dict:
-        """创建策略回测实例
-
-        :return: 回测实例字典
-        """
-        if self._backtests is not None:
-            return self._backtests
-
-        strategy_data = self._create_strategy_data()
-        wbs = {}
-        for name, data in strategy_data.items():
-            weight_type = "ts" if name == "基准等权" else self.config["weight_type"]
-            wbs[name] = WeightBacktest(
-                data,
-                fee_rate=self.config["fee_rate"],
-                digits=self.config["digits"],
-                weight_type=weight_type,
-                yearly_days=self.config["yearly_days"],
-            )
-        self._backtests = wbs
-        return wbs
-
-    def _aggregate_daily_returns(self) -> pd.DataFrame:
-        """汇总日收益数据
-
-        :return: 汇总后的日收益数据
-        """
-        wbs = self._create_backtests()
-        dailys = []
-        for strategy, wb_obj in wbs.items():
-            daily = wb_obj.daily_return.copy()[["date", "total"]]
-            daily["strategy"] = strategy
-            daily["return"] = daily["total"]
-            daily["dt"] = pd.to_datetime(daily["date"])
-            dailys.append(daily[["dt", "strategy", "return"]])
-
-        dailys = pd.concat(dailys, axis=0)
-        return pd.pivot_table(dailys, index="dt", columns="strategy", values="return")
-
-    def _aggregate_strategy_stats(self) -> pd.DataFrame:
-        """汇总策略统计信息
-
-        :return: 统计信息 DataFrame
-        """
-        wbs = self._create_backtests()
-        stats_rows = []
-        for strategy, wb_obj in wbs.items():
-            stats = {"策略名称": strategy}
-            stats.update(_normalize_stats_for_czsc_view(wb_obj.stats))
-            stats_rows.append(stats)
-        return pd.DataFrame(stats_rows)
-
-    def generate(self) -> str:
-        """生成多空对比图表
-
-        :return: 图表 HTML 字符串
-        """
-        try:
-            # 准备数据
-            df_dailys = self._aggregate_daily_returns()
-            df_stats = self._aggregate_strategy_stats()
-
-            # 生成图表
-            plot_config = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
-            fig_ls = plot_long_short_comparison(df_dailys, df_stats, title="多空收益对比", template="plotly")
-            # 多空对比图为三行子图（原始 / 波动率归一 / 指标表），需要 1400 高度避免压缩
-            fig_ls.update_layout(height=1400, autosize=True)
-
-            return fig_ls.to_html(include_plotlyjs=False, full_html=False, config=plot_config)
-
-        except Exception as e:
-            return f"<div style='padding: 20px; text-align: center; color: red;'>多空对比图生成失败: {str(e)}</div>"
-
-
-def _generate_long_short_chart(df: pd.DataFrame, config: dict[str, Any]) -> str:
-    """生成多空对比图表
-
-    :param df: 原始权重数据
-    :param config: 配置参数
-    :return: 图表 HTML 字符串
-    """
-    chart_generator = LongShortComparisonChart(df, config)
-    return chart_generator.generate()
-
-
-def _generate_charts(wb: WeightBacktest, df: pd.DataFrame, config: dict[str, Any]) -> dict:
-    """生成所有图表
-
-    :param wb: WeightBacktest 对象
-    :param df: 原始权重数据
-    :param config: 配置参数
-    :return: 字典，包含所有图表的 HTML 片段
-    """
-    # 准备日收益数据
-    dret = _prepare_daily_returns(wb)
-
-    # 生成主要图表
-    charts = _generate_main_charts(dret)
-
-    # 生成多空对比图表
-    charts["long_short_comparison"] = _generate_long_short_chart(df, config)
-
-    return charts
+    return output_path
