@@ -8,16 +8,16 @@ import plotly.graph_objects as go  # noqa: E402
 
 from wbt import WeightBacktest  # noqa: E402
 from wbt.plotting import (  # noqa: E402
-    plot_backtest_overview,
     plot_colored_table,
     plot_cumulative_returns,
     plot_daily_return_dist,
     plot_drawdown,
     plot_drawdowns_table,
     plot_key_trades,
-    plot_long_short_comparison,
     plot_monthly_heatmap,
-    plot_pairs_analysis,
+    plot_pairs_hold_dist,
+    plot_pairs_pnl_dist,
+    plot_stats_comparison,
     plot_symbol_returns,
     plot_verdict,
 )
@@ -42,6 +42,12 @@ class TestPlotCumulativeReturns:
     def test_multiple_keys(self, result):
         fig = plot_cumulative_returns(result, keys=["多空", "多头", "空头"])
         assert len(fig.data) == 3
+
+    def test_voladj(self, result):
+        """voladj=True 时消费 curves_voladj，仍能出曲线。"""
+        fig = plot_cumulative_returns(result, keys=["多空", "超额"], voladj=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
 
     def test_to_html(self, result):
         html = plot_cumulative_returns(result, to_html=True)
@@ -86,22 +92,22 @@ class TestPlotDailyReturnDist:
         assert isinstance(plot_daily_return_dist(result, to_html=True), str)
 
 
-class TestPlotPairsAnalysis:
+class TestPlotPairsPnlDist:
     def test_returns_figure(self, result):
-        fig = plot_pairs_analysis(result)
+        fig = plot_pairs_pnl_dist(result)
         assert isinstance(fig, go.Figure)
 
     def test_to_html(self, result):
-        assert isinstance(plot_pairs_analysis(result, to_html=True), str)
+        assert isinstance(plot_pairs_pnl_dist(result, to_html=True), str)
 
 
-class TestPlotBacktestOverview:
+class TestPlotPairsHoldDist:
     def test_returns_figure(self, result):
-        fig = plot_backtest_overview(result)
+        fig = plot_pairs_hold_dist(result)
         assert isinstance(fig, go.Figure)
 
     def test_to_html(self, result):
-        assert isinstance(plot_backtest_overview(result, to_html=True), str)
+        assert isinstance(plot_pairs_hold_dist(result, to_html=True), str)
 
 
 class TestPlotColoredTable:
@@ -113,20 +119,14 @@ class TestPlotColoredTable:
         assert isinstance(plot_colored_table(result, to_html=True), str)
 
 
-class TestPlotLongShortComparison:
+class TestPlotStatsComparison:
     def test_returns_figure(self, result):
-        fig = plot_long_short_comparison(result)
+        fig = plot_stats_comparison(result)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
     def test_to_html(self, result):
-        assert isinstance(plot_long_short_comparison(result, to_html=True), str)
-
-    def test_has_voladj_curves(self, result):
-        """多空对比应包含原始与波动率归一两组曲线（区分）。"""
-        fig = plot_long_short_comparison(result)
-        names = [getattr(t, "name", "") or "" for t in fig.data]
-        assert any("归一" in n for n in names), names
+        assert isinstance(plot_stats_comparison(result, to_html=True), str)
 
 
 class TestPlotKeyTrades:

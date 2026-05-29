@@ -171,57 +171,43 @@ Core `WeightBacktest` properties and methods:
 
 ## Plotting Utilities
 
-Two plotting surfaces are provided:
-
-### `wbt.plotting` — single-purpose figures
+All plotting functions are **single-purpose figures** that consume a
+`BacktestResult` (from `wb.to_result()`) with zero data transformation — each
+field maps straight to a plotly trace. There are no composite (subplot) charts;
+the HTML report composes single figures into a CSS grid instead.
 
 ```python
 from wbt.plotting import (
-    plot_backtest_overview,
-    plot_colored_table,
-    plot_cumulative_returns,
-    plot_daily_return_dist,
-    plot_drawdown,
-    plot_long_short_comparison,
-    plot_monthly_heatmap,
-    plot_pairs_analysis,
-    plot_symbol_returns,
-)
-```
-
-### `wbt.report` — report-grade composite charts
-
-```python
-from wbt.report import (
-    HtmlReportBuilder,
-    LongShortComparisonChart,
-    generate_backtest_report,
-    get_performance_metrics_cards,
-    plot_backtest_stats,
-    plot_colored_table,
-    plot_cumulative_returns,
-    plot_daily_return_distribution,
-    plot_drawdown_analysis,
-    plot_long_short_comparison,
-    plot_monthly_heatmap,
+    plot_colored_table,        # stats as a colored table
+    plot_cumulative_returns,   # cumulative curves (voladj=True for vol-normalized)
+    plot_daily_return_dist,    # daily-return histogram
+    plot_drawdown,             # drawdown + cumulative (dual-axis single figure)
+    plot_drawdowns_table,      # top-drawdowns detail table
+    plot_key_trades,           # yearly best/worst key trades
+    plot_monthly_heatmap,      # monthly-return heatmap
+    plot_pairs_hold_dist,      # holding-bars distribution by direction
+    plot_pairs_pnl_dist,       # pnl-ratio distribution by direction
+    plot_stats_comparison,     # 多空/多头/空头/基准/超额 metric comparison table
+    plot_symbol_returns,       # per-symbol cumulative returns
+    plot_verdict,              # is_good_strategy verdict + yearly metrics
 )
 ```
 
 Typical usage:
 
 ```python
-fig1 = plot_cumulative_returns(wb.daily_return)
-fig2 = plot_drawdown(wb.daily_return)
-fig3 = plot_pairs_analysis(wb.pairs)
+result = wb.to_result()
 
-# Composite stats overview (3-in-1 layout)
-fig4 = plot_backtest_stats(wb.daily_return, ret_col="total")
+fig1 = plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"])
+fig2 = plot_cumulative_returns(result, voladj=True)   # vol-normalized
+fig3 = plot_drawdown(result)
+fig4 = plot_pairs_pnl_dist(result)
 
 # Optional HTML export
-html = plot_backtest_overview(wb.daily_return, to_html=True)
+html = plot_cumulative_returns(result, to_html=True)
 
-# Full HTML report file
-generate_backtest_report(wb, "report.html")
+# Full HTML report file (composes single figures into a tabbed CSS grid)
+generate_backtest_report(df, "report.html")
 ```
 
 ## Quality And Testing

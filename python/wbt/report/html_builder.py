@@ -8,6 +8,7 @@ HTML 报告构建器
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -204,6 +205,38 @@ class HtmlReportBuilder:
             width: 100% !important;
         }
 
+        .chart-grid {
+            display: grid;
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        .chart-grid-item {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            min-width: 0;
+        }
+
+        .chart-grid-item.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .chart-grid-item .plotly-graph-div {
+            width: 100% !important;
+        }
+
+        .chart-grid-title {
+            background: var(--bg-secondary);
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
         .nav-tabs {
             border-bottom: 2px solid var(--border-color);
             background: var(--bg-secondary);
@@ -323,6 +356,10 @@ class HtmlReportBuilder:
             .chart-card {
                 height: 70vh;
             }
+
+            .chart-grid {
+                grid-template-columns: 1fr !important;
+            }
         }
         """
 
@@ -440,6 +477,55 @@ class HtmlReportBuilder:
                             <div class="chart-body">
                                 {chart_html}
                             </div>
+                        </div>"""
+
+        self.sections.append(("chart_tab", {"button": tab_button, "content": tab_content}))
+        return self
+
+    def add_chart_grid_tab(
+        self,
+        name: str,
+        charts: Sequence[str | tuple[str, str] | tuple[str, str, bool]],
+        cols: int = 2,
+        icon: str = "bi-graph-up",
+        active: bool = False,
+    ) -> HtmlReportBuilder:
+        """添加一个内部以 CSS 网格排布多张图表的标签页。
+
+        :param name: 标签页名称
+        :param charts: 图表列表；元素可为：图表 HTML 字符串、``(小标题, 图表 HTML)``
+            二元组，或 ``(小标题, 图表 HTML, 是否整行跨列)`` 三元组（最后一项为 True 时该图占满整行）
+        :param cols: 网格列数（移动端自动退化为单列）
+        :param icon: 图标类名（Bootstrap Icons）
+        :param active: 是否为默认激活的标签页
+        :return: self，支持链式调用
+        """
+        self.chart_count += 1
+        tab_id = f"chart-tab-{self.chart_count}"
+
+        items_html = ""
+        for chart in charts:
+            if isinstance(chart, str):
+                sub_title, chart_html, full_width = "", chart, False
+            else:
+                sub_title, chart_html = chart[0], chart[1]
+                full_width = chart[2] if len(chart) == 3 else False
+            title_html = f'<div class="chart-grid-title">{sub_title}</div>' if sub_title else ""
+            item_class = "chart-grid-item full-width" if full_width else "chart-grid-item"
+            items_html += f'                                <div class="{item_class}">{title_html}{chart_html}</div>\n'
+
+        tab_button = f"""                        <li class="nav-item">
+                            <button class="nav-link {"active" if active else ""}"
+                                    data-bs-toggle="tab" data-bs-target="#{tab_id}"
+                                    type="button" role="tab">
+                                <i class="bi {icon}"></i> {name}
+                            </button>
+                        </li>"""
+
+        tab_content = f"""                        <div class="tab-pane fade {"show active" if active else ""}"
+                                          id="{tab_id}" role="tabpanel">
+                            <div class="chart-grid" style="grid-template-columns: repeat({cols}, 1fr);">
+{items_html}                            </div>
                         </div>"""
 
         self.sections.append(("chart_tab", {"button": tab_button, "content": tab_content}))
@@ -629,10 +715,9 @@ class HtmlReportBuilder:
                 triggerEl.addEventListener('shown.bs.tab', function(event) {{
                     var targetId = event.target.getAttribute('data-bs-target');
                     var targetPane = document.querySelector(targetId);
-                    var plotlyDiv = targetPane.querySelector('.plotly-graph-div');
-                    if (plotlyDiv) {{
-                        Plotly.Plots.resize(plotlyDiv);
-                    }}
+                    targetPane.querySelectorAll('.plotly-graph-div').forEach(function(d) {{
+                        Plotly.Plots.resize(d);
+                    }});
                 }})
             }})
 
@@ -640,10 +725,9 @@ class HtmlReportBuilder:
             window.addEventListener('resize', function() {{
                 var activePane = document.querySelector('.tab-pane.active');
                 if (activePane) {{
-                    var plotlyDiv = activePane.querySelector('.plotly-graph-div');
-                    if (plotlyDiv) {{
-                        Plotly.Plots.resize(plotlyDiv);
-                    }}
+                    activePane.querySelectorAll('.plotly-graph-div').forEach(function(d) {{
+                        Plotly.Plots.resize(d);
+                    }});
                 }}
             }});
         }});

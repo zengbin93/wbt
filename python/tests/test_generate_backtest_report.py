@@ -121,10 +121,11 @@ def test_generate_backtest_report_writes_valid_html(sample_dfw: pd.DataFrame, tm
     assert "section-title" in html
     assert 'class="nav nav-tabs"' in html
     assert 'class="chart-card"' in html
-    assert "回测统计" in html
+    assert "chart-grid" in html  # 单图以 CSS 网格排布（已拆开组合图）
+    assert html.count("plotly-graph-div") >= 2  # 一个标签页内多张独立图
+    assert "回测概览" in html
     assert "多空对比" in html
-    assert "关键交易" in html
-    assert "plotly-graph-div" in html
+    assert "交易分析" in html
     assert "wbt 权重回测引擎" in html
 
 

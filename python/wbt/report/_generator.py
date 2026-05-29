@@ -13,9 +13,15 @@ import pandas as pd
 
 from wbt.backtest import WeightBacktest
 from wbt.plotting import (
-    plot_backtest_overview,
+    plot_cumulative_returns,
+    plot_daily_return_dist,
+    plot_drawdown,
     plot_key_trades,
-    plot_long_short_comparison,
+    plot_monthly_heatmap,
+    plot_pairs_hold_dist,
+    plot_pairs_pnl_dist,
+    plot_stats_comparison,
+    plot_symbol_returns,
 )
 from wbt.result import BacktestResult
 
@@ -88,21 +94,62 @@ def _safe_panel(name: str, build, *, include_plotlyjs: bool) -> str:
         return f"<div style='padding:20px;text-align:center;color:red;'>{name}生成失败: {e}</div>"
 
 
-def _generate_charts(result: BacktestResult) -> dict[str, str]:
-    """基于单个 BacktestResult 生成所有图表 HTML 片段（不再额外回测）。"""
-
-    def _overview():
-        fig = plot_backtest_overview(result, title="")
-        fig.update_layout(height=900)
-        return fig
-
-    return {
-        "backtest_stats": _safe_panel("回测统计", _overview, include_plotlyjs=True),
-        "long_short_comparison": _safe_panel(
-            "多空对比", lambda: plot_long_short_comparison(result, title="多空收益对比"), include_plotlyjs=False
+# 每个标签页的面板定义：(标签名, [(小标题, 构图函数, 是否整行跨列), ...])
+def _tab_specs(result: BacktestResult):
+    return [
+        (
+            "回测概览",
+            [
+                ("回撤分析", lambda: plot_drawdown(result, title=""), True),
+                ("日收益分布", lambda: plot_daily_return_dist(result, title=""), False),
+                ("月度收益热力图", lambda: plot_monthly_heatmap(result, title=""), False),
+                ("品种收益分布", lambda: plot_symbol_returns(result, title=""), True),
+            ],
         ),
-        "key_trades": _safe_panel("关键交易", lambda: plot_key_trades(result), include_plotlyjs=False),
-    }
+        (
+            "多空对比",
+            [
+                (
+                    "累计收益（原始）",
+                    lambda: plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"], title=""),
+                    False,
+                ),
+                (
+                    "波动率归一累计收益",
+                    lambda: plot_cumulative_returns(
+                        result, keys=["多空", "多头", "空头", "基准", "超额"], voladj=True, title=""
+                    ),
+                    False,
+                ),
+                ("关键指标对比", lambda: plot_stats_comparison(result, title=""), True),
+            ],
+        ),
+        (
+            "交易分析",
+            [
+                ("盈亏比例分布", lambda: plot_pairs_pnl_dist(result, title=""), False),
+                ("持仓K线数分布", lambda: plot_pairs_hold_dist(result, title=""), False),
+                ("关键交易（每年最赚/最亏）", lambda: plot_key_trades(result, title=""), True),
+            ],
+        ),
+    ]
+
+
+def _generate_chart_tabs(result: BacktestResult) -> list[tuple[str, list[tuple[str, str, bool]]]]:
+    """基于单个 BacktestResult 生成各标签页的图表 HTML 片段（不再额外回测）。
+
+    plotly.js 仅在全局第一个面板内联一次，其余面板复用，控制报告体积。
+    """
+    tabs: list[tuple[str, list[tuple[str, str, bool]]]] = []
+    first = True
+    for tab_name, panels in _tab_specs(result):
+        items: list[tuple[str, str, bool]] = []
+        for sub_title, build, full_width in panels:
+            html = _safe_panel(sub_title, build, include_plotlyjs=first)
+            items.append((sub_title, html, full_width))
+            first = False
+        tabs.append((tab_name, items))
+    return tabs
 
 
 def generate_backtest_report(
@@ -133,14 +180,16 @@ def generate_backtest_report(
     result = wb.to_result(target_vol=config.get("target_vol", 0.20))
 
     metrics = get_performance_metrics_cards(result.stats)
-    charts = _generate_charts(result)
+    tabs = _generate_chart_tabs(result)
+    icons = ["bi-grid-1x2", "bi-arrows-collapse", "bi-star"]
 
     builder = HtmlReportBuilder(title=title)
     builder.add_header(_build_report_params(result, config), subtitle="基于权重策略的回测分析与绩效评估")
     builder.add_metrics(metrics)
-    builder.add_chart_tab("回测统计", charts["backtest_stats"], "bi-grid-1x2", active=True)
-    builder.add_chart_tab("多空对比", charts["long_short_comparison"], "bi-arrows-collapse")
-    builder.add_chart_tab("关键交易", charts["key_trades"], "bi-star")
+    for i, (tab_name, items) in enumerate(tabs):
+        builder.add_chart_grid_tab(
+            tab_name, items, cols=2, icon=icons[i] if i < len(icons) else "bi-graph-up", active=(i == 0)
+        )
     builder.add_charts_section()
     builder.add_footer()
     builder.save(output_path)

@@ -22,20 +22,26 @@ _FALLBACK_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#9b59b6", "#f39c12", "#1ab
 def plot_cumulative_returns(
     result: BacktestResult,
     keys: list[str] | None = None,
-    title: str | None = "累计收益曲线",
+    voladj: bool = False,
+    title: str | None = None,
     to_html: bool = False,
 ) -> go.Figure | str:
     """绘制累计收益曲线。
 
     :param result: BacktestResult，直接消费 dates / curves / year_starts
     :param keys: 要绘制的曲线键，默认 ["多空"]；可选 多空/多头/空头/基准/超额
+    :param voladj: 是否使用波动率归一后的曲线（result.curves_voladj），默认 False
+    :param title: 图标题，None 时按 voladj 取默认值
     """
     if keys is None:
         keys = ["多空"]
+    if title is None:
+        title = "波动率归一累计收益" if voladj else "累计收益曲线"
 
+    curves = result.curves_voladj if voladj else result.curves
     fig = go.Figure()
     for i, key in enumerate(keys):
-        curve = result.curves.get(key)
+        curve = curves.get(key)
         if curve is None:
             continue
         fig.add_trace(

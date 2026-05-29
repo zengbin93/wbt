@@ -9,8 +9,8 @@ from __future__ import annotations
 from wbt.plotting import (
     plot_colored_table,
     plot_cumulative_returns,
-    plot_long_short_comparison,
     plot_monthly_heatmap,
+    plot_stats_comparison,
 )
 
 from ._generator import (
@@ -25,6 +25,6 @@ __all__ = [
     "get_performance_metrics_cards",
     "plot_colored_table",
     "plot_cumulative_returns",
-    "plot_long_short_comparison",
     "plot_monthly_heatmap",
+    "plot_stats_comparison",
 ]

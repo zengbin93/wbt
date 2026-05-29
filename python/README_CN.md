@@ -171,57 +171,42 @@ from wbt import (
 
 ## 可视化函数
 
-提供两套绘图接口：
-
-### `wbt.plotting` — 单图模块
+所有绘图函数都是**单一职责的单图**，统一以 `BacktestResult`（来自 `wb.to_result()`）
+为输入、零数据转换——每个字段直接映射成 plotly trace。不再有组合图（subplot）；
+HTML 报告改为把单图组合进 CSS 网格布局。
 
 ```python
 from wbt.plotting import (
-    plot_backtest_overview,
-    plot_colored_table,
-    plot_cumulative_returns,
-    plot_daily_return_dist,
-    plot_drawdown,
-    plot_long_short_comparison,
-    plot_monthly_heatmap,
-    plot_pairs_analysis,
-    plot_symbol_returns,
-)
-```
-
-### `wbt.report` — 报告级组合图
-
-```python
-from wbt.report import (
-    HtmlReportBuilder,
-    LongShortComparisonChart,
-    generate_backtest_report,
-    get_performance_metrics_cards,
-    plot_backtest_stats,
-    plot_colored_table,
-    plot_cumulative_returns,
-    plot_daily_return_distribution,
-    plot_drawdown_analysis,
-    plot_long_short_comparison,
-    plot_monthly_heatmap,
+    plot_colored_table,        # stats 彩色表格
+    plot_cumulative_returns,   # 累计收益曲线（voladj=True 为波动率归一）
+    plot_daily_return_dist,    # 日收益分布直方图
+    plot_drawdown,             # 回撤 + 累计收益（双轴单图）
+    plot_drawdowns_table,      # top 回撤明细表
+    plot_key_trades,           # 每年最赚/最亏关键交易
+    plot_monthly_heatmap,      # 月度收益热力图
+    plot_pairs_hold_dist,      # 持仓K线数分布（按方向）
+    plot_pairs_pnl_dist,       # 盈亏比例分布（按方向）
+    plot_stats_comparison,     # 多空/多头/空头/基准/超额 指标对比表
+    plot_symbol_returns,       # 品种累计收益
+    plot_verdict,              # is_good_strategy 判定 + 年度指标
 )
 ```
 
 示例：
 
 ```python
-fig1 = plot_cumulative_returns(wb.daily_return)
-fig2 = plot_drawdown(wb.daily_return)
-fig3 = plot_pairs_analysis(wb.pairs)
+result = wb.to_result()
 
-# 三图组合的绩效概览
-fig4 = plot_backtest_stats(wb.daily_return, ret_col="total")
+fig1 = plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"])
+fig2 = plot_cumulative_returns(result, voladj=True)   # 波动率归一
+fig3 = plot_drawdown(result)
+fig4 = plot_pairs_pnl_dist(result)
 
 # 可选：导出 html 字符串
-html = plot_backtest_overview(wb.daily_return, to_html=True)
+html = plot_cumulative_returns(result, to_html=True)
 
-# 完整 HTML 报告文件
-generate_backtest_report(wb, "report.html")
+# 完整 HTML 报告文件（把单图组合进分标签的 CSS 网格）
+generate_backtest_report(df, "report.html")
 ```
 
 ## 质量检查
