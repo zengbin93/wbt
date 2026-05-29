@@ -120,6 +120,7 @@ Accepted Python inputs:
 - wb.pairs: trade-pair table for per-trade evaluation.
 - wb.segment_stats(...): metrics for arbitrary date windows.
 - wb.long_alpha_stats: volatility-scaled long-side alpha metrics.
+- wb.is_good_strategy(mode="history" | "recent", ...): objective verdict on whether a strategy is worth pursuing. Returns a dict with `is_good` (bool), `reason`, `alpha_degenerate` (bool), per-year breakdown (history mode) or recent-window metrics (recent mode), and condition flags. Adjustable parameters: `target_vol`, `max_dd_threshold`, `min_year_days`, `recent_days`, `min_history_days`. In `recent` mode, the historical max drawdown is computed on the segment **excluding** the recent window (with a configurable `min_history_days` floor), so the two never overlap by construction. Degenerate alpha (NaN/Inf or zero variance in long/bench) is reported via `alpha_degenerate=True` with all alpha-derived fields set to `None`, and `is_good=False` — no false-positive "zero drawdown" pass-through. Returned dict keys are stable alphabetical order; `history` and `recent` modes return **disjoint** key sets (dispatch on `mode`).
 
 ## Standalone Utility Functions
 

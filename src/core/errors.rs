@@ -9,6 +9,9 @@ pub enum WbtError {
     #[error("io: {0}")]
     Io(String),
 
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+
     #[error("polars: {0}")]
     Polars(#[from] PolarsError),
 

@@ -7,7 +7,7 @@ use std::str::FromStr;
 use polars::prelude::*;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyBytesMethods, PyDict};
+use pyo3::types::{PyBytes, PyBytesMethods, PyDict, PyList};
 use serde_json::Value;
 
 use crate::core::{WeightBacktest, WeightType};
@@ -35,29 +35,65 @@ fn df_to_pyarrow(dataframe: &mut DataFrame) -> PyResult<Vec<u8>> {
 // HashMap<String, Value> -> PyDict helper
 // ---------------------------------------------------------------------------
 
+/// 将 `HashMap<String, Value>` 转成 `PyDict`，**按 key 字母顺序插入** 以保证 Python 端
+/// 字典迭代顺序确定。值的转换委托给 [`value_to_py`]：
+///
+/// - `Value::Null` → Python `None`（注意：这是与历史 `_ => {}` 静默丢弃语义的区别；
+///   现有 `*_stats` 调用方今天不会产出 `Value::Null`，但若未来某条路径用
+///   `serde_json::Number::from_f64(NaN)` 等会得到 `Value::Null`，则在 Python 端
+///   将变成 `None` 而非"缺失键"）。
+/// - `Value::Bool` / `Value::Number` / `Value::String` 透传到对应 Python 原生类型。
+/// - `Value::Array` 递归构造 `PyList`；`Value::Object` 递归构造 `PyDict`，
+///   同样按 key 字母顺序插入以保持确定性。
 fn hashmap_to_pydict<'py>(
     py: Python<'py>,
     map: &HashMap<String, Value>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
-    for (k, v) in map {
-        match v {
-            Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    dict.set_item(k, i)?;
-                } else if let Some(u) = n.as_u64() {
-                    dict.set_item(k, u)?;
-                } else if let Some(f) = n.as_f64() {
-                    dict.set_item(k, f)?;
-                }
-            }
-            Value::String(s) => {
-                dict.set_item(k, s)?;
-            }
-            _ => {}
-        }
+    let mut keys: Vec<&String> = map.keys().collect();
+    keys.sort();
+    for k in keys {
+        dict.set_item(k, value_to_py(py, &map[k])?)?;
     }
     Ok(dict)
+}
+
+fn value_to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, pyo3::PyAny>> {
+    use pyo3::IntoPyObject;
+    Ok(match v {
+        Value::Null => py.None().into_bound(py),
+        Value::Bool(b) => b.into_pyobject(py)?.to_owned().into_any(),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i.into_pyobject(py)?.into_any()
+            } else if let Some(u) = n.as_u64() {
+                u.into_pyobject(py)?.into_any()
+            } else if let Some(f) = n.as_f64() {
+                f.into_pyobject(py)?.into_any()
+            } else {
+                // 当前 serde_json 不会构造既非 i64 / u64 / f64 又有效的 Number；
+                // 兜底为 None 以避免悄无声息地丢弃字段。
+                py.None().into_bound(py)
+            }
+        }
+        Value::String(s) => s.into_pyobject(py)?.into_any(),
+        Value::Array(arr) => {
+            let py_list = PyList::empty(py);
+            for item in arr {
+                py_list.append(value_to_py(py, item)?)?;
+            }
+            py_list.into_any()
+        }
+        Value::Object(obj) => {
+            let py_dict = PyDict::new(py);
+            let mut keys: Vec<&String> = obj.keys().collect();
+            keys.sort();
+            for key in keys {
+                py_dict.set_item(key, value_to_py(py, &obj[key])?)?;
+            }
+            py_dict.into_any()
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +303,32 @@ impl PyWeightBacktest {
         let map = self
             .inner
             .long_alpha_stats()
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        hashmap_to_pydict(py, &map)
+    }
+
+    #[pyo3(signature = (mode="history", target_vol=0.20, max_dd_threshold=0.20, min_year_days=120, recent_days=252, min_history_days=60))]
+    #[allow(clippy::too_many_arguments)]
+    fn is_good_strategy<'py>(
+        &self,
+        py: Python<'py>,
+        mode: &str,
+        target_vol: f64,
+        max_dd_threshold: f64,
+        min_year_days: usize,
+        recent_days: usize,
+        min_history_days: usize,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let map = self
+            .inner
+            .is_good_strategy(
+                mode,
+                target_vol,
+                max_dd_threshold,
+                min_year_days,
+                recent_days,
+                min_history_days,
+            )
             .map_err(|e| PyException::new_err(e.to_string()))?;
         hashmap_to_pydict(py, &map)
     }
