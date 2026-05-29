@@ -25,13 +25,13 @@ def plot_backtest_overview(
     title: str | None = "回测概览",
     to_html: bool = False,
 ) -> go.Figure | str:
-    """2x2 概览：回撤+累计 / 日收益分布 / 月度热力图。"""
+    """概览：回撤+累计收益（第一行跨列）/ 日收益分布 + 月度收益热力图（第二行并排）。"""
     fig = make_subplots(
         rows=2,
         cols=2,
         specs=[
-            [{"secondary_y": True}, {"secondary_y": False}],
-            [{"colspan": 2}, None],
+            [{"secondary_y": True, "colspan": 2}, None],
+            [{"secondary_y": False}, {"secondary_y": False}],
         ],
         subplot_titles=("回撤 & 累计收益", "日收益分布", "月度收益热力图"),
         vertical_spacing=0.12,
@@ -70,7 +70,7 @@ def plot_backtest_overview(
         secondary_y=True,
     )
 
-    # 日收益分布
+    # 日收益分布（第二行左）
     fig.add_trace(
         go.Histogram(
             x=result.return_dist.values_pct,
@@ -80,11 +80,11 @@ def plot_backtest_overview(
             name="日收益",
             showlegend=False,
         ),
-        row=1,
-        col=2,
+        row=2,
+        col=1,
     )
 
-    # 月度热力图
+    # 月度热力图（第二行右）
     m = result.monthly
     fig.add_trace(
         go.Heatmap(
@@ -98,7 +98,7 @@ def plot_backtest_overview(
             showscale=False,
         ),
         row=2,
-        col=1,
+        col=2,
     )
 
     fig.update_layout(
