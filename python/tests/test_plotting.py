@@ -100,6 +100,12 @@ class TestPlotPairsPnlDist:
     def test_to_html(self, result):
         assert isinstance(plot_pairs_pnl_dist(result, to_html=True), str)
 
+    def test_pnl_axis_is_percent_number_not_fraction(self, result):
+        """pnl_pct 是百分数（1.0==1%），x 轴不能用 ".1%"（会再 ×100，放大 100 倍）。"""
+        fig = plot_pairs_pnl_dist(result)
+        assert fig.layout.xaxis.tickformat in (None, "")
+        assert "%" in (fig.layout.xaxis.title.text or "")
+
 
 class TestPlotPairsHoldDist:
     def test_returns_figure(self, result):

@@ -39,7 +39,8 @@ def plot_pairs_pnl_dist(
         )
 
     apply_default_layout(fig, title=title, height=400)
-    fig.update_xaxes(title_text="盈亏比例", tickformat=".1%")
+    # pnl_pct 已是百分数（1.0 == 1%，见 result.PairsDist），轴按 (%) 直接显示，不能用 tickformat=".1%"
+    fig.update_xaxes(title_text="盈亏比例 (%)")
     fig.update_yaxes(title_text="频次")
     return figure_to_html(fig) if to_html else fig
 

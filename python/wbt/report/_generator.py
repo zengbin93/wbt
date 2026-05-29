@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import html
 import os
 from typing import Any
 
@@ -91,7 +92,8 @@ def _safe_panel(name: str, build, *, include_plotlyjs: bool) -> str:
         fig.update_layout(autosize=True)
         return fig.to_html(include_plotlyjs=include_plotlyjs, full_html=False, config=_PLOT_CONFIG)
     except Exception as e:  # noqa: BLE001 — 面板级隔离，故意吞掉单图异常
-        return f"<div style='padding:20px;text-align:center;color:red;'>{name}生成失败: {e}</div>"
+        msg = html.escape(f"{name}生成失败: {e}")
+        return f"<div style='padding:20px;text-align:center;color:red;'>{msg}</div>"
 
 
 # 每个标签页的面板定义：(标签名, [(小标题, 构图函数, 是否整行跨列), ...])
@@ -141,13 +143,17 @@ def _generate_chart_tabs(result: BacktestResult) -> list[tuple[str, list[tuple[s
     plotly.js 仅在全局第一个面板内联一次，其余面板复用，控制报告体积。
     """
     tabs: list[tuple[str, list[tuple[str, str, bool]]]] = []
-    first = True
+    plotlyjs_emitted = False
     for tab_name, panels in _tab_specs(result):
         items: list[tuple[str, str, bool]] = []
         for sub_title, build, full_width in panels:
-            html = _safe_panel(sub_title, build, include_plotlyjs=first)
-            items.append((sub_title, html, full_width))
-            first = False
+            include = not plotlyjs_emitted
+            panel_html = _safe_panel(sub_title, build, include_plotlyjs=include)
+            # 仅当面板真正内联了 plotly.js（未在异常路径降级）才标记，否则下个面板继续尝试内联，
+            # 避免首个面板失败导致整份报告无 plotly.js、所有图静默不渲染。
+            if include and "Plotly" in panel_html:
+                plotlyjs_emitted = True
+            items.append((sub_title, panel_html, full_width))
         tabs.append((tab_name, items))
     return tabs
 
