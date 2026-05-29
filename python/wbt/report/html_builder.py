@@ -665,6 +665,11 @@ class HtmlReportBuilder:
 
         :return: HTML 字符串
         """
+        # 兜底：若调用方添加了图表标签页却忘了 add_charts_section()，自动收口，
+        # 否则这些 chart_tab（以 dict 暂存）会被下方静默跳过，生成无图报告。
+        if any(s[0] == "chart_tab" for s in self.sections):
+            self.add_charts_section()
+
         all_css = self.base_css + "\n" + "\n".join(self.custom_css)
 
         header_html = ""
