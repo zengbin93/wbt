@@ -46,6 +46,7 @@ class PyWeightBacktest:
         max_dd_threshold: float = 0.20,
         min_year_days: int = 120,
         recent_days: int = 252,
+        min_history_days: int = 60,
     ) -> dict[str, Any]: ...
 
 def daily_performance(returns: Any, yearly_days: int = 252) -> dict[str, Any]: ...

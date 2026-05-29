@@ -380,7 +380,8 @@ class WeightBacktest:
         max_dd_threshold: float = 0.20,
         min_year_days: int = 120,
         recent_days: int = 252,
-    ) -> dict:
+        min_history_days: int = 60,
+    ) -> dict[str, object]:
         """判定策略能不能搞。
 
         两种判定模式，业务口径与方案子文档一致：
@@ -396,21 +397,43 @@ class WeightBacktest:
         :param max_dd_threshold: 多头超额最大回撤阈值（默认 0.20）。
         :param min_year_days: 视为"完整自然年"所需的最少交易日数（默认 120）。
         :param recent_days: ``"recent"`` 模式取序列尾部的日数（默认 252）。
-        :return: dict, 顶层 key 用英文 snake_case。
+        :param min_history_days: ``"recent"`` 模式下剔除 recent 窗口后的历史段必须达到
+            的最小长度，否则 ``history_window_empty=True`` 且 ``is_good=False``
+            （默认 60；设为 0 关闭 floor）。
 
-            history 模式必含 key：``mode``、``is_good``、``reason``、``yearly_metrics``、
-            ``complete_year_count``、``history_alpha_max_drawdown``、``cond_yearly_passed``、
-            ``cond_history_dd_passed``。
+        **波动率归一化口径**：``compute_vol_adjusted_alpha`` 用**全样本** long/bench
+        的年化标准差做归一化，整段共用同一组 scale。如果用户期望 "recent 窗口按自身
+        vol 归一化"，需要单独跑一个截短样本的回测对象再调用本方法。
 
-            recent 模式必含 key：``mode``、``is_good``、``reason``、``recent_start_date``、
-            ``recent_end_date``、``recent_actual_days``、``recent_abs_return``、
-            ``recent_alpha_return``、``recent_alpha_max_drawdown``、
-            ``history_alpha_max_drawdown_excl_recent``、``history_window_empty``、
-            ``cond_recent_return_passed``、``cond_recent_dd_passed``。
+        **退化与错误**：
 
-            ``is_good`` 为 ``bool``；``yearly_metrics`` 为 list[dict]。
+        - 输入序列含 NaN/Inf、long/bench 的年化波动率 ~= 0，归一化无法定义 → 返回 dict
+          中 ``alpha_degenerate=True``，所有 alpha 派生字段为 ``None``，``is_good=False``。
+        - 输入日期 / 序列长度不匹配、空输入、``recent_days=0``、``target_vol<=0`` 等用户
+          错误 → 抛出 ``Exception``（Rust 端 ``WbtError::InvalidInput``）。
+
+        :return: dict，顶层 key 用英文 snake_case，按字母序稳定排列。
+
+            **history / recent 两个模式返回的 key 集合互斥**，按 ``mode`` 字段 dispatch；
+            不要假设可以同时拿到两个模式的字段。
+
+            **history 模式必含 key**：``alpha_degenerate``、``cond_history_dd_passed``、
+            ``cond_yearly_passed``、``complete_year_count``、``history_alpha_max_drawdown``
+            （退化时为 ``None``）、``is_good``、``mode``、``reason``、``yearly_metrics``。
+
+            **recent 模式必含 key**：``alpha_degenerate``、``cond_recent_dd_passed``、
+            ``cond_recent_return_passed``、``history_alpha_max_drawdown_excl_recent``
+            （退化或样本不足时为 ``None``）、``history_window_empty``、``is_good``、
+            ``mode``、``reason``、``recent_abs_return``、``recent_actual_days``、
+            ``recent_alpha_max_drawdown``（退化时为 ``None``）、``recent_alpha_return``
+            （退化时为 ``None``）、``recent_end_date``、``recent_start_date``。
+
+            ``is_good`` 类型为 ``bool``；``yearly_metrics`` 类型为 ``list[dict]``；
+            ``reason`` 类型为 ``str``（成功时为空字符串）。
         """
-        return self._inner.is_good_strategy(mode, target_vol, max_dd_threshold, min_year_days, recent_days)
+        return self._inner.is_good_strategy(
+            mode, target_vol, max_dd_threshold, min_year_days, recent_days, min_history_days
+        )
 
     @property
     def pairs(self) -> pd.DataFrame:

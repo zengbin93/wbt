@@ -555,6 +555,7 @@ impl WeightBacktest {
     ///
     /// 业务口径与可调参数见 [`crate::core::is_good_strategy`] 模块文档。
     /// 必须先调用 [`Self::backtest`]；否则返回 [`WbtError::NoneValue`]。
+    #[allow(clippy::too_many_arguments)]
     pub fn is_good_strategy(
         &self,
         mode: &str,
@@ -562,6 +563,7 @@ impl WeightBacktest {
         max_dd_threshold: f64,
         min_year_days: usize,
         recent_days: usize,
+        min_history_days: usize,
     ) -> Result<HashMap<String, Value>, WbtError> {
         use crate::core::is_good_strategy::{Mode, judge};
 
@@ -569,7 +571,7 @@ impl WeightBacktest {
             "history" => Mode::History,
             "recent" => Mode::Recent,
             other => {
-                return Err(WbtError::Io(format!(
+                return Err(WbtError::InvalidInput(format!(
                     "invalid mode {other:?}; expected 'history' or 'recent'"
                 )));
             }
@@ -602,6 +604,7 @@ impl WeightBacktest {
             max_dd_threshold,
             min_year_days,
             recent_days,
+            min_history_days,
         )
     }
 
@@ -931,7 +934,7 @@ mod tests {
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
 
         let r = wb
-            .is_good_strategy("history", 0.20, 0.20, 120, 252)
+            .is_good_strategy("history", 0.20, 0.20, 120, 252, 60)
             .expect("is_good_strategy history should succeed after backtest");
         assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("history"));
         assert!(r.get("is_good").and_then(|v| v.as_bool()).is_some());
@@ -948,7 +951,7 @@ mod tests {
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
 
         let r = wb
-            .is_good_strategy("recent", 0.20, 0.20, 120, 252)
+            .is_good_strategy("recent", 0.20, 0.20, 120, 252, 60)
             .expect("is_good_strategy recent should succeed after backtest");
         assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("recent"));
         assert!(r.contains_key("recent_abs_return"));
@@ -961,7 +964,7 @@ mod tests {
     fn weight_backtest_is_good_strategy_returns_err_when_not_backtested() {
         let df = make_test_dataframe();
         let wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
-        let r = wb.is_good_strategy("history", 0.20, 0.20, 120, 252);
+        let r = wb.is_good_strategy("history", 0.20, 0.20, 120, 252, 60);
         assert!(
             r.is_err(),
             "should error when backtest() has not been called"
@@ -973,7 +976,7 @@ mod tests {
         let df = make_test_dataframe();
         let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
-        let r = wb.is_good_strategy("xxx", 0.20, 0.20, 120, 252);
+        let r = wb.is_good_strategy("xxx", 0.20, 0.20, 120, 252, 60);
         assert!(r.is_err(), "should error on invalid mode");
         let msg = format!("{}", r.unwrap_err());
         assert!(
