@@ -222,3 +222,7 @@ wbt.code-workspace
 uv.lock
 .DS_Store
 .claude/
+
+# Playwright 截图产物
+.playwright-mcp/
+/overview.png
