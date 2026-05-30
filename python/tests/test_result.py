@@ -178,16 +178,27 @@ def test_stats_by_side_keys(result: BacktestResult) -> None:
 # K 数值回归
 # ---------------------------------------------------------------------------
 def test_curves_voladj_hits_target_vol(result: BacktestResult) -> None:
-    """波动率归一后，各曲线年化波动率 ≈ target_vol（非退化序列）。"""
+    """波动率归一后各曲线年化波动率 ≈ target_vol（非退化序列）。
+
+    「超额」例外：它是 norm(多头) − norm(基准) 之差，波动率取决于两者相关性，
+    不再等于 target_vol，故单独排除（其口径由 test_curves_voladj_excess_is_diff 校验）。
+    """
     target = 0.20
     sqrt_yd = float(np.sqrt(result.yearly_days))
     for key, c in result.curves_voladj.items():
-        if c.daily.size <= 1:
+        if key == "超额" or c.daily.size <= 1:
             continue
         annual_vol = float(np.std(c.daily, ddof=1)) * sqrt_yd
         if annual_vol == 0:
             continue
         assert annual_vol == pytest.approx(target, rel=1e-6), key
+
+
+def test_curves_voladj_excess_is_diff(result: BacktestResult) -> None:
+    """归一超额 == 归一多头 − 归一基准（先各自归一化、再相减）。"""
+    va = result.curves_voladj
+    expected = va["多头"].daily - va["基准"].daily
+    np.testing.assert_allclose(va["超额"].daily, expected, rtol=0, atol=1e-12)
 
 
 def test_monthly_z_rows_match_yearly_totals(result: BacktestResult) -> None:
