@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 from dataclasses import dataclass
 from functools import cached_property
@@ -94,6 +95,26 @@ class KeyTrades:
 
     best: dict[int, list[KeyTrade]]
     worst: dict[int, list[KeyTrade]]
+
+
+@dataclass(frozen=True)
+class YearlyReturns:
+    """逐年绝对收益与超额收益（原始小数），三者按年份升序一一对应。"""
+
+    years: list[int]
+    abs_returns: np.ndarray
+    alpha_returns: np.ndarray
+
+
+@dataclass(frozen=True)
+class RollingMetrics:
+    """滚动窗口指标时间序列；以窗口结束日 ``edt`` 为 x 轴，各序列与之等长。"""
+
+    window: int
+    edt: np.ndarray
+    sharpe: np.ndarray
+    annual_return: np.ndarray  # 原始小数
+    annual_vol: np.ndarray  # 原始小数
 
 
 def _build_curve(daily: np.ndarray) -> Curve:
@@ -354,6 +375,50 @@ class BacktestResult:
     def verdict(self) -> dict:
         return self._wb.is_good_strategy()
 
+    @cached_property
+    def yearly_returns(self) -> YearlyReturns:
+        """逐年绝对/超额收益，复用 verdict 的 yearly_metrics（不额外计算）。"""
+        ym = sorted(self.verdict.get("yearly_metrics") or [], key=lambda m: m["year"])
+        return YearlyReturns(
+            years=[int(m["year"]) for m in ym],
+            abs_returns=np.array([float(m["abs_return"]) for m in ym], dtype=float),
+            alpha_returns=np.array([float(m["alpha_return"]) for m in ym], dtype=float),
+        )
+
+    @cached_property
+    def rolling(self) -> RollingMetrics:
+        """多空日收益的滚动窗口指标（夏普/年化/年化波动率），x 轴为窗口结束日。"""
+        from wbt.utils.rolling_daily_performance import rolling_daily_performance
+
+        window = 252
+        daily = self.curves["多空"].daily
+        empty = np.array([], dtype=float)
+        if daily.size == 0:
+            return RollingMetrics(window=window, edt=empty, sharpe=empty, annual_return=empty, annual_vol=empty)
+        df = pd.DataFrame({"dt": self.dates, "total": daily})
+        roll = rolling_daily_performance(df, "total", window=window, min_periods=100, yearly_days=self.yearly_days)
+        if roll.empty:
+            return RollingMetrics(window=window, edt=empty, sharpe=empty, annual_return=empty, annual_vol=empty)
+        return RollingMetrics(
+            window=window,
+            edt=pd.to_datetime(roll["edt"]).to_numpy(),
+            sharpe=roll["夏普"].to_numpy(dtype=float),
+            annual_return=roll["年化"].to_numpy(dtype=float),
+            annual_vol=roll["年化波动率"].to_numpy(dtype=float),
+        )
+
+    @cached_property
+    def segment_comparison(self) -> dict[str, dict]:
+        """近 1 年 vs 全样本的关键指标对比（多空口径），值为 stats dict。"""
+        out: dict[str, dict] = {"全样本": self.stats}
+        n = len(self.dates)
+        if n > 0:
+            sdt = pd.Timestamp(self.dates[max(0, n - self.yearly_days)])
+            # 区间过短等异常时降级为仅全样本
+            with contextlib.suppress(Exception):
+                out["近1年"] = self._wb.segment_stats(sdt=sdt, kind="多空")
+        return out
+
     # ---------------------------------------------------------------- to_dict
     def to_dict(self, *, full: bool = False) -> dict:
         out: dict[str, Any] = {
@@ -397,4 +462,17 @@ class BacktestResult:
                 "worst": {str(y): _json_safe(rows) for y, rows in self.key_trades.worst.items()},
             }
             out["verdict"] = _json_safe(self.verdict)
+            out["yearly_returns"] = {
+                "years": self.yearly_returns.years,
+                "abs_returns": _json_safe(self.yearly_returns.abs_returns),
+                "alpha_returns": _json_safe(self.yearly_returns.alpha_returns),
+            }
+            out["rolling"] = {
+                "window": self.rolling.window,
+                "edt": [pd.Timestamp(d).isoformat() for d in self.rolling.edt],
+                "sharpe": _json_safe(self.rolling.sharpe),
+                "annual_return": _json_safe(self.rolling.annual_return),
+                "annual_vol": _json_safe(self.rolling.annual_vol),
+            }
+            out["segment_comparison"] = _json_safe(self.segment_comparison)
         return out

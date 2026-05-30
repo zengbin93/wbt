@@ -153,6 +153,27 @@ def test_verdict_has_is_good(result: BacktestResult) -> None:
     assert "is_good" in v
 
 
+def test_yearly_returns_aligned(result: BacktestResult) -> None:
+    yr = result.yearly_returns
+    n = len(yr.years)
+    assert yr.abs_returns.shape == yr.alpha_returns.shape == (n,)
+    assert yr.years == sorted(yr.years)
+
+
+def test_rolling_series_aligned(result: BacktestResult) -> None:
+    rm = result.rolling
+    assert rm.window == 252
+    n = rm.edt.size
+    assert rm.sharpe.size == rm.annual_return.size == rm.annual_vol.size == n
+
+
+def test_segment_comparison_keys(result: BacktestResult) -> None:
+    sc = result.segment_comparison
+    assert "全样本" in sc
+    # 数据足够长时应有近 1 年
+    assert sc["全样本"] is result.stats or "年化收益" in sc["全样本"]
+
+
 # ---------------------------------------------------------------------------
 # D 序列化
 # ---------------------------------------------------------------------------

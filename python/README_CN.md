@@ -186,9 +186,12 @@ from wbt.plotting import (
     plot_monthly_heatmap,      # 月度收益热力图
     plot_pairs_hold_dist,      # 持仓K线数分布（按方向）
     plot_pairs_pnl_dist,       # 盈亏比例分布（按方向）
+    plot_rolling_metrics,      # 滚动夏普/年化/波动率（252日窗口）
+    plot_segment_comparison,   # 近1年 vs 全样本 指标对比表
     plot_stats_comparison,     # 多空/多头/空头/基准/超额 指标对比表
     plot_symbol_returns,       # 品种累计收益
     plot_verdict,              # is_good_strategy 判定 + 年度指标
+    plot_yearly_returns,       # 年度绝对/超额收益（分组柱状图）
 )
 ```
 

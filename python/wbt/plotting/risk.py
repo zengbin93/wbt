@@ -7,6 +7,7 @@ from plotly.subplots import make_subplots
 
 from ._common import (
     COLOR_DRAWDOWN,
+    COLOR_POSITIVE,
     COLOR_RETURN,
     COLOR_TOTAL,
     add_year_boundaries,
@@ -102,4 +103,42 @@ def plot_daily_return_dist(
     apply_default_layout(fig, title=title, height=400)
     fig.update_xaxes(title_text="日收益率 (%)")
     fig.update_yaxes(title_text="频次")
+    return figure_to_html(fig) if to_html else fig
+
+
+def plot_rolling_metrics(
+    result: BacktestResult,
+    title: str | None = None,
+    to_html: bool = False,
+) -> go.Figure | str:
+    """滚动窗口指标双轴曲线：左轴年化收益/年化波动率(%)，右轴滚动夏普。
+
+    数据来自 result.rolling（默认 252 日窗口），x 轴为窗口结束日。
+    """
+    rm = result.rolling
+    if title is None:
+        title = f"滚动指标（{rm.window}日）"
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    if rm.edt.size == 0:
+        apply_default_layout(fig, title=title, height=400)
+        return figure_to_html(fig) if to_html else fig
+
+    fig.add_trace(
+        go.Scatter(x=rm.edt, y=rm.annual_return, mode="lines", name="滚动年化收益", line={"color": COLOR_POSITIVE}),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(x=rm.edt, y=rm.annual_vol, mode="lines", name="滚动年化波动率", line={"color": "#7f8c8d"}),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(x=rm.edt, y=rm.sharpe, mode="lines", name="滚动夏普", line={"color": COLOR_TOTAL, "width": 1.5}),
+        secondary_y=True,
+    )
+
+    add_year_boundaries(fig, result.year_starts)
+    apply_default_layout(fig, title=title, height=400)
+    fig.update_yaxes(title_text="年化收益 / 波动率", tickformat=".1%", secondary_y=False)
+    fig.update_yaxes(title_text="夏普", secondary_y=True)
     return figure_to_html(fig) if to_html else fig

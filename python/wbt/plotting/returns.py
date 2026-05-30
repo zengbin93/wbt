@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from ._common import (
     COLOR_NEGATIVE,
     COLOR_POSITIVE,
+    COLOR_TOTAL,
     CURVE_COLORS,
     add_year_boundaries,
     apply_default_layout,
@@ -81,14 +82,55 @@ def plot_monthly_heatmap(
             text=m.text.tolist(),
             texttemplate="%{text}",
             colorscale="RdYlGn",
+            reversescale=True,  # 红涨绿跌：正收益→红、负收益→绿
             zmid=0,
             colorbar={"tickformat": ".1%"},
         )
     )
 
-    apply_default_layout(fig, title=title, height=max(300, 60 * len(m.years) + 100))
+    apply_default_layout(fig, title=title, height=max(300, 60 * len(m.years) + 120))
     fig.update_xaxes(title_text="月份")
     fig.update_yaxes(title_text="年份")
+    # 顶部留足边距，容纳左上角的胜率胶囊标注
+    fig.update_layout(margin={"l": 60, "r": 40, "t": 80, "b": 60})
+    # 月度/年度胜率（已在 result.monthly 算好）：accent 色胶囊，明暗主题下均清晰可见
+    fig.add_annotation(
+        text=f"月度胜率 {m.month_win_rate:.1%}　年度胜率 {m.year_win_rate:.1%}",
+        xref="paper",
+        yref="paper",
+        x=0.0,
+        y=1.05,
+        xanchor="left",
+        yanchor="bottom",
+        showarrow=False,
+        font={"size": 12, "color": "#2f5fef"},
+        bgcolor="rgba(47,95,239,0.12)",
+        bordercolor="rgba(47,95,239,0.40)",
+        borderwidth=1,
+        borderpad=4,
+    )
+    return figure_to_html(fig) if to_html else fig
+
+
+def plot_yearly_returns(
+    result: BacktestResult,
+    title: str | None = "年度收益",
+    to_html: bool = False,
+) -> go.Figure | str:
+    """逐年绝对收益 vs 超额收益分组柱状图（数据来自 result.yearly_returns，零计算）。"""
+    yr = result.yearly_returns
+    fig = go.Figure()
+    if not yr.years:
+        apply_default_layout(fig, title=title, height=400)
+        return figure_to_html(fig) if to_html else fig
+
+    years = [str(y) for y in yr.years]
+    fig.add_trace(go.Bar(x=years, y=yr.abs_returns, name="绝对收益", marker_color=COLOR_TOTAL))
+    fig.add_trace(go.Bar(x=years, y=yr.alpha_returns, name="超额收益", marker_color=CURVE_COLORS["超额"]))
+    fig.update_layout(barmode="group")
+    apply_default_layout(fig, title=title, height=400)
+    fig.update_xaxes(title_text="年份")
+    fig.update_yaxes(title_text="年度收益", tickformat=".1%")
     return figure_to_html(fig) if to_html else fig
 
 

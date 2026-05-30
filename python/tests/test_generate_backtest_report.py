@@ -44,18 +44,22 @@ def test_validate_rejects_nan_in_weight_or_price(sample_dfw: pd.DataFrame) -> No
 def test_metrics_cards_on_real_wbt_stats(wb: WeightBacktest) -> None:
     cards = get_performance_metrics_cards(wb.stats)
     assert isinstance(cards, list)
-    assert len(cards) == 11
-    labels = {c["label"] for c in cards}
-    assert labels == {
+    labels = [c["label"] for c in cards]
+    assert len(cards) == 14
+    assert len(labels) == len(set(labels)), f"指标卡标签不应重复: {labels}"
+    assert set(labels) == {
         "年化收益率",
-        "单笔收益(BP)",
-        "交易胜率",
-        "持仓K线数",
-        "最大回撤",
-        "年化",
+        "绝对收益",
         "夏普",
         "卡玛",
+        "最大回撤",
         "年化波动率",
+        "下行波动率",
+        "单笔收益(BP)",
+        "单笔盈亏比",
+        "交易胜率",
+        "日胜率",
+        "持仓K线数",
         "多头占比",
         "空头占比",
     }
@@ -85,7 +89,8 @@ def test_html_builder_render_contains_title_and_basic_structure() -> None:
     )
     assert "<!DOCTYPE html>" in html
     assert "<title>My Test Report</title>" in html
-    assert "Period: 2020-2024" in html
+    assert "Period" in html and "2020-2024" in html  # 徽章：<key> <b><value></b>
+    assert "data-theme" in html and "theme-switch" in html  # 双主题切换已注入
     assert "Hello" in html
     assert "Return" in html
     assert "15%" in html
@@ -124,6 +129,8 @@ def test_generate_backtest_report_writes_valid_html(sample_dfw: pd.DataFrame, tm
     assert "chart-grid" in html  # 单图以 CSS 网格排布（已拆开组合图）
     assert html.count("plotly-graph-div") >= 2  # 一个标签页内多张独立图
     assert "回测概览" in html
+    assert "策略审核" in html
+    assert "稳健性分析" in html
     assert "多空对比" in html
     assert "交易分析" in html
     assert "wbt 权重回测引擎" in html
@@ -151,11 +158,11 @@ def test_generate_backtest_report_contains_metric_labels(sample_dfw: pd.DataFram
     html = out.read_text(encoding="utf-8")
     for label in [
         "年化收益率",
-        "单笔收益(BP)",
-        "交易胜率",
+        "绝对收益",
+        "下行波动率",
+        "单笔盈亏比",
+        "日胜率",
         "持仓K线数",
-        "最大回撤",
-        "年化波动率",
         "多头占比",
         "空头占比",
     ]:

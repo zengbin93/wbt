@@ -43,324 +43,247 @@ class HtmlReportBuilder:
         self._init_default_styles()
 
     def _init_default_styles(self) -> None:
-        """初始化默认样式"""
+        """初始化默认样式（Quant Terminal 设计系统，双主题）。"""
         self.base_css = """
-        :root {
-            --bg-primary: #ffffff;
-            --bg-secondary: #f8f9fa;
-            --bg-tertiary: #e9ecef;
-            --text-primary: #212529;
-            --text-secondary: #6c757d;
-            --accent-green: #28a745;
-            --accent-red: #dc3545;
-            --accent-blue: #007bff;
-            --accent-yellow: #ffc107;
-            --border-color: #dee2e6;
-            --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        /* ============ 主题变量：机构研报(light) / 交易终端(dark) ============ */
+        [data-theme="light"] {
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --panel-2: #eef1f5;
+            --ink: #0e1116;
+            --muted: #5b6573;
+            --border: #e4e8ee;
+            --border-strong: #cfd6e0;
+            --accent: #2f5fef;
+            --up: #d6233b;      /* 红涨：正收益/盈利 */
+            --down: #0b9d6f;    /* 绿跌：负收益/亏损 */
+            --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.05);
+            --dot: rgba(14,17,22,0.035);
+        }
+        [data-theme="dark"] {
+            --bg: #0b0e15;
+            --panel: #131722;
+            --panel-2: #1b2130;
+            --ink: #e6e9ef;
+            --muted: #868fa3;
+            --border: #232b3b;
+            --border-strong: #313b50;
+            --accent: #5b8cff;
+            --up: #f6465d;
+            --down: #1fc995;
+            --shadow: 0 1px 2px rgba(0,0,0,.45);
+            --dot: rgba(230,233,239,0.045);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html, body {
-            width: 100%;
-            height: 100%;
-            overflow-x: hidden;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; overflow-x: hidden; }
+        html { scroll-behavior: smooth; }
 
         body {
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+            background-size: 22px 22px;
+            color: var(--ink);
+            font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
             line-height: 1.5;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+            transition: background-color .25s ease, color .25s ease;
         }
 
-        .container {
-            max-width: 96%;
-            padding: 0 1rem;
-            margin: 0 auto;
-        }
+        .container { max-width: 1440px; width: 94%; padding: 0 8px; margin: 0 auto; }
+        .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 
+        /* ============ Header ============ */
         .header-section {
-            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
-            border-bottom: 1px solid var(--border-color);
-            padding: 1.5rem 0;
-            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding: 1.6rem 0 1.3rem;
+            margin-bottom: .4rem;
         }
-
+        .header-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
         .header-title {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 0.3rem;
+            display: flex; align-items: center; gap: .6rem;
+            font-size: 1.5rem; font-weight: 600; letter-spacing: -0.015em; color: var(--ink);
         }
-
-        .header-subtitle {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
+        .brand-mark {
+            width: 12px; height: 22px; border-radius: 2px;
+            background: linear-gradient(180deg, var(--up) 0 50%, var(--down) 50% 100%);
+            display: inline-block; flex: none;
         }
-
-        .param-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-
+        .header-subtitle { color: var(--muted); font-size: .85rem; margin-top: .35rem; }
+        .param-badges { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: 1rem; }
         .param-badge {
-            background-color: var(--bg-primary);
-            color: var(--text-secondary);
-            padding: 0.35rem 0.7rem;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            border: 1px solid var(--border-color);
-            transition: all 0.2s;
+            font-family: 'IBM Plex Mono', monospace; font-size: .72rem; color: var(--muted);
+            background: var(--panel-2); border: 1px solid var(--border);
+            border-radius: 5px; padding: .3rem .6rem; white-space: nowrap;
         }
+        .param-badge b { color: var(--ink); font-weight: 500; }
 
-        .param-badge:hover {
-            border-color: var(--accent-blue);
-            color: var(--text-primary);
+        /* ============ Theme switch ============ */
+        .theme-switch {
+            display: inline-flex; flex: none; border: 1px solid var(--border);
+            border-radius: 7px; overflow: hidden; background: var(--panel-2);
         }
-
-        .main-content {
-            flex: 1;
-            padding-bottom: 2rem;
+        .theme-switch button {
+            background: transparent; border: 0; color: var(--muted); cursor: pointer;
+            padding: .42rem .7rem; font-size: .78rem; font-family: inherit;
+            display: inline-flex; align-items: center; gap: .35rem; transition: all .15s;
         }
+        .theme-switch button:hover { color: var(--ink); }
+        .theme-switch button.active { background: var(--accent); color: #fff; }
 
-        .metric-card {
-            background: var(--bg-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 1rem;
-            text-align: center;
-            transition: all 0.3s;
-            box-shadow: var(--shadow);
-            height: 100%;
-        }
+        .main-content { flex: 1; padding-bottom: 2.5rem; }
 
-        .metric-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            border-color: var(--accent-blue);
-        }
-
-        .metric-value {
-            font-size: 1.6rem;
-            font-weight: 700;
-            margin-bottom: 0.2rem;
-        }
-
-        .metric-label {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .metric-positive {
-            color: var(--accent-green);
-        }
-
-        .metric-negative {
-            color: var(--accent-red);
-        }
-
-        .metric-neutral {
-            color: var(--accent-blue);
-        }
-
-        .chart-card {
-            background: var(--bg-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            min-height: 500px;
-        }
-
-        .chart-header {
-            background: var(--bg-secondary);
-            padding: 0.8rem 1.2rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .chart-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin: 0;
-            color: var(--text-primary);
-        }
-
-        .chart-body {
-            padding: 0;
-            width: 100%;
-        }
-
-        .chart-body .plotly-graph-div {
-            width: 100% !important;
-        }
-
-        .chart-grid {
-            display: grid;
-            gap: 1rem;
-            padding: 1rem;
-        }
-
-        .chart-grid-item {
-            background: var(--bg-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            min-width: 0;
-        }
-
-        .chart-grid-item.full-width {
-            grid-column: 1 / -1;
-        }
-
-        .chart-grid-item .plotly-graph-div {
-            width: 100% !important;
-        }
-
-        .chart-grid-title {
-            background: var(--bg-secondary);
-            padding: 0.6rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .nav-tabs {
-            border-bottom: 2px solid var(--border-color);
-            background: var(--bg-secondary);
-        }
-
-        .nav-tabs .nav-link {
-            color: var(--text-secondary);
-            border: none;
-            border-bottom: 3px solid transparent;
-            padding: 0.8rem 1.2rem;
-            transition: all 0.2s;
-            font-size: 0.9rem;
-        }
-
-        .nav-tabs .nav-link:hover {
-            color: var(--text-primary);
-            background: var(--bg-tertiary);
-        }
-
-        .nav-tabs .nav-link.active {
-            color: var(--accent-blue);
-            background: var(--bg-primary);
-            border-bottom-color: var(--accent-blue);
-        }
-
-        .tab-content {
-            background: var(--bg-primary);
-            padding: 0;
-            height: 100%;
-        }
-
-        .tab-pane {
-            height: 100%;
-        }
-
-        .data-table {
-            background: var(--bg-primary);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-        }
-
-        .table {
-            color: var(--text-primary);
-            margin-bottom: 0;
-            font-size: 0.9rem;
-        }
-
-        .table thead th {
-            background: var(--bg-secondary);
-            border-bottom: 2px solid var(--border-color);
-            color: var(--text-primary);
-            font-weight: 600;
-            padding: 0.8rem;
-            text-transform: uppercase;
-            font-size: 0.75rem;
-        }
-
-        .table tbody tr {
-            border-bottom: 1px solid var(--border-color);
-            transition: background 0.2s;
-        }
-
-        .table tbody tr:hover {
-            background: var(--bg-secondary);
-        }
-
-        .table tbody td {
-            padding: 0.8rem;
-            vertical-align: middle;
-        }
-
-        .section-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding-bottom: 0.3rem;
-            border-bottom: 2px solid var(--border-color);
-        }
-
+        /* ============ Section header ============ */
+        .section-header { display: flex; align-items: center; gap: .55rem; margin: 1.5rem 0 .5rem; }
+        .section-header .section-icon { color: var(--accent); font-size: .95rem; }
         .section-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0;
+            font-size: .82rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+            color: var(--muted); margin: 0;
+        }
+        .section-header::after { content: ""; flex: 1; height: 1px; background: var(--border); margin-left: .3rem; }
+
+        /* ============ Stat tiles ============ */
+        .stat-grid {
+            display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border);
+            border-radius: 9px; overflow: hidden;
+            /* 列数由 add_metrics 按指标数取整除值内联设置，保证每行填满、无空位 */
+        }
+        .stat-tile {
+            background: var(--panel); padding: .8rem .95rem; display: flex; flex-direction: column;
+            gap: .35rem; position: relative; transition: background .15s;
+        }
+        .stat-tile:hover { background: var(--panel-2); }
+        .stat-label { font-size: .67rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+        .stat-value {
+            font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+            font-weight: 500; font-size: 1.3rem; letter-spacing: -0.01em; line-height: 1.1;
+        }
+        .stat-value.metric-positive { color: var(--up); }
+        .stat-value.metric-negative { color: var(--down); }
+        .stat-value.metric-neutral  { color: var(--ink); }
+
+        /* ============ Tabs (override bootstrap) ============ */
+        .chart-card { background: transparent; border: 0; box-shadow: none; }
+        .nav-tabs {
+            position: sticky; top: 0; z-index: 40; display: flex; gap: .15rem;
+            border: 0; border-bottom: 1px solid var(--border);
+            background: color-mix(in srgb, var(--bg) 88%, transparent);
+            backdrop-filter: blur(8px); padding-top: .3rem;
+        }
+        .nav-tabs .nav-link {
+            border: 0 !important; border-bottom: 2px solid transparent !important; border-radius: 0;
+            background: transparent; color: var(--muted); font-size: .85rem; font-weight: 500;
+            padding: .65rem .95rem; transition: color .15s, border-color .15s;
+        }
+        .nav-tabs .nav-link:hover { color: var(--ink); background: transparent; }
+        .nav-tabs .nav-link.active {
+            color: var(--accent) !important; background: transparent;
+            border-bottom-color: var(--accent) !important;
+        }
+        .tab-content { background: transparent; }
+
+        /* ============ Chart grid panels ============ */
+        .chart-grid { display: grid; gap: 14px; padding: 16px 0; }
+        .chart-grid-item {
+            background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+            overflow: hidden; box-shadow: var(--shadow); min-width: 0;
+        }
+        .chart-grid-item.full-width { grid-column: 1 / -1; }
+        .chart-grid-item .plotly-graph-div { width: 100% !important; }
+        .chart-grid-title {
+            font-size: .8rem; font-weight: 600; letter-spacing: .01em; color: var(--ink);
+            padding: .65rem .9rem; border-bottom: 1px solid var(--border); background: var(--panel-2);
         }
 
-        .section-icon {
-            margin-right: 0.5rem;
-            color: var(--accent-blue);
+        /* ============ add_table fallback ============ */
+        .data-table { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+        .table { color: var(--ink); margin-bottom: 0; font-size: .88rem; }
+        .table thead th {
+            background: var(--panel-2); border-bottom: 1px solid var(--border); color: var(--muted);
+            font-weight: 600; padding: .7rem; text-transform: uppercase; font-size: .72rem; letter-spacing: .04em;
         }
+        .table tbody tr { border-bottom: 1px solid var(--border); }
+        .table tbody tr:hover { background: var(--panel-2); }
+        .table tbody td { padding: .65rem .7rem; vertical-align: middle; font-family: 'IBM Plex Mono', monospace; }
 
+        /* ============ Financial tables (native HTML) ============ */
+        .fin-wrap { width: 100%; overflow-x: auto; padding: 4px; }
+        .fin-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+        .fin-table thead th {
+            text-align: right; font-weight: 600; color: var(--muted); text-transform: uppercase;
+            letter-spacing: .04em; font-size: .68rem; padding: .55rem .85rem;
+            border-bottom: 1px solid var(--border-strong); white-space: nowrap; background: var(--panel);
+        }
+        .fin-table thead th:first-child { text-align: left; }
+        .fin-table tbody td {
+            padding: .46rem .85rem; border-bottom: 1px solid var(--border); text-align: right;
+            font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+            color: var(--ink); white-space: nowrap;
+        }
+        .fin-table tbody td:first-child {
+            text-align: left; font-family: 'IBM Plex Sans', sans-serif; color: var(--muted); font-weight: 500;
+        }
+        .fin-table tbody tr:last-child td { border-bottom: 0; }
+        .fin-table tbody tr:hover td { background: var(--panel-2); }
+        .fin-table .t-up { color: var(--up); }
+        .fin-table .t-down { color: var(--down); }
+        .badge { font-size: .68rem; padding: .14rem .55rem; border-radius: 4px; font-weight: 600; white-space: nowrap; }
+        .badge-pass { color: #fff; background: var(--down); }
+        .badge-fail { color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); }
+
+        /* ============ 完整绩效指标键值网格 ============ */
+        .kv-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1px; background: var(--border); border-top: 1px solid var(--border); margin: 2px;
+        }
+        .kv {
+            display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+            background: var(--panel); padding: .5rem .85rem;
+        }
+        .kv-k { color: var(--muted); font-size: .76rem; }
+        .kv-v { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: .86rem; color: var(--ink); }
+        .kv-v .t-up { color: var(--up); }
+        .kv-v .t-down { color: var(--down); }
+
+        /* ============ 策略判定卡 ============ */
+        .verdict { padding: 1.1rem 1.15rem 1.3rem; }
+        .verdict-head { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .verdict-badge {
+            font-size: 1rem; font-weight: 700; padding: .42rem .95rem; border-radius: 8px;
+            display: inline-flex; align-items: center; gap: .4rem; color: #fff; letter-spacing: .02em;
+        }
+        .verdict-badge.good { background: var(--down); }
+        .verdict-badge.bad { background: var(--up); }
+        .verdict-sub { color: var(--muted); font-size: .85rem; font-family: 'IBM Plex Mono', monospace; }
+        .verdict-conds { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.1rem; }
+        .verdict-cond {
+            display: flex; align-items: baseline; gap: .6rem; font-size: .85rem;
+            padding: .6rem .85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+        }
+        .verdict-cond .ck { font-weight: 700; flex: none; font-size: .95rem; }
+        .verdict-cond.ok .ck { color: var(--down); }
+        .verdict-cond.no .ck { color: var(--up); }
+        .verdict-cond .ct { color: var(--ink); font-weight: 600; flex: none; }
+        .verdict-cond .cd { color: var(--muted); }
+
+        /* ============ Footer ============ */
         .footer {
-            background: var(--bg-secondary);
-            border-top: 1px solid var(--border-color);
-            padding: 1rem 0;
-            margin-top: auto;
-            text-align: center;
-            color: var(--text-secondary);
-            font-size: 0.85rem;
+            margin-top: auto; border-top: 1px solid var(--border); padding: 1.1rem 0; text-align: center;
+            color: var(--muted); font-size: .76rem; font-family: 'IBM Plex Mono', monospace;
         }
 
         @media (max-width: 768px) {
-            .header-title {
-                font-size: 1.4rem;
-            }
-
-            .metric-value {
-                font-size: 1.3rem;
-            }
-
-            .nav-tabs .nav-link {
-                padding: 0.6rem 0.8rem;
-                font-size: 0.85rem;
-            }
-
-            .chart-card {
-                height: 70vh;
-            }
-
-            .chart-grid {
-                grid-template-columns: 1fr !important;
-            }
+            .header-title { font-size: 1.25rem; }
+            .header-bar { flex-direction: column; }
+            .stat-value { font-size: 1.12rem; }
+            .nav-tabs .nav-link { padding: .55rem .7rem; font-size: .8rem; }
+            .chart-grid { grid-template-columns: 1fr !important; }
         }
+        @media (max-width: 1024px) { .stat-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+        @media (max-width: 520px) { .stat-grid { grid-template-columns: 1fr !important; } }
         """
 
     def add_custom_css(self, css: str) -> HtmlReportBuilder:
@@ -390,25 +313,24 @@ class HtmlReportBuilder:
         """
         badges_html = ""
         for key, value in params.items():
-            badges_html += f"""                        <span class="param-badge">
-                            <i class="bi bi-info-circle"></i> {key}: {value}
-                        </span>\n"""
+            badges_html += f'                        <span class="param-badge">{key} <b>{value}</b></span>\n'
 
+        subtitle_html = f'<p class="header-subtitle">{subtitle}</p>' if subtitle else ""
         header_html = f"""    <!-- 头部区域 -->
     <div class="header-section">
         <div class="container">
-            <div class="row">
-                <div class="col-12">
-                    <h1 class="header-title">
-                        <i class="bi bi-graph-up-arrow section-icon"></i>
-                        {self.title}
-                    </h1>
-                    {f'<p class="header-subtitle">{subtitle}</p>' if subtitle else ""}
-
-                    <div class="param-badges">
-{badges_html}                    </div>
+            <div class="header-bar">
+                <div>
+                    <h1 class="header-title"><span class="brand-mark"></span>{self.title}</h1>
+                    {subtitle_html}
+                </div>
+                <div class="theme-switch" role="group" aria-label="主题切换">
+                    <button type="button" data-theme="light"><i class="bi bi-sun"></i> 浅色</button>
+                    <button type="button" data-theme="dark"><i class="bi bi-moon-stars"></i> 深色</button>
                 </div>
             </div>
+            <div class="param-badges">
+{badges_html}            </div>
         </div>
     </div>
 """
@@ -419,31 +341,34 @@ class HtmlReportBuilder:
     def add_metrics(self, metrics: list[dict[str, Any]], title: str = "核心绩效指标") -> HtmlReportBuilder:
         """添加绩效指标卡片
 
-        :param metrics: 指标列表，每个元素为 {"label": str, "value": str, "is_positive": bool}
+        :param metrics: 指标列表，每个元素为 {"label": str, "value": str, "is_positive": bool}；
+            可选 "neutral": bool —— True 时用中性蓝（适合占比/持仓等无涨跌语义的结构指标）
         :param title: 区域标题
         :return: self，支持链式调用
         """
-        metrics_html = ""
+        tiles_html = ""
         for m in metrics:
-            value_class = "metric-positive" if m.get("is_positive", False) else "metric-negative"
-            metrics_html += f"""                <div class="col-6 col-md-4 col-lg-3 col-xl-2">
-                    <div class="metric-card">
-                        <div class="metric-value {value_class}">
-                            {m["value"]}
-                        </div>
-                        <div class="metric-label">{m["label"]}</div>
-                    </div>
+            if m.get("neutral"):
+                value_class = "metric-neutral"
+            else:
+                value_class = "metric-positive" if m.get("is_positive", False) else "metric-negative"
+            tiles_html += f"""                <div class="stat-tile">
+                    <span class="stat-label">{m["label"]}</span>
+                    <span class="stat-value {value_class}">{m["value"]}</span>
                 </div>\n"""
 
+        # 选择能整除指标数的列数（优先大列数），让每行填满、末行无空位（14→7×2）
+        n = len(metrics)
+        cols = next((c for c in (7, 6, 5, 4) if n and n % c == 0), 5)
         section_html = f"""    <!-- {title} -->
-    <section class="mb-4">
+    <section>
         <div class="section-header">
             <i class="bi bi-speedometer2 section-icon"></i>
             <h2 class="section-title">{title}</h2>
         </div>
 
-        <div class="row g-2">
-{metrics_html}        </div>
+        <div class="stat-grid" style="grid-template-columns: repeat({cols}, 1fr);">
+{tiles_html}        </div>
     </section>
 """
 
@@ -697,6 +622,18 @@ class HtmlReportBuilder:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{self.title}</title>
 
+    <!-- 主题初始化（首屏前执行，避免闪烁）：localStorage 优先，默认深色 -->
+    <script>
+        (function () {{
+            var t = 'dark';
+            try {{ t = localStorage.getItem('wbt-theme') || 'dark'; }} catch (e) {{}}
+            document.documentElement.setAttribute('data-theme', t);
+        }})();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
@@ -713,28 +650,69 @@ class HtmlReportBuilder:
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // 监听 Tab 切换事件，重新调整图表大小
-        document.addEventListener('DOMContentLoaded', function() {{
-            var triggerTabList = [].slice.call(document.querySelectorAll('button[data-bs-toggle="tab"]'))
-            triggerTabList.forEach(function(triggerEl) {{
-                triggerEl.addEventListener('shown.bs.tab', function(event) {{
-                    var targetId = event.target.getAttribute('data-bs-target');
-                    var targetPane = document.querySelector(targetId);
-                    targetPane.querySelectorAll('.plotly-graph-div').forEach(function(d) {{
-                        Plotly.Plots.resize(d);
+        // ---- Plotly 主题同步：图表底色/网格/字体/表格跟随明暗主题 ----
+        function wbtPlotlyColors(theme) {{
+            return theme === 'dark'
+                ? {{ font: '#aab2c5', grid: 'rgba(230,233,239,0.07)', zero: 'rgba(230,233,239,0.16)',
+                     line: '#2b3346', cell: '#cfd5e2', bar: 'rgba(170,178,197,0.7)', active: '#5b8cff' }}
+                : {{ font: '#46505f', grid: 'rgba(14,17,22,0.07)', zero: 'rgba(14,17,22,0.16)',
+                     line: '#cfd6e0', cell: '#1a1f29', bar: 'rgba(70,80,95,0.55)', active: '#2f5fef' }};
+        }}
+        function wbtApplyPlotlyTheme(theme) {{
+            if (typeof Plotly === 'undefined') return;
+            var c = wbtPlotlyColors(theme);
+            document.querySelectorAll('.plotly-graph-div').forEach(function (d) {{
+                if (!d || !d.layout) return;
+                var up = {{ 'paper_bgcolor': 'rgba(0,0,0,0)', 'plot_bgcolor': 'rgba(0,0,0,0)',
+                            'font.color': c.font, 'legend.font.color': c.font,
+                            'modebar.bgcolor': 'rgba(0,0,0,0)', 'modebar.color': c.bar, 'modebar.activecolor': c.active }};
+                Object.keys(d.layout).forEach(function (k) {{
+                    if (/^(xaxis|yaxis)/.test(k)) {{
+                        up[k + '.gridcolor'] = c.grid;
+                        up[k + '.zerolinecolor'] = c.zero;
+                        up[k + '.linecolor'] = c.line;
+                        up[k + '.tickfont.color'] = c.font;
+                    }}
+                }});
+                try {{ Plotly.relayout(d, up); }} catch (e) {{}}
+                try {{
+                    (d.data || []).forEach(function (tr, i) {{
+                        if (tr.type === 'table') Plotly.restyle(d, {{ 'cells.font.color': c.cell }}, [i]);
                     }});
-                }})
-            }})
-
-            // 窗口大小改变时也触发 resize
-            window.addEventListener('resize', function() {{
-                var activePane = document.querySelector('.tab-pane.active');
-                if (activePane) {{
-                    activePane.querySelectorAll('.plotly-graph-div').forEach(function(d) {{
-                        Plotly.Plots.resize(d);
-                    }});
-                }}
+                }} catch (e) {{}}
             }});
+        }}
+
+        function wbtSetTheme(t) {{
+            document.documentElement.setAttribute('data-theme', t);
+            try {{ localStorage.setItem('wbt-theme', t); }} catch (e) {{}}
+            document.querySelectorAll('.theme-switch button').forEach(function (b) {{
+                b.classList.toggle('active', b.getAttribute('data-theme') === t);
+            }});
+            wbtApplyPlotlyTheme(t);
+        }}
+
+        document.addEventListener('DOMContentLoaded', function () {{
+            var theme = document.documentElement.getAttribute('data-theme') || 'dark';
+            document.querySelectorAll('.theme-switch button').forEach(function (b) {{
+                b.classList.toggle('active', b.getAttribute('data-theme') === theme);
+                b.addEventListener('click', function () {{ wbtSetTheme(b.getAttribute('data-theme')); }});
+            }});
+
+            function resizePane(pane) {{
+                if (!pane) return;
+                pane.querySelectorAll('.plotly-graph-div').forEach(function (d) {{ Plotly.Plots.resize(d); }});
+            }}
+            document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(function (el) {{
+                el.addEventListener('shown.bs.tab', function (ev) {{
+                    resizePane(document.querySelector(ev.target.getAttribute('data-bs-target')));
+                }});
+            }});
+            window.addEventListener('resize', function () {{ resizePane(document.querySelector('.tab-pane.active')); }});
+
+            // 初次着色图表以匹配当前主题（plotly 渲染稍晚，window.load 再补一次）
+            wbtApplyPlotlyTheme(theme);
+            window.addEventListener('load', function () {{ wbtApplyPlotlyTheme(theme); }});
         }});
 
         // 用户自定义脚本
