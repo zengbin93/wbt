@@ -67,7 +67,6 @@ class HtmlReportBuilder:
 
         html, body {
             width: 100%;
-            height: 100%;
             overflow-x: hidden;
         }
 
@@ -76,6 +75,7 @@ class HtmlReportBuilder:
             color: var(--text-primary);
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
             line-height: 1.5;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
         }
@@ -162,12 +162,13 @@ class HtmlReportBuilder:
             letter-spacing: 0.5px;
         }
 
+        /* 中式红涨绿跌：正向/盈利→红，负向/亏损→绿 */
         .metric-positive {
-            color: var(--accent-green);
+            color: var(--accent-red);
         }
 
         .metric-negative {
-            color: var(--accent-red);
+            color: var(--accent-green);
         }
 
         .metric-neutral {
@@ -419,13 +420,17 @@ class HtmlReportBuilder:
     def add_metrics(self, metrics: list[dict[str, Any]], title: str = "核心绩效指标") -> HtmlReportBuilder:
         """添加绩效指标卡片
 
-        :param metrics: 指标列表，每个元素为 {"label": str, "value": str, "is_positive": bool}
+        :param metrics: 指标列表，每个元素为 {"label": str, "value": str, "is_positive": bool}；
+            可选 "neutral": bool —— True 时用中性蓝（适合占比/持仓等无涨跌语义的结构指标）
         :param title: 区域标题
         :return: self，支持链式调用
         """
         metrics_html = ""
         for m in metrics:
-            value_class = "metric-positive" if m.get("is_positive", False) else "metric-negative"
+            if m.get("neutral"):
+                value_class = "metric-neutral"
+            else:
+                value_class = "metric-positive" if m.get("is_positive", False) else "metric-negative"
             metrics_html += f"""                <div class="col-6 col-md-4 col-lg-3 col-xl-2">
                     <div class="metric-card">
                         <div class="metric-value {value_class}">

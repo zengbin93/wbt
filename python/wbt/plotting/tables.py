@@ -4,13 +4,37 @@ from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 
-from ._common import COLOR_LONG, COLOR_SHORT, apply_default_layout, figure_to_html, fmt_cell
+from ._common import COLOR_LONG, COLOR_SHORT, apply_default_layout, figure_to_html, fmt_value
 
 if TYPE_CHECKING:
     from wbt.result import BacktestResult
 
 _COMPARE_METRICS = ["年化收益", "夏普比率", "卡玛比率", "最大回撤", "年化波动率", "日胜率"]
 _COMPARE_SIDES = ["多空", "多头", "空头", "基准", "超额"]
+# 基准/超额 stats 来自 daily_performance（键名为 年化/夏普/卡玛），与 Rust stats 不同，做别名兼容
+_METRIC_ALIASES: dict[str, tuple[str, ...]] = {
+    "年化收益": ("年化收益", "年化"),
+    "夏普比率": ("夏普比率", "夏普"),
+    "卡玛比率": ("卡玛比率", "卡玛"),
+}
+
+# plot_verdict 年度指标表的中文列名与顺序（年份首列）
+_YEARLY_COLS: list[tuple[str, str]] = [
+    ("year", "年份"),
+    ("abs_return", "绝对收益"),
+    ("alpha_return", "超额收益"),
+    ("days", "交易日数"),
+    ("is_complete_year", "完整年"),
+    ("year_passed", "达标"),
+]
+
+
+def _lookup_metric(side_stats: dict, metric: str) -> object:
+    """按别名在某侧 stats 中取指标值，取不到返回 None。"""
+    for alias in _METRIC_ALIASES.get(metric, (metric,)):
+        if alias in side_stats:
+            return side_stats[alias]
+    return None
 
 
 def plot_key_trades(
@@ -82,7 +106,7 @@ def plot_stats_comparison(
 
     columns: list[list[str]] = [_COMPARE_METRICS]
     for s in side_order:
-        columns.append([fmt_cell(sides[s].get(k, "N/A")) for k in _COMPARE_METRICS])
+        columns.append([fmt_value(k, _lookup_metric(sides[s], k)) for k in _COMPARE_METRICS])
 
     fig.add_trace(
         go.Table(
@@ -137,7 +161,7 @@ def plot_colored_table(
                 "font_size": 13,
             },
             cells={
-                "values": [keys, [fmt_cell(v) for v in values]],
+                "values": [keys, [fmt_value(k, v) for k, v in zip(keys, values, strict=True)]],
                 "fill_color": [["white"] * len(keys), [_cell_color(v) for v in values]],
                 "align": ["left", "right"],
                 "font_size": 12,
@@ -162,7 +186,7 @@ def plot_drawdowns_table(
         return figure_to_html(fig) if to_html else fig
 
     headers = list(rows[0].keys())
-    columns = [[fmt_cell(r.get(h, "")) for r in rows] for h in headers]
+    columns = [[fmt_value(h, r.get(h)) for r in rows] for h in headers]
     fig.add_trace(
         go.Table(
             header={"values": headers, "fill_color": "#3498db", "font_color": "white", "align": "center"},
@@ -171,6 +195,22 @@ def plot_drawdowns_table(
     )
     apply_default_layout(fig, title=title, height=max(300, 30 * len(rows) + 120))
     return figure_to_html(fig) if to_html else fig
+
+
+def _wrap_text(text: str, width: int = 90) -> str:
+    """按空格在 width 处折行，用 <br> 连接，避免 plotly 注解横向溢出。"""
+    words = text.split(" ")
+    lines: list[str] = []
+    cur = ""
+    for w in words:
+        if cur and len(cur) + 1 + len(w) > width:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}".strip()
+    if cur:
+        lines.append(cur)
+    return "<br>".join(lines)
 
 
 def plot_verdict(
@@ -184,29 +224,37 @@ def plot_verdict(
 
     yearly = v.get("yearly_metrics") or []
     if yearly and isinstance(yearly, list) and isinstance(yearly[0], dict):
-        headers = list(yearly[0].keys())
-        columns = [[fmt_cell(row.get(h, "")) for row in yearly] for h in headers]
+        present = [(ek, zh) for ek, zh in _YEARLY_COLS if ek in yearly[0]]
+        header_zh = [zh for _, zh in present]
+        columns = [[fmt_value(ek, row.get(ek)) for row in yearly] for ek, _ in present]
         fig.add_trace(
             go.Table(
-                header={"values": headers, "fill_color": "#3498db", "font_color": "white", "align": "center"},
+                header={"values": header_zh, "fill_color": "#3498db", "font_color": "white", "align": "center"},
                 cells={"values": columns, "align": "center", "font_size": 11},
             )
         )
 
     is_good = bool(v.get("is_good", False))
     reason = str(v.get("reason", "") or "")
-    verdict_text = f"<b>{'✅ 可用' if is_good else '❌ 不可用'}</b>"
+    badge = "✅ 可用" if is_good else "❌ 不可用"
+    verdict_text = f"<b>{badge}</b>"
     if reason:
-        verdict_text += f"  ·  {reason}"
+        verdict_text += "<br>" + _wrap_text(reason, 90)
+    # 左上对齐、向上生长，避开右上角的 plotly 工具栏；顶部留够边距容纳折行
+    reason_lines = verdict_text.count("<br>") + 1
     fig.add_annotation(
         text=verdict_text,
         xref="paper",
         yref="paper",
-        x=0.5,
-        y=1.08,
+        x=0,
+        y=1.0,
+        xanchor="left",
+        yanchor="bottom",
+        align="left",
         showarrow=False,
-        font={"size": 14, "color": "#2ecc71" if is_good else "#e74c3c"},
+        font={"size": 13, "color": "#2ecc71" if is_good else "#e74c3c"},
     )
 
-    apply_default_layout(fig, title=title, height=max(300, 28 * (len(yearly) + 2) + 120))
+    apply_default_layout(fig, title=title, height=max(320, 28 * (len(yearly) + 2) + 120))
+    fig.update_layout(margin={"l": 40, "r": 40, "t": 40 + 18 * reason_lines, "b": 40})
     return figure_to_html(fig) if to_html else fig

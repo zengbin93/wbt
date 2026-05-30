@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import plotly.graph_objects as go
 
@@ -32,6 +34,43 @@ def fmt_cell(v: object) -> str:
     if isinstance(v, float):
         return f"{v:.4f}"
     return str(v)
+
+
+# 字段名 → 格式化类别的关键词（按优先级匹配，先整数/计数，再 BP/比率，最后百分比）
+_COUNT_KEYS = ("天数", "次数", "K线数", "间隔", "数量", "days", "count")
+_YEAR_KEYS = ("year", "年份")
+_RATIO_KEYS = ("夏普", "卡玛", "盈亏比", "盈亏平衡", "赢面")
+_PCT_KEYS = ("收益", "回撤", "波动", "胜率", "占比", "回报率", "覆盖", "abs_return", "alpha_return")
+
+
+def fmt_value(key: str, v: object) -> str:
+    """按字段名语义格式化单元格值。
+
+    比率类→百分比（``.2%``），计数/天数→整数千分位，年份→无千分位整数，
+    夏普/卡玛/盈亏比→``.2f``，单笔收益(BP)→``.2f``，None/NaN→「—」，bool→是/否。
+    无法归类的数值回退 ``.4f``，非数值原样 ``str``。
+    """
+    if v is None:
+        return "—"
+    if isinstance(v, bool):
+        return "是" if v else "否"
+    if isinstance(v, float) and math.isnan(v):
+        return "—"
+    if not isinstance(v, (int, float)):
+        return str(v)
+
+    k = str(key)
+    if any(t in k for t in _YEAR_KEYS):
+        return f"{v:.0f}"
+    if any(t in k for t in _COUNT_KEYS):
+        return f"{v:,.0f}"
+    if "单笔收益" in k:  # BP 单位
+        return f"{v:.2f}"
+    if any(t in k for t in _RATIO_KEYS):
+        return f"{v:.2f}"
+    if any(t in k for t in _PCT_KEYS):
+        return f"{v:.2%}"
+    return f"{v:.4f}"
 
 
 def add_year_boundaries(

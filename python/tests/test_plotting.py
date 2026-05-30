@@ -21,7 +21,38 @@ from wbt.plotting import (  # noqa: E402
     plot_symbol_returns,
     plot_verdict,
 )
+from wbt.plotting._common import fmt_value  # noqa: E402
 from wbt.result import BacktestResult  # noqa: E402
+
+
+class TestFmtValue:
+    def test_ratio_to_percent(self):
+        assert fmt_value("年化收益", 0.0058) == "0.58%"
+        assert fmt_value("最大回撤", 0.3641) == "36.41%"
+        assert fmt_value("日胜率", 0.4988) == "49.88%"
+
+    def test_counts_are_integer_with_separator(self):
+        assert fmt_value("交易次数", 681602.0) == "681,602"
+        assert fmt_value("恢复天数", 2578.0) == "2,578"
+
+    def test_year_has_no_separator(self):
+        assert fmt_value("year", 2020) == "2020"
+
+    def test_ratio_metrics_two_decimals(self):
+        assert fmt_value("夏普比率", 0.0629) == "0.06"
+        assert fmt_value("单笔盈亏比", 0.9937) == "0.99"
+
+    def test_bp_two_decimals(self):
+        assert fmt_value("单笔收益", 4.66) == "4.66"
+
+    def test_missing_values(self):
+        assert fmt_value("恢复天数", None) == "—"
+        assert fmt_value("新高间隔", float("nan")) == "—"
+
+    def test_bool_to_cn(self):
+        assert fmt_value("完整年", True) == "是"
+        assert fmt_value("达标", False) == "否"
+
 
 # ---------------------------------------------------------------------------
 # `wb` fixture 来自 conftest.py；绘图统一以 BacktestResult 为入参
@@ -140,6 +171,15 @@ class TestPlotStatsComparison:
     def test_to_html(self, result):
         assert isinstance(plot_stats_comparison(result, to_html=True), str)
 
+    def test_benchmark_excess_not_na(self, result):
+        """基准/超额 stats 键名不同（年化/夏普/卡玛），别名映射后不应出现「—」。"""
+        fig = plot_stats_comparison(result)
+        header = list(fig.data[0].header.values)  # ["指标","多空",...,"基准","超额"]
+        cols = fig.data[0].cells.values
+        for side in ("基准", "超额"):
+            ci = header.index(side)
+            assert "—" not in cols[ci], f"{side} 列出现缺失值: {cols[ci]}"
+
 
 class TestPlotKeyTrades:
     def test_returns_figure(self, result):
@@ -166,3 +206,13 @@ class TestPlotVerdict:
 
     def test_to_html(self, result):
         assert isinstance(plot_verdict(result, to_html=True), str)
+
+    def test_yearly_table_chinese_year_first(self, result):
+        """年度指标表应为中文列名且「年份」在首列。"""
+        fig = plot_verdict(result)
+        # 若存在表格 trace，校验表头
+        tables = [t for t in fig.data if t.type == "table"]
+        if tables:
+            header = list(tables[0].header.values)
+            assert header[0] == "年份"
+            assert "abs_return" not in header and "绝对收益" in header

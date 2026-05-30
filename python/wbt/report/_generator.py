@@ -43,21 +43,23 @@ def get_performance_metrics_cards(stats: dict[str, Any]) -> list[dict[str, Any]]
         v = stats.get(key, 0)
         return v if isinstance(v, (int, float)) else 0.0
 
+    # 中式红涨绿跌：盈利/正向 → is_positive=True(红)，亏损/负向 → False(绿)；
+    # 无涨跌语义的结构指标（波动率/占比/持仓）用 neutral=True(蓝)。
     return [
         {"label": "年化收益率", "value": f"{g('年化收益'):.2%}", "is_positive": g("年化收益") > 0},
         {"label": "绝对收益", "value": f"{g('绝对收益'):.2%}", "is_positive": g("绝对收益") > 0},
-        {"label": "夏普", "value": f"{g('夏普比率'):.2f}", "is_positive": g("夏普比率") > 1},
-        {"label": "卡玛", "value": f"{g('卡玛比率'):.2f}", "is_positive": g("卡玛比率") > 1},
-        {"label": "最大回撤", "value": f"{g('最大回撤'):.2%}", "is_positive": g("最大回撤") < 0.1},
-        {"label": "年化波动率", "value": f"{g('年化波动率'):.2%}", "is_positive": g("年化波动率") < 0.2},
-        {"label": "下行波动率", "value": f"{g('下行波动率'):.2%}", "is_positive": g("下行波动率") < 0.15},
+        {"label": "夏普", "value": f"{g('夏普比率'):.2f}", "is_positive": g("夏普比率") > 0},
+        {"label": "卡玛", "value": f"{g('卡玛比率'):.2f}", "is_positive": g("卡玛比率") > 0},
+        {"label": "最大回撤", "value": f"{g('最大回撤'):.2%}", "is_positive": False},
+        {"label": "年化波动率", "value": f"{g('年化波动率'):.2%}", "neutral": True, "is_positive": False},
+        {"label": "下行波动率", "value": f"{g('下行波动率'):.2%}", "neutral": True, "is_positive": False},
         {"label": "单笔收益(BP)", "value": f"{g('单笔收益'):.2f}", "is_positive": g("单笔收益") > 0},
         {"label": "单笔盈亏比", "value": f"{g('单笔盈亏比'):.2f}", "is_positive": g("单笔盈亏比") > 1},
         {"label": "交易胜率", "value": f"{g('交易胜率'):.2%}", "is_positive": g("交易胜率") > 0.5},
         {"label": "日胜率", "value": f"{g('日胜率'):.2%}", "is_positive": g("日胜率") > 0.5},
-        {"label": "持仓K线数", "value": f"{g('持仓K线数'):.0f}", "is_positive": True},
-        {"label": "多头占比", "value": f"{g('多头占比'):.2%}", "is_positive": True},
-        {"label": "空头占比", "value": f"{g('空头占比'):.2%}", "is_positive": True},
+        {"label": "持仓K线数", "value": f"{g('持仓K线数'):.0f}", "neutral": True, "is_positive": True},
+        {"label": "多头占比", "value": f"{g('多头占比'):.2%}", "neutral": True, "is_positive": True},
+        {"label": "空头占比", "value": f"{g('空头占比'):.2%}", "neutral": True, "is_positive": True},
     ]
 
 

@@ -81,6 +81,7 @@ def plot_monthly_heatmap(
             text=m.text.tolist(),
             texttemplate="%{text}",
             colorscale="RdYlGn",
+            reversescale=True,  # 红涨绿跌：正收益→红、负收益→绿
             zmid=0,
             colorbar={"tickformat": ".1%"},
         )
@@ -94,9 +95,9 @@ def plot_monthly_heatmap(
         text=f"月度胜率 {m.month_win_rate:.1%} ｜ 年度胜率 {m.year_win_rate:.1%}",
         xref="paper",
         yref="paper",
-        x=1.0,
+        x=0.0,
         y=1.06,
-        xanchor="right",
+        xanchor="left",
         yanchor="bottom",
         showarrow=False,
         font={"size": 12, "color": "#6c757d"},
