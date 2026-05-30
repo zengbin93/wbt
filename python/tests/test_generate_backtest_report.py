@@ -90,7 +90,7 @@ def test_html_builder_render_contains_title_and_basic_structure() -> None:
     assert "<!DOCTYPE html>" in html
     assert "<title>My Test Report</title>" in html
     assert "Period" in html and "2020-2024" in html  # 徽章：<key> <b><value></b>
-    assert 'data-theme' in html and "theme-switch" in html  # 双主题切换已注入
+    assert "data-theme" in html and "theme-switch" in html  # 双主题切换已注入
     assert "Hello" in html
     assert "Return" in html
     assert "15%" in html

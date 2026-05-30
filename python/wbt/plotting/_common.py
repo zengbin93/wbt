@@ -37,7 +37,7 @@ def fmt_cell(v: object) -> str:
 
 
 # 字段名 → 格式化类别的关键词（按优先级匹配，先整数/计数，再 BP/比率，最后百分比）
-_COUNT_KEYS = ("天数", "次数", "K线数", "间隔", "数量", "days", "count")
+_COUNT_KEYS = ("天数", "日数", "次数", "K线数", "间隔", "数量", "days", "count")
 _YEAR_KEYS = ("year", "年份")
 _RATIO_KEYS = ("夏普", "卡玛", "盈亏比", "盈亏平衡", "赢面")
 _PCT_KEYS = ("收益", "回撤", "波动", "胜率", "占比", "回报率", "覆盖", "abs_return", "alpha_return")

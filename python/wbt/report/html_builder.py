@@ -209,6 +209,66 @@ class HtmlReportBuilder:
         .table tbody tr:hover { background: var(--panel-2); }
         .table tbody td { padding: .65rem .7rem; vertical-align: middle; font-family: 'IBM Plex Mono', monospace; }
 
+        /* ============ Financial tables (native HTML) ============ */
+        .fin-wrap { width: 100%; overflow-x: auto; padding: 4px; }
+        .fin-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+        .fin-table thead th {
+            text-align: right; font-weight: 600; color: var(--muted); text-transform: uppercase;
+            letter-spacing: .04em; font-size: .68rem; padding: .55rem .85rem;
+            border-bottom: 1px solid var(--border-strong); white-space: nowrap; background: var(--panel);
+        }
+        .fin-table thead th:first-child { text-align: left; }
+        .fin-table tbody td {
+            padding: .46rem .85rem; border-bottom: 1px solid var(--border); text-align: right;
+            font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+            color: var(--ink); white-space: nowrap;
+        }
+        .fin-table tbody td:first-child {
+            text-align: left; font-family: 'IBM Plex Sans', sans-serif; color: var(--muted); font-weight: 500;
+        }
+        .fin-table tbody tr:last-child td { border-bottom: 0; }
+        .fin-table tbody tr:hover td { background: var(--panel-2); }
+        .fin-table .t-up { color: var(--up); }
+        .fin-table .t-down { color: var(--down); }
+        .badge { font-size: .68rem; padding: .14rem .55rem; border-radius: 4px; font-weight: 600; white-space: nowrap; }
+        .badge-pass { color: #fff; background: var(--down); }
+        .badge-fail { color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); }
+
+        /* ============ 完整绩效指标键值网格 ============ */
+        .kv-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1px; background: var(--border); border-top: 1px solid var(--border); margin: 2px;
+        }
+        .kv {
+            display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+            background: var(--panel); padding: .5rem .85rem;
+        }
+        .kv-k { color: var(--muted); font-size: .76rem; }
+        .kv-v { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: .86rem; color: var(--ink); }
+        .kv-v .t-up { color: var(--up); }
+        .kv-v .t-down { color: var(--down); }
+
+        /* ============ 策略判定卡 ============ */
+        .verdict { padding: 1.1rem 1.15rem 1.3rem; }
+        .verdict-head { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .verdict-badge {
+            font-size: 1rem; font-weight: 700; padding: .42rem .95rem; border-radius: 8px;
+            display: inline-flex; align-items: center; gap: .4rem; color: #fff; letter-spacing: .02em;
+        }
+        .verdict-badge.good { background: var(--down); }
+        .verdict-badge.bad { background: var(--up); }
+        .verdict-sub { color: var(--muted); font-size: .85rem; font-family: 'IBM Plex Mono', monospace; }
+        .verdict-conds { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.1rem; }
+        .verdict-cond {
+            display: flex; align-items: baseline; gap: .6rem; font-size: .85rem;
+            padding: .6rem .85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+        }
+        .verdict-cond .ck { font-weight: 700; flex: none; font-size: .95rem; }
+        .verdict-cond.ok .ck { color: var(--down); }
+        .verdict-cond.no .ck { color: var(--up); }
+        .verdict-cond .ct { color: var(--ink); font-weight: 600; flex: none; }
+        .verdict-cond .cd { color: var(--muted); }
+
         /* ============ Footer ============ */
         .footer {
             margin-top: auto; border-top: 1px solid var(--border); padding: 1.1rem 0; text-align: center;

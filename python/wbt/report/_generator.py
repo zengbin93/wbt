@@ -14,24 +14,20 @@ import pandas as pd
 
 from wbt.backtest import WeightBacktest
 from wbt.plotting import (
-    plot_colored_table,
     plot_cumulative_returns,
     plot_daily_return_dist,
     plot_drawdown,
-    plot_drawdowns_table,
     plot_key_trades,
     plot_monthly_heatmap,
     plot_pairs_hold_dist,
     plot_pairs_pnl_dist,
     plot_rolling_metrics,
-    plot_segment_comparison,
-    plot_stats_comparison,
     plot_symbol_returns,
-    plot_verdict,
     plot_yearly_returns,
 )
 from wbt.result import BacktestResult
 
+from . import _html_tables as ht
 from .html_builder import HtmlReportBuilder
 
 
@@ -96,92 +92,100 @@ def _build_report_params(result: BacktestResult, config: dict[str, Any]) -> dict
 _PLOT_CONFIG = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
 
 
-def _safe_panel(name: str, build, *, include_plotlyjs: bool) -> str:
-    """生成单个图表面板的 HTML；任一面板失败降级为错误 div，不拖垮整份报告。"""
+def _err_div(name: str, e: Exception) -> str:
+    return f"<div style='padding:20px;text-align:center;color:#e0382c;'>{html.escape(f'{name}生成失败: {e}')}</div>"
+
+
+def _safe_fig(name: str, build, *, include_plotlyjs: bool) -> str:
+    """plotly 图表面板 → HTML；失败降级为错误 div，不拖垮整份报告。"""
     try:
         fig = build()
         fig.update_layout(autosize=True)
         return fig.to_html(include_plotlyjs=include_plotlyjs, full_html=False, config=_PLOT_CONFIG)
-    except Exception as e:  # noqa: BLE001 — 面板级隔离，故意吞掉单图异常
-        msg = html.escape(f"{name}生成失败: {e}")
-        return f"<div style='padding:20px;text-align:center;color:red;'>{msg}</div>"
+    except Exception as e:  # noqa: BLE001 — 面板级隔离
+        return _err_div(name, e)
 
 
-# 每个标签页的面板定义：(标签名, [(小标题, 构图函数, 是否整行跨列), ...])
+def _safe_html(name: str, build) -> str:
+    """原生 HTML 表格/卡片面板；失败降级为错误 div。"""
+    try:
+        return build()
+    except Exception as e:  # noqa: BLE001 — 面板级隔离
+        return _err_div(name, e)
+
+
+# 面板定义：(标签名, [(小标题, make(include_plotlyjs)->html, 是否整行, 是否 plotly 图), ...])
 def _tab_specs(result: BacktestResult):
+    def fig(title, build, fw=True):
+        return (title, lambda inc, b=build, t=title: _safe_fig(t, b, include_plotlyjs=inc), fw, True)
+
+    def tbl(title, build, fw=True):
+        return (title, lambda inc, b=build, t=title: _safe_html(t, b), fw, False)
+
     return [
         (
             "回测概览",
             [
-                ("回撤分析", lambda: plot_drawdown(result, title=""), True),
-                ("日收益分布", lambda: plot_daily_return_dist(result, title=""), True),
-                ("月度收益热力图", lambda: plot_monthly_heatmap(result, title=""), True),
-                ("品种收益分布", lambda: plot_symbol_returns(result, title=""), True),
+                fig("回撤分析", lambda: plot_drawdown(result, title="")),
+                fig("日收益分布", lambda: plot_daily_return_dist(result, title="")),
+                fig("月度收益热力图", lambda: plot_monthly_heatmap(result, title="")),
+                fig("品种收益分布", lambda: plot_symbol_returns(result, title="")),
             ],
         ),
         (
             "策略审核",
             [
-                ("策略判定 & 年度指标", lambda: plot_verdict(result, title=""), True),
-                ("回撤明细（Top 10）", lambda: plot_drawdowns_table(result, title=""), True),
-                ("完整绩效指标", lambda: plot_colored_table(result, title=""), True),
+                tbl("策略判定 & 年度指标", lambda: ht.verdict_card_html(result)),
+                tbl("回撤明细（Top 10）", lambda: ht.drawdowns_table_html(result)),
+                tbl("完整绩效指标", lambda: ht.stats_kv_html(result)),
             ],
         ),
         (
             "稳健性分析",
             [
-                ("年度收益（绝对 vs 超额）", lambda: plot_yearly_returns(result, title=""), True),
-                ("滚动指标（252日：年化收益/波动率/夏普）", lambda: plot_rolling_metrics(result, title=""), True),
-                ("分段对比（近1年 vs 全样本）", lambda: plot_segment_comparison(result, title=""), True),
+                fig("年度收益（绝对 vs 超额）", lambda: plot_yearly_returns(result, title="")),
+                fig("滚动指标（252日：年化收益/波动率/夏普）", lambda: plot_rolling_metrics(result, title="")),
+                tbl("分段对比（近1年 vs 全样本）", lambda: ht.segment_comparison_html(result)),
             ],
         ),
         (
             "多空对比",
             [
-                (
+                fig(
                     "累计收益（原始）",
                     lambda: plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"], title=""),
-                    False,
+                    fw=False,
                 ),
-                (
+                fig(
                     "波动率归一累计收益",
                     lambda: plot_cumulative_returns(
                         result, keys=["多空", "多头", "空头", "基准", "超额"], voladj=True, title=""
                     ),
-                    False,
+                    fw=False,
                 ),
-                ("关键指标对比", lambda: plot_stats_comparison(result, title=""), True),
+                tbl("关键指标对比", lambda: ht.stats_comparison_html(result)),
             ],
         ),
         (
             "交易分析",
             [
-                ("盈亏比例分布", lambda: plot_pairs_pnl_dist(result, title=""), False),
-                ("持仓K线数分布", lambda: plot_pairs_hold_dist(result, title=""), False),
-                (
-                    "关键交易（每年最赚/最亏 · hover 查看开平与持仓详情）",
-                    lambda: plot_key_trades(result, title=""),
-                    True,
-                ),
+                fig("盈亏比例分布", lambda: plot_pairs_pnl_dist(result, title=""), fw=False),
+                fig("持仓K线数分布", lambda: plot_pairs_hold_dist(result, title=""), fw=False),
+                fig("关键交易（每年最赚/最亏 · hover 查看开平与持仓详情）", lambda: plot_key_trades(result, title="")),
             ],
         ),
     ]
 
 
 def _generate_chart_tabs(result: BacktestResult) -> list[tuple[str, list[tuple[str, str, bool]]]]:
-    """基于单个 BacktestResult 生成各标签页的图表 HTML 片段（不再额外回测）。
-
-    plotly.js 仅在全局第一个面板内联一次，其余面板复用，控制报告体积。
-    """
+    """生成各标签页面板 HTML。plotly.js 仅在全局第一个 plotly 面板内联一次。"""
     tabs: list[tuple[str, list[tuple[str, str, bool]]]] = []
     plotlyjs_emitted = False
     for tab_name, panels in _tab_specs(result):
         items: list[tuple[str, str, bool]] = []
-        for sub_title, build, full_width in panels:
-            include = not plotlyjs_emitted
-            panel_html = _safe_panel(sub_title, build, include_plotlyjs=include)
-            # 仅当面板真正内联了 plotly.js（未在异常路径降级）才标记，否则下个面板继续尝试内联，
-            # 避免首个面板失败导致整份报告无 plotly.js、所有图静默不渲染。
+        for sub_title, make, full_width, is_plotly in panels:
+            include = is_plotly and not plotlyjs_emitted
+            panel_html = make(include)
             if include and "Plotly" in panel_html:
                 plotlyjs_emitted = True
             items.append((sub_title, panel_html, full_width))
