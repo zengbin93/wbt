@@ -17,9 +17,12 @@ from wbt.plotting import (  # noqa: E402
     plot_monthly_heatmap,
     plot_pairs_hold_dist,
     plot_pairs_pnl_dist,
+    plot_rolling_metrics,
+    plot_segment_comparison,
     plot_stats_comparison,
     plot_symbol_returns,
     plot_verdict,
+    plot_yearly_returns,
 )
 from wbt.plotting._common import fmt_value  # noqa: E402
 from wbt.result import BacktestResult  # noqa: E402
@@ -179,6 +182,46 @@ class TestPlotStatsComparison:
         for side in ("基准", "超额"):
             ci = header.index(side)
             assert "—" not in cols[ci], f"{side} 列出现缺失值: {cols[ci]}"
+
+
+class TestPlotYearlyReturns:
+    def test_two_series(self, result):
+        fig = plot_yearly_returns(result)
+        assert isinstance(fig, go.Figure)
+        names = {getattr(t, "name", "") for t in fig.data}
+        assert {"绝对收益", "超额收益"}.issubset(names)
+
+    def test_to_html(self, result):
+        assert isinstance(plot_yearly_returns(result, to_html=True), str)
+
+
+class TestPlotRollingMetrics:
+    def test_returns_figure(self, result):
+        # 短样本（fixture 仅 15 天）rolling 预热后为空 → 0 trace 也是合法降级
+        fig = plot_rolling_metrics(result)
+        assert isinstance(fig, go.Figure)
+
+    def test_to_html(self, result):
+        assert isinstance(plot_rolling_metrics(result, to_html=True), str)
+
+    def test_three_lines_on_long_series(self):
+        """数据足够长时应有 3 条滚动曲线（年化收益/波动率/夏普）。"""
+        import wbt
+
+        r = wbt.backtest(wbt.mock_weights(freq="日线")).to_result()
+        fig = plot_rolling_metrics(r)
+        names = {getattr(t, "name", "") for t in fig.data}
+        assert {"滚动年化收益", "滚动年化波动率", "滚动夏普"}.issubset(names)
+
+
+class TestPlotSegmentComparison:
+    def test_returns_figure(self, result):
+        fig = plot_segment_comparison(result)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_to_html(self, result):
+        assert isinstance(plot_segment_comparison(result, to_html=True), str)
 
 
 class TestPlotKeyTrades:

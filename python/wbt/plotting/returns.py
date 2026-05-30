@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from ._common import (
     COLOR_NEGATIVE,
     COLOR_POSITIVE,
+    COLOR_TOTAL,
     CURVE_COLORS,
     add_year_boundaries,
     apply_default_layout,
@@ -102,6 +103,28 @@ def plot_monthly_heatmap(
         showarrow=False,
         font={"size": 12, "color": "#6c757d"},
     )
+    return figure_to_html(fig) if to_html else fig
+
+
+def plot_yearly_returns(
+    result: BacktestResult,
+    title: str | None = "年度收益",
+    to_html: bool = False,
+) -> go.Figure | str:
+    """逐年绝对收益 vs 超额收益分组柱状图（数据来自 result.yearly_returns，零计算）。"""
+    yr = result.yearly_returns
+    fig = go.Figure()
+    if not yr.years:
+        apply_default_layout(fig, title=title, height=400)
+        return figure_to_html(fig) if to_html else fig
+
+    years = [str(y) for y in yr.years]
+    fig.add_trace(go.Bar(x=years, y=yr.abs_returns, name="绝对收益", marker_color=COLOR_TOTAL))
+    fig.add_trace(go.Bar(x=years, y=yr.alpha_returns, name="超额收益", marker_color=CURVE_COLORS["超额"]))
+    fig.update_layout(barmode="group")
+    apply_default_layout(fig, title=title, height=400)
+    fig.update_xaxes(title_text="年份")
+    fig.update_yaxes(title_text="年度收益", tickformat=".1%")
     return figure_to_html(fig) if to_html else fig
 
 

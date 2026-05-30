@@ -88,6 +88,39 @@ def plot_key_trades(
     return figure_to_html(fig) if to_html else fig
 
 
+def plot_segment_comparison(
+    result: BacktestResult,
+    title: str | None = "分段对比（近1年 vs 全样本）",
+    to_html: bool = False,
+) -> go.Figure | str:
+    """全样本 vs 近 1 年 的关键指标对比表（数据来自 result.segment_comparison）。"""
+    fig = go.Figure()
+    seg = result.segment_comparison
+    side_order = [s for s in ("全样本", "近1年") if s in seg]
+    if not side_order:
+        apply_default_layout(fig, title=title)
+        return figure_to_html(fig) if to_html else fig
+
+    columns: list[list[str]] = [_COMPARE_METRICS]
+    for s in side_order:
+        columns.append([fmt_value(k, _lookup_metric(seg[s], k)) for k in _COMPARE_METRICS])
+
+    fig.add_trace(
+        go.Table(
+            header={
+                "values": ["指标", *side_order],
+                "fill_color": "#3498db",
+                "font_color": "white",
+                "align": "center",
+                "font_size": 12,
+            },
+            cells={"values": columns, "align": ["left", *["right"] * len(side_order)], "font_size": 11},
+        )
+    )
+    apply_default_layout(fig, title=title, height=max(300, 30 * len(_COMPARE_METRICS) + 120))
+    return figure_to_html(fig) if to_html else fig
+
+
 def plot_stats_comparison(
     result: BacktestResult,
     title: str | None = "关键指标对比",

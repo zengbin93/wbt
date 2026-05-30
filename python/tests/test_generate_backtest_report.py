@@ -129,6 +129,7 @@ def test_generate_backtest_report_writes_valid_html(sample_dfw: pd.DataFrame, tm
     assert html.count("plotly-graph-div") >= 2  # 一个标签页内多张独立图
     assert "回测概览" in html
     assert "策略审核" in html
+    assert "稳健性分析" in html
     assert "多空对比" in html
     assert "交易分析" in html
     assert "wbt 权重回测引擎" in html

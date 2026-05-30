@@ -187,9 +187,12 @@ from wbt.plotting import (
     plot_monthly_heatmap,      # monthly-return heatmap
     plot_pairs_hold_dist,      # holding-bars distribution by direction
     plot_pairs_pnl_dist,       # pnl-ratio distribution by direction
+    plot_rolling_metrics,      # rolling sharpe/return/vol over time (252d window)
+    plot_segment_comparison,   # recent-1y vs full-sample metric table
     plot_stats_comparison,     # 多空/多头/空头/基准/超额 metric comparison table
     plot_symbol_returns,       # per-symbol cumulative returns
     plot_verdict,              # is_good_strategy verdict + yearly metrics
+    plot_yearly_returns,       # yearly absolute vs excess returns (grouped bars)
 )
 ```
 

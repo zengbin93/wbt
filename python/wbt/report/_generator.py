@@ -23,9 +23,12 @@ from wbt.plotting import (
     plot_monthly_heatmap,
     plot_pairs_hold_dist,
     plot_pairs_pnl_dist,
+    plot_rolling_metrics,
+    plot_segment_comparison,
     plot_stats_comparison,
     plot_symbol_returns,
     plot_verdict,
+    plot_yearly_returns,
 )
 from wbt.result import BacktestResult
 
@@ -125,6 +128,14 @@ def _tab_specs(result: BacktestResult):
             ],
         ),
         (
+            "稳健性分析",
+            [
+                ("年度收益（绝对 vs 超额）", lambda: plot_yearly_returns(result, title=""), True),
+                ("滚动指标（252日：年化收益/波动率/夏普）", lambda: plot_rolling_metrics(result, title=""), True),
+                ("分段对比（近1年 vs 全样本）", lambda: plot_segment_comparison(result, title=""), True),
+            ],
+        ),
+        (
             "多空对比",
             [
                 (
@@ -207,7 +218,7 @@ def generate_backtest_report(
 
     metrics = get_performance_metrics_cards(result.stats)
     tabs = _generate_chart_tabs(result)
-    icons = ["bi-grid-1x2", "bi-clipboard-check", "bi-arrows-collapse", "bi-star"]
+    icons = ["bi-grid-1x2", "bi-clipboard-check", "bi-activity", "bi-arrows-collapse", "bi-star"]
 
     builder = HtmlReportBuilder(title=title)
     builder.add_header(_build_report_params(result, config), subtitle="基于权重策略的回测分析与绩效评估")

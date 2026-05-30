@@ -156,7 +156,7 @@ result.to_dict(full=True)          # JSON 安全，供审核页面走 HTTP
 ```
 
 - `BacktestResult` 字段：`dates` / `year_starts` / `curves`（原始曲线，键 多空/多头/空头/基准/超额）/ `curves_voladj`（波动率归一，按需）/ `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`，以及审核字段 `drawdowns` / `key_trades` / `verdict`（均为按需 `cached_property`）。
-- `wbt.plotting`（均为单一职责单图，无组合图）：`plot_cumulative_returns`（`voladj=True` 为波动率归一）/ `plot_drawdown` / `plot_daily_return_dist` / `plot_monthly_heatmap` / `plot_symbol_returns` / `plot_pairs_pnl_dist` / `plot_pairs_hold_dist` / `plot_colored_table` / `plot_stats_comparison` / `plot_key_trades` / `plot_drawdowns_table` / `plot_verdict`。
+- `wbt.plotting`（均为单一职责单图，无组合图）：`plot_cumulative_returns`（`voladj=True` 为波动率归一）/ `plot_drawdown` / `plot_daily_return_dist` / `plot_monthly_heatmap` / `plot_symbol_returns` / `plot_yearly_returns` / `plot_rolling_metrics` / `plot_pairs_pnl_dist` / `plot_pairs_hold_dist` / `plot_colored_table` / `plot_stats_comparison` / `plot_segment_comparison` / `plot_key_trades` / `plot_drawdowns_table` / `plot_verdict`。
 - `wbt.report`：`generate_backtest_report` / `HtmlReportBuilder` / `get_performance_metrics_cards`。
 
 ## 开发与质量检查
