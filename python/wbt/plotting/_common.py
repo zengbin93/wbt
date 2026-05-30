@@ -107,6 +107,8 @@ def apply_default_layout(fig: go.Figure, title: str | None = None, height: int =
         title_font_size=14,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+        # 工具栏背景透明，避免与深/浅主题面板形成不协调的灰盒（颜色由报告侧主题脚本再调）
+        modebar={"bgcolor": "rgba(0,0,0,0)", "color": "rgba(130,140,160,0.55)", "activecolor": "#2f5fef"},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
         margin={"l": 60, "r": 40, "t": 60, "b": 60},
     )

@@ -147,9 +147,9 @@ class HtmlReportBuilder:
 
         /* ============ Stat tiles ============ */
         .stat-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
-            gap: 1px; background: var(--border); border: 1px solid var(--border);
+            display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border);
             border-radius: 9px; overflow: hidden;
+            /* 列数由 add_metrics 按指标数取整除值内联设置，保证每行填满、无空位 */
         }
         .stat-tile {
             background: var(--panel); padding: .8rem .95rem; display: flex; flex-direction: column;
@@ -222,6 +222,8 @@ class HtmlReportBuilder:
             .nav-tabs .nav-link { padding: .55rem .7rem; font-size: .8rem; }
             .chart-grid { grid-template-columns: 1fr !important; }
         }
+        @media (max-width: 1024px) { .stat-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+        @media (max-width: 520px) { .stat-grid { grid-template-columns: 1fr !important; } }
         """
 
     def add_custom_css(self, css: str) -> HtmlReportBuilder:
@@ -295,6 +297,9 @@ class HtmlReportBuilder:
                     <span class="stat-value {value_class}">{m["value"]}</span>
                 </div>\n"""
 
+        # 选择能整除指标数的列数（优先大列数），让每行填满、末行无空位（14→7×2）
+        n = len(metrics)
+        cols = next((c for c in (7, 6, 5, 4) if n and n % c == 0), 5)
         section_html = f"""    <!-- {title} -->
     <section>
         <div class="section-header">
@@ -302,7 +307,7 @@ class HtmlReportBuilder:
             <h2 class="section-title">{title}</h2>
         </div>
 
-        <div class="stat-grid">
+        <div class="stat-grid" style="grid-template-columns: repeat({cols}, 1fr);">
 {tiles_html}        </div>
     </section>
 """
@@ -589,9 +594,9 @@ class HtmlReportBuilder:
         function wbtPlotlyColors(theme) {{
             return theme === 'dark'
                 ? {{ font: '#aab2c5', grid: 'rgba(230,233,239,0.07)', zero: 'rgba(230,233,239,0.16)',
-                     line: '#2b3346', cell: '#cfd5e2' }}
+                     line: '#2b3346', cell: '#cfd5e2', bar: 'rgba(170,178,197,0.7)', active: '#5b8cff' }}
                 : {{ font: '#46505f', grid: 'rgba(14,17,22,0.07)', zero: 'rgba(14,17,22,0.16)',
-                     line: '#cfd6e0', cell: '#1a1f29' }};
+                     line: '#cfd6e0', cell: '#1a1f29', bar: 'rgba(70,80,95,0.55)', active: '#2f5fef' }};
         }}
         function wbtApplyPlotlyTheme(theme) {{
             if (typeof Plotly === 'undefined') return;
@@ -599,7 +604,8 @@ class HtmlReportBuilder:
             document.querySelectorAll('.plotly-graph-div').forEach(function (d) {{
                 if (!d || !d.layout) return;
                 var up = {{ 'paper_bgcolor': 'rgba(0,0,0,0)', 'plot_bgcolor': 'rgba(0,0,0,0)',
-                            'font.color': c.font, 'legend.font.color': c.font }};
+                            'font.color': c.font, 'legend.font.color': c.font,
+                            'modebar.bgcolor': 'rgba(0,0,0,0)', 'modebar.color': c.bar, 'modebar.activecolor': c.active }};
                 Object.keys(d.layout).forEach(function (k) {{
                     if (/^(xaxis|yaxis)/.test(k)) {{
                         up[k + '.gridcolor'] = c.grid;
