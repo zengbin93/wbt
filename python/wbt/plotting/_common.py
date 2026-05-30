@@ -94,12 +94,19 @@ def add_year_boundaries(
 
 
 def apply_default_layout(fig: go.Figure, title: str | None = None, height: int = 500) -> None:
-    """Apply consistent plotly_white template styling to a figure."""
+    """统一布局：透明画布（随容器/报告主题着色），plotly_white 提供浅色默认网格/字体。
+
+    画布设为透明后，单图嵌入报告时由 HTML 面板背景透出；报告侧的主题切换脚本
+    再通过 ``Plotly.relayout`` 改写字体/网格颜色以适配明暗主题。独立使用（白底页面）
+    时透明等同白底，无副作用。
+    """
     fig.update_layout(
         template="plotly_white",
         height=height,
         title=title,
         title_font_size=14,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
         margin={"l": 60, "r": 40, "t": 60, "b": 60},
     )

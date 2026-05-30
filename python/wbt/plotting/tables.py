@@ -109,12 +109,17 @@ def plot_segment_comparison(
         go.Table(
             header={
                 "values": ["指标", *side_order],
-                "fill_color": "#3498db",
+                "fill_color": "#2f5fef",
                 "font_color": "white",
                 "align": "center",
                 "font_size": 12,
             },
-            cells={"values": columns, "align": ["left", *["right"] * len(side_order)], "font_size": 11},
+            cells={
+                "values": columns,
+                "fill_color": "rgba(0,0,0,0)",
+                "align": ["left", *["right"] * len(side_order)],
+                "font_size": 11,
+            },
         )
     )
     apply_default_layout(fig, title=title, height=max(300, 30 * len(_COMPARE_METRICS) + 120))
@@ -145,13 +150,14 @@ def plot_stats_comparison(
         go.Table(
             header={
                 "values": ["指标", *side_order],
-                "fill_color": "#3498db",
+                "fill_color": "#2f5fef",
                 "font_color": "white",
                 "align": "center",
                 "font_size": 12,
             },
             cells={
                 "values": columns,
+                "fill_color": "rgba(0,0,0,0)",
                 "align": ["left", *["right"] * len(side_order)],
                 "font_size": 11,
             },
@@ -182,20 +188,20 @@ def plot_colored_table(
                 return "rgba(231,76,60,0.12)"
             if v < 0:
                 return "rgba(46,204,113,0.12)"
-        return "white"
+        return "rgba(0,0,0,0)"
 
     fig.add_trace(
         go.Table(
             header={
                 "values": ["指标", "数值"],
-                "fill_color": "#3498db",
+                "fill_color": "#2f5fef",
                 "font_color": "white",
                 "align": "center",
                 "font_size": 13,
             },
             cells={
                 "values": [keys, [fmt_value(k, v) for k, v in zip(keys, values, strict=True)]],
-                "fill_color": [["white"] * len(keys), [_cell_color(v) for v in values]],
+                "fill_color": [["rgba(0,0,0,0)"] * len(keys), [_cell_color(v) for v in values]],
                 "align": ["left", "right"],
                 "font_size": 12,
             },
@@ -222,8 +228,8 @@ def plot_drawdowns_table(
     columns = [[fmt_value(h, r.get(h)) for r in rows] for h in headers]
     fig.add_trace(
         go.Table(
-            header={"values": headers, "fill_color": "#3498db", "font_color": "white", "align": "center"},
-            cells={"values": columns, "align": "center", "font_size": 11},
+            header={"values": headers, "fill_color": "#2f5fef", "font_color": "white", "align": "center"},
+            cells={"values": columns, "fill_color": "rgba(0,0,0,0)", "align": "center", "font_size": 11},
         )
     )
     apply_default_layout(fig, title=title, height=max(300, 30 * len(rows) + 120))
@@ -262,8 +268,8 @@ def plot_verdict(
         columns = [[fmt_value(ek, row.get(ek)) for row in yearly] for ek, _ in present]
         fig.add_trace(
             go.Table(
-                header={"values": header_zh, "fill_color": "#3498db", "font_color": "white", "align": "center"},
-                cells={"values": columns, "align": "center", "font_size": 11},
+                header={"values": header_zh, "fill_color": "#2f5fef", "font_color": "white", "align": "center"},
+                cells={"values": columns, "fill_color": "rgba(0,0,0,0)", "align": "center", "font_size": 11},
             )
         )
 
