@@ -114,8 +114,8 @@ def _tab_specs(result: BacktestResult):
             "回测概览",
             [
                 ("回撤分析", lambda: plot_drawdown(result, title=""), True),
-                ("日收益分布", lambda: plot_daily_return_dist(result, title=""), False),
-                ("月度收益热力图", lambda: plot_monthly_heatmap(result, title=""), False),
+                ("日收益分布", lambda: plot_daily_return_dist(result, title=""), True),
+                ("月度收益热力图", lambda: plot_monthly_heatmap(result, title=""), True),
                 ("品种收益分布", lambda: plot_symbol_returns(result, title=""), True),
             ],
         ),
