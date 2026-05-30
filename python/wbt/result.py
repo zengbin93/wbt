@@ -299,14 +299,23 @@ class BacktestResult:
     # -------------------------------------------------------- cached (按需)
     @cached_property
     def curves_voladj(self) -> dict[str, Curve]:
-        """波动率归一后的同名曲线；scale = target_vol / (daily.std · √yearly_days)。"""
+        """波动率归一后的同名曲线；scale = target_vol / (daily.std · √yearly_days)。
+
+        「超额」特殊处理：定义为 ``norm(多头) − norm(基准)``（多头、基准先各自归一化、
+        再逐日相减），而非对原始超额(策略−基准)整体归一化。这样归一超额曲线恰好等于
+        图上归一化多头与归一化基准两条线之差，口径自洽；其年化波动率不再等于 target_vol。
+        """
         out: dict[str, Curve] = {}
         sqrt_yd = float(np.sqrt(self.yearly_days))
         for key, c in self.curves.items():
+            if key == "超额":
+                continue  # 由 norm(多头) − norm(基准) 派生，循环结束后单独构造
             std = float(np.std(c.daily, ddof=1)) if c.daily.size > 1 else 0.0
             annual_vol = std * sqrt_yd
             scale = (self._target_vol / annual_vol) if annual_vol > 0 else 1.0
             out[key] = _build_curve(c.daily * scale)
+        if "多头" in out and "基准" in out:
+            out["超额"] = _build_curve(out["多头"].daily - out["基准"].daily)
         return out
 
     @cached_property
