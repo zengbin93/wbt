@@ -63,6 +63,12 @@ class TestPlotMonthlyHeatmap:
     def test_to_html(self, result):
         assert isinstance(plot_monthly_heatmap(result, to_html=True), str)
 
+    def test_win_rate_annotation(self, result):
+        """月度/年度胜率应作为标注呈现（数据已在 result.monthly 算好）。"""
+        fig = plot_monthly_heatmap(result)
+        texts = " ".join(a.text or "" for a in fig.layout.annotations)
+        assert "月度胜率" in texts and "年度胜率" in texts
+
 
 class TestPlotSymbolReturns:
     def test_returns_figure(self, result):

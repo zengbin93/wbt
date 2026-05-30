@@ -14,15 +14,18 @@ import pandas as pd
 
 from wbt.backtest import WeightBacktest
 from wbt.plotting import (
+    plot_colored_table,
     plot_cumulative_returns,
     plot_daily_return_dist,
     plot_drawdown,
+    plot_drawdowns_table,
     plot_key_trades,
     plot_monthly_heatmap,
     plot_pairs_hold_dist,
     plot_pairs_pnl_dist,
     plot_stats_comparison,
     plot_symbol_returns,
+    plot_verdict,
 )
 from wbt.result import BacktestResult
 
@@ -42,14 +45,17 @@ def get_performance_metrics_cards(stats: dict[str, Any]) -> list[dict[str, Any]]
 
     return [
         {"label": "年化收益率", "value": f"{g('年化收益'):.2%}", "is_positive": g("年化收益") > 0},
-        {"label": "单笔收益(BP)", "value": f"{g('单笔收益'):.2f}", "is_positive": g("单笔收益") > 0},
-        {"label": "交易胜率", "value": f"{g('交易胜率'):.2%}", "is_positive": g("交易胜率") > 0.5},
-        {"label": "持仓K线数", "value": f"{g('持仓K线数'):.0f}", "is_positive": True},
-        {"label": "最大回撤", "value": f"{g('最大回撤'):.2%}", "is_positive": g("最大回撤") < 0.1},
-        {"label": "年化", "value": f"{g('年化收益'):.2%}", "is_positive": g("年化收益") > 0},
+        {"label": "绝对收益", "value": f"{g('绝对收益'):.2%}", "is_positive": g("绝对收益") > 0},
         {"label": "夏普", "value": f"{g('夏普比率'):.2f}", "is_positive": g("夏普比率") > 1},
         {"label": "卡玛", "value": f"{g('卡玛比率'):.2f}", "is_positive": g("卡玛比率") > 1},
+        {"label": "最大回撤", "value": f"{g('最大回撤'):.2%}", "is_positive": g("最大回撤") < 0.1},
         {"label": "年化波动率", "value": f"{g('年化波动率'):.2%}", "is_positive": g("年化波动率") < 0.2},
+        {"label": "下行波动率", "value": f"{g('下行波动率'):.2%}", "is_positive": g("下行波动率") < 0.15},
+        {"label": "单笔收益(BP)", "value": f"{g('单笔收益'):.2f}", "is_positive": g("单笔收益") > 0},
+        {"label": "单笔盈亏比", "value": f"{g('单笔盈亏比'):.2f}", "is_positive": g("单笔盈亏比") > 1},
+        {"label": "交易胜率", "value": f"{g('交易胜率'):.2%}", "is_positive": g("交易胜率") > 0.5},
+        {"label": "日胜率", "value": f"{g('日胜率'):.2%}", "is_positive": g("日胜率") > 0.5},
+        {"label": "持仓K线数", "value": f"{g('持仓K线数'):.0f}", "is_positive": True},
         {"label": "多头占比", "value": f"{g('多头占比'):.2%}", "is_positive": True},
         {"label": "空头占比", "value": f"{g('空头占比'):.2%}", "is_positive": True},
     ]
@@ -109,6 +115,14 @@ def _tab_specs(result: BacktestResult):
             ],
         ),
         (
+            "策略审核",
+            [
+                ("策略判定 & 年度指标", lambda: plot_verdict(result, title=""), True),
+                ("回撤明细（Top 10）", lambda: plot_drawdowns_table(result, title=""), True),
+                ("完整绩效指标", lambda: plot_colored_table(result, title=""), True),
+            ],
+        ),
+        (
             "多空对比",
             [
                 (
@@ -131,7 +145,11 @@ def _tab_specs(result: BacktestResult):
             [
                 ("盈亏比例分布", lambda: plot_pairs_pnl_dist(result, title=""), False),
                 ("持仓K线数分布", lambda: plot_pairs_hold_dist(result, title=""), False),
-                ("关键交易（每年最赚/最亏）", lambda: plot_key_trades(result, title=""), True),
+                (
+                    "关键交易（每年最赚/最亏 · hover 查看开平与持仓详情）",
+                    lambda: plot_key_trades(result, title=""),
+                    True,
+                ),
             ],
         ),
     ]
@@ -187,7 +205,7 @@ def generate_backtest_report(
 
     metrics = get_performance_metrics_cards(result.stats)
     tabs = _generate_chart_tabs(result)
-    icons = ["bi-grid-1x2", "bi-arrows-collapse", "bi-star"]
+    icons = ["bi-grid-1x2", "bi-clipboard-check", "bi-arrows-collapse", "bi-star"]
 
     builder = HtmlReportBuilder(title=title)
     builder.add_header(_build_report_params(result, config), subtitle="基于权重策略的回测分析与绩效评估")

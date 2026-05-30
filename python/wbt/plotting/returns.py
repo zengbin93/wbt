@@ -89,6 +89,18 @@ def plot_monthly_heatmap(
     apply_default_layout(fig, title=title, height=max(300, 60 * len(m.years) + 100))
     fig.update_xaxes(title_text="月份")
     fig.update_yaxes(title_text="年份")
+    # 月度/年度胜率（已在 result.monthly 算好）标注于右上角
+    fig.add_annotation(
+        text=f"月度胜率 {m.month_win_rate:.1%} ｜ 年度胜率 {m.year_win_rate:.1%}",
+        xref="paper",
+        yref="paper",
+        x=1.0,
+        y=1.06,
+        xanchor="right",
+        yanchor="bottom",
+        showarrow=False,
+        font={"size": 12, "color": "#6c757d"},
+    )
     return figure_to_html(fig) if to_html else fig
 
 
