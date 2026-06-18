@@ -12,7 +12,8 @@
 use crate::core::errors::WbtError;
 use crate::core::native_engine::{PairsSoA, dt_to_date_key_fast};
 use polars::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 
 /// 一条聚合后的开平记录。
 #[derive(Debug, Clone, PartialEq)]
@@ -203,12 +204,15 @@ pub fn key_trades_to_df(
     agg: &[AggRow],
     top: usize,
 ) -> Result<DataFrame, WbtError> {
-    let selected = select_key_trades(agg, top, pairs.time_unit);
+    // 选榜前先把 LIFO 拆分的同一段持仓还原为真实持仓段（按 open_dt 或 close_dt 任一相同
+    // 传递合并），避免同段被重复枚举、重复上榜。aggregated_pairs 仍用未合并的 agg，语义不变。
+    let merged = merge_holding_segments(agg);
+    let selected = select_key_trades(&merged, top, pairs.time_unit);
     agg_rows_to_columns(
         pairs,
         selected
             .into_iter()
-            .map(|(y, kind, i)| (Some((y, kind)), agg[i].clone())),
+            .map(|(y, kind, i)| (Some((y, kind)), merged[i].clone())),
     )
 }
 
@@ -220,6 +224,99 @@ pub fn aggregated_pairs_df(pairs: &PairsSoA) -> Result<DataFrame, WbtError> {
 /// 每年最赚/最亏各 `top` 笔关键交易（聚合 + 物化，便于单测/单次调用）。
 pub fn key_trades_df(pairs: &PairsSoA, top: usize) -> Result<DataFrame, WbtError> {
     key_trades_to_df(pairs, &aggregate_pairs(pairs), top)
+}
+
+/// 并查集 find（路径压缩）。
+fn uf_find(parent: &mut [usize], mut x: usize) -> usize {
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+/// 并查集 union。
+fn uf_union(parent: &mut [usize], a: usize, b: usize) {
+    let (ra, rb) = (uf_find(parent, a), uf_find(parent, b));
+    if ra != rb {
+        parent[ra] = rb;
+    }
+}
+
+/// 把 `aggregate_pairs` 的结果按真实持仓段进一步合并，用于 `key_trades` 选榜。
+///
+/// `aggregate_pairs` 仅按 `(symbol, open_dt, close_dt)` 精确聚合，无法合并 LIFO 撮合
+/// 对同一段持仓的拆分：一次开仓分批平仓（同 `open_dt`、不同 `close_dt`）、分批开仓一次
+/// 平仓（不同 `open_dt`、同 `close_dt`）。本函数按 `(sym_id, dir)` 分组，对 `open_dt`
+/// 或 `close_dt` 任一相同的记录用并查集做传递合并（覆盖 A-B 同开、B-C 同平的链式合并）；
+/// 每个连通分量取持仓 K 线数最长的一笔为代表，`count` 取成员之和，其余字段（含
+/// `profit_bp`——同 `(open,close)` 价格一致，已是 ±(close/open−1)·1e4）直接取代表笔。
+///
+/// 不变量：输出中同 `(sym_id, dir)` 的 `open_dt`、`close_dt` 各自唯一——任意两条同
+/// `open_dt`（或同 `close_dt`）必被并入同一分量，不会落到两个代表笔上。
+pub fn merge_holding_segments(agg: &[AggRow]) -> Vec<AggRow> {
+    let n = agg.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    let mut parent: Vec<usize> = (0..n).collect();
+    // 用 (sym_id, dir, dt) 作映射键，天然隔离不同 (sym, dir) 组。
+    let mut open_seen: HashMap<(u32, &'static str, i64), usize> = HashMap::with_capacity(n);
+    let mut close_seen: HashMap<(u32, &'static str, i64), usize> = HashMap::with_capacity(n);
+    for (i, r) in agg.iter().enumerate() {
+        match open_seen.entry((r.sym_id, r.dir, r.open_dt)) {
+            Entry::Occupied(e) => uf_union(&mut parent, i, *e.get()),
+            Entry::Vacant(e) => {
+                e.insert(i);
+            }
+        }
+        match close_seen.entry((r.sym_id, r.dir, r.close_dt)) {
+            Entry::Occupied(e) => uf_union(&mut parent, i, *e.get()),
+            Entry::Vacant(e) => {
+                e.insert(i);
+            }
+        }
+    }
+
+    // 按连通分量根聚合：选代表笔（hold_bars 最长，平局取 open_dt 更早以稳定）+ 累加 count。
+    let mut rep: HashMap<usize, usize> = HashMap::new();
+    let mut count_sum: HashMap<usize, i64> = HashMap::new();
+    for (i, r) in agg.iter().enumerate() {
+        let root = uf_find(&mut parent, i);
+        *count_sum.entry(root).or_insert(0) += r.count;
+        match rep.get(&root) {
+            None => {
+                rep.insert(root, i);
+            }
+            Some(&cur) => {
+                let better = r.hold_bars > agg[cur].hold_bars
+                    || (r.hold_bars == agg[cur].hold_bars && r.open_dt < agg[cur].open_dt);
+                if better {
+                    rep.insert(root, i);
+                }
+            }
+        }
+    }
+
+    let mut out: Vec<AggRow> = rep
+        .iter()
+        .map(|(&root, &idx)| {
+            let mut row = agg[idx].clone();
+            row.count = count_sum[&root];
+            row
+        })
+        .collect();
+
+    // 稳定输出顺序，便于下游与测试。
+    out.sort_by(|a, b| {
+        a.sym_id
+            .cmp(&b.sym_id)
+            .then_with(|| a.dir.cmp(b.dir))
+            .then_with(|| a.open_dt.cmp(&b.open_dt))
+            .then_with(|| a.close_dt.cmp(&b.close_dt))
+    });
+    out
 }
 
 #[cfg(test)]
@@ -359,5 +456,144 @@ mod tests {
         assert!(df.column("kind").is_ok());
         assert!(df.column("symbol").is_ok());
         assert_eq!(df.height(), 1, "1 笔 → 仅 best 1（worst 去重后为空）");
+    }
+
+    // ---- merge_holding_segments：真实持仓段合并（任务 t101322 新增） ----
+
+    /// 构造 AggRow 切片。每条用 (sym_id, dir, open_dt, close_dt, hold_bars, profit_bp, count)。
+    fn make_agg(rows: &[(u32, &'static str, i64, i64, i64, f64, i64)]) -> Vec<AggRow> {
+        rows.iter()
+            .map(
+                |&(sym_id, dir, open_dt, close_dt, hold_bars, profit_bp, count)| AggRow {
+                    sym_id,
+                    open_dt,
+                    close_dt,
+                    dir,
+                    open_price: 100.0,
+                    close_price: 110.0,
+                    hold_bars,
+                    profit_bp,
+                    count,
+                },
+            )
+            .collect()
+    }
+
+    /// 同 open、分批平仓（同 open 不同 close）应合并为一段：代表取持仓最长笔，count 求和。
+    #[test]
+    fn merge_same_open_split_close() {
+        let agg = make_agg(&[
+            (0, "多头", 100, 200, 5, 10.0, 2),
+            (0, "多头", 100, 300, 8, 20.0, 3),
+        ]);
+        let m = merge_holding_segments(&agg);
+        assert_eq!(m.len(), 1, "同 open 的两条应合并为一段");
+        assert_eq!(m[0].hold_bars, 8, "代表取持仓 K 线数最长者");
+        assert_eq!(m[0].close_dt, 300);
+        assert_eq!(m[0].profit_bp, 20.0, "profit 取代表笔");
+        assert_eq!(m[0].count, 5, "count 取成员之和 2+3");
+    }
+
+    /// 传递合并：A-B 同 open、B-C 同 close 应并成一段。
+    #[test]
+    fn merge_transitive() {
+        let agg = make_agg(&[
+            (0, "多头", 100, 200, 5, 10.0, 1),
+            (0, "多头", 100, 400, 9, 99.0, 2),
+            (0, "多头", 300, 400, 4, 30.0, 3),
+        ]);
+        let m = merge_holding_segments(&agg);
+        assert_eq!(m.len(), 1, "A-B 同开、B-C 同平应链式合并");
+        assert_eq!(m[0].hold_bars, 9);
+        assert_eq!(m[0].open_dt, 100);
+        assert_eq!(m[0].close_dt, 400);
+        assert_eq!(m[0].count, 6, "1+2+3");
+    }
+
+    /// 独立段（open、close 均不同）不应合并。
+    #[test]
+    fn merge_independent_not_merged() {
+        let agg = make_agg(&[
+            (0, "多头", 100, 150, 5, 10.0, 1),
+            (0, "多头", 200, 250, 5, 20.0, 1),
+        ]);
+        assert_eq!(merge_holding_segments(&agg).len(), 2);
+    }
+
+    /// 同 open、同 close 但不同 symbol 或不同方向，不应跨组合并。
+    #[test]
+    fn merge_sym_and_dir_isolation() {
+        let by_sym = make_agg(&[
+            (0, "多头", 100, 200, 5, 10.0, 1),
+            (1, "多头", 100, 200, 5, 20.0, 1),
+        ]);
+        assert_eq!(
+            merge_holding_segments(&by_sym).len(),
+            2,
+            "不同 symbol 不合并"
+        );
+        let by_dir = make_agg(&[
+            (0, "多头", 100, 200, 5, 10.0, 1),
+            (0, "空头", 100, 200, 5, 20.0, 1),
+        ]);
+        assert_eq!(merge_holding_segments(&by_dir).len(), 2, "不同方向不合并");
+    }
+
+    /// 不变量：输出中同 (sym, dir) 的 open_dt、close_dt 各自唯一。
+    #[test]
+    fn merge_invariant_unique_open_close() {
+        let agg = make_agg(&[
+            (0, "多头", 100, 200, 5, 10.0, 1),
+            (0, "多头", 100, 400, 9, 99.0, 2),
+            (0, "多头", 300, 400, 4, 30.0, 3),
+            (0, "空头", 500, 600, 3, -5.0, 4),
+            (1, "多头", 100, 200, 2, 7.0, 5),
+        ]);
+        let m = merge_holding_segments(&agg);
+        use std::collections::HashSet;
+        let mut opens: HashSet<(u32, &str, i64)> = HashSet::new();
+        let mut closes: HashSet<(u32, &str, i64)> = HashSet::new();
+        for s in &m {
+            assert!(opens.insert((s.sym_id, s.dir, s.open_dt)), "open_dt 重复");
+            assert!(
+                closes.insert((s.sym_id, s.dir, s.close_dt)),
+                "close_dt 重复"
+            );
+        }
+    }
+
+    #[test]
+    fn merge_empty() {
+        assert!(merge_holding_segments(&[]).is_empty());
+    }
+
+    /// 端到端：LIFO 拆成多条 AggRow 的同一段持仓，key_trades 去重后只上榜一次。
+    #[test]
+    fn key_trades_dedups_lifo_split() {
+        // 同 sym 同 open，分两次平仓（close 不同但同年）→ aggregate 后 2 条，merge 后 1 段。
+        let pairs = make_pairs(
+            &[
+                (0, DT_2024, DT_2024, 5, 100.0, 1),
+                (0, DT_2024, DT_2024B, 8, 300.0, 1),
+            ],
+            vec!["A".into()],
+        );
+        assert_eq!(
+            aggregate_pairs(&pairs).len(),
+            2,
+            "aggregate 按 close 区分仍是 2 条"
+        );
+        let df = key_trades_df(&pairs, 3).unwrap();
+        assert_eq!(df.height(), 1, "LIFO 拆分的同段去重后只上榜一次");
+        assert_eq!(
+            df.column("count").unwrap().i64().unwrap().get(0),
+            Some(2),
+            "count=1+1"
+        );
+        assert_eq!(
+            df.column("盈亏比例").unwrap().f64().unwrap().get(0),
+            Some(300.0),
+            "profit 取代表笔（持仓最长）"
+        );
     }
 }
