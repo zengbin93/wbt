@@ -385,7 +385,7 @@ class WeightBacktest:
         mode: str = "history",
         target_vol: float = 0.20,
         max_dd_threshold: float = 0.20,
-        min_year_days: int = 120,
+        min_year_days: int = 200,
         recent_days: int = 252,
         min_history_days: int = 60,
     ) -> dict[str, object]:
@@ -393,16 +393,21 @@ class WeightBacktest:
 
         两种判定模式，业务口径与方案子文档一致：
 
-        - ``mode="history"``：每个完整自然年绝对收益 > 0 或波动率归一多头超额 > 0；
-          且全样本多头超额最大回撤 < ``max_dd_threshold``。
-        - ``mode="recent"``：过去 ``recent_days`` 天绝对收益 > 0 或波动率归一多头超额 > 0；
-          且过去窗口多头超额最大回撤 < ``max_dd_threshold`` **且** 严格小于"剔除 recent
-          窗口后"的历史最大回撤。两段计算窗口完全错开。
+        - ``mode="history"``：每个完整自然年（≥ ``min_year_days``）满足**三者之一**即合格——
+          绝对收益 > 0 **或** 波动率归一多头超额 > 0 **或** 当年多头超额最大回撤 <
+          ``max_dd_threshold``；所有完整自然年都合格才 ``is_good``。
+          （回撤条件已从"跨全样本的独立硬门"下放为逐年计算、并入年度 OR；不再有全样本级别的
+          回撤一票否决。）
+        - ``mode="recent"``：尾部 ``recent_days`` 天满足**三者之一**即可——绝对收益 > 0 **或**
+          波动率归一多头超额 > 0 **或** 近期多头超额最大回撤 < ``max_dd_threshold``；
+          **且** 近期最大回撤严格小于"剔除 recent 窗口后"的历史最大回撤（唯一保留的硬门）。
+          两段计算窗口完全错开。
 
         :param mode: 判定模式，``"history"`` 或 ``"recent"``。
         :param target_vol: 波动率归一目标年化波动率（默认 0.20）。
-        :param max_dd_threshold: 多头超额最大回撤阈值（默认 0.20）。
-        :param min_year_days: 视为"完整自然年"所需的最少交易日数（默认 120）。
+        :param max_dd_threshold: 多头超额最大回撤阈值（默认 0.20）。history 模式下为**逐年**
+            回撤阈值，recent 模式下为近期窗口回撤阈值。
+        :param min_year_days: 视为"完整自然年"所需的最少交易日数（默认 200）。
         :param recent_days: ``"recent"`` 模式取序列尾部的日数（默认 252）。
         :param min_history_days: ``"recent"`` 模式下剔除 recent 窗口后的历史段必须达到
             的最小长度，否则 ``history_window_empty=True`` 且 ``is_good=False``
@@ -424,12 +429,16 @@ class WeightBacktest:
             **history / recent 两个模式返回的 key 集合互斥**，按 ``mode`` 字段 dispatch；
             不要假设可以同时拿到两个模式的字段。
 
-            **history 模式必含 key**：``alpha_degenerate``、``cond_history_dd_passed``、
-            ``cond_yearly_passed``、``complete_year_count``、``history_alpha_max_drawdown``
-            （退化时为 ``None``）、``is_good``、``mode``、``reason``、``yearly_metrics``。
+            **history 模式必含 key**：``alpha_degenerate``、``cond_yearly_passed``、
+            ``complete_year_count``、``is_good``、``mode``、``reason``、``yearly_metrics``。
+            ``yearly_metrics`` 每项含 ``year``、``abs_return``、``alpha_return``、
+            ``alpha_max_drawdown``（当年超额回撤）、``days``、``is_complete_year``、
+            ``year_passed``。全样本回撤硬门已取消，``history_alpha_max_drawdown`` /
+            ``cond_history_dd_passed`` 不再返回。
 
-            **recent 模式必含 key**：``alpha_degenerate``、``cond_recent_dd_passed``、
-            ``cond_recent_return_passed``、``history_alpha_max_drawdown_excl_recent``
+            **recent 模式必含 key**：``alpha_degenerate``、``cond_recent_dd_passed``
+            （现仅表示"近期回撤严格小于历史回撤"这一硬门）、``cond_recent_return_passed``
+            （现已并入"近期回撤 < 阈值"的 OR 分支）、``history_alpha_max_drawdown_excl_recent``
             （退化或样本不足时为 ``None``）、``history_window_empty``、``is_good``、
             ``mode``、``reason``、``recent_abs_return``、``recent_actual_days``、
             ``recent_alpha_max_drawdown``（退化时为 ``None``）、``recent_alpha_return``

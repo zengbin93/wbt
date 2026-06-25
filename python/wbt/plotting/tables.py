@@ -23,6 +23,7 @@ _YEARLY_COLS: list[tuple[str, str]] = [
     ("year", "年份"),
     ("abs_return", "绝对收益"),
     ("alpha_return", "超额收益"),
+    ("alpha_max_drawdown", "超额回撤"),
     ("days", "交易日数"),
     ("is_complete_year", "完整年"),
     ("year_passed", "达标"),

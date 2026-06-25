@@ -136,6 +136,18 @@ def test_generate_backtest_report_writes_valid_html(sample_dfw: pd.DataFrame, tm
     assert "wbt 权重回测引擎" in html
 
 
+def test_generate_backtest_report_has_history_and_recent_verdict(sample_dfw: pd.DataFrame, tmp_path: Path) -> None:
+    """策略审核 tab 应同时包含 history / recent 两个模式的判定卡 + 可展开详情。"""
+    out = tmp_path / "r.html"
+    generate_backtest_report(sample_dfw, output_path=str(out), n_jobs=1)
+    html = out.read_text(encoding="utf-8")
+    assert "history 模式（逐年判定）" in html
+    assert "recent 模式（尾部窗口判定）" in html
+    assert "查看详细判定信息" in html  # native <details> 折叠按钮
+    assert '<details class="verdict-details"' in html
+    assert "历史超额回撤(剔除近期)" in html  # recent 卡片表头
+
+
 def test_generate_backtest_report_default_path_in_cwd(
     sample_dfw: pd.DataFrame, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

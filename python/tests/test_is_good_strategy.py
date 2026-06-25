@@ -16,10 +16,8 @@ HISTORY_KEYS = {
     "reason",
     "yearly_metrics",
     "complete_year_count",
-    "history_alpha_max_drawdown",
     "alpha_degenerate",
     "cond_yearly_passed",
-    "cond_history_dd_passed",
 }
 
 RECENT_KEYS = {
@@ -54,6 +52,7 @@ def test_history_mode_returns_expected_keys(wb: WeightBacktest):
             "year",
             "abs_return",
             "alpha_return",
+            "alpha_max_drawdown",
             "days",
             "is_complete_year",
             "year_passed",
@@ -115,12 +114,15 @@ def test_recent_zero_recent_days_raises(wb: WeightBacktest):
     assert "recent_days" in msg or "invalid input" in msg
 
 
-def test_threshold_extreme_changes_judgement(wb: WeightBacktest):
-    """极小阈值让 cond_history_dd_passed=False；极大阈值让其 True。"""
-    relaxed = wb.is_good_strategy(mode="history", max_dd_threshold=1.0)
-    strict = wb.is_good_strategy(mode="history", max_dd_threshold=1e-9)
-    assert strict["cond_history_dd_passed"] is False
-    assert relaxed["cond_history_dd_passed"] is True
+def test_yearly_metrics_carry_per_year_drawdown(wb: WeightBacktest):
+    """回撤已下放为逐年指标：yearly_metrics 每项带出 alpha_max_drawdown。"""
+    r = wb.is_good_strategy(mode="history")
+    ym = r["yearly_metrics"]
+    assert isinstance(ym, list) and ym, "fixture should produce at least one year bucket"
+    for entry in ym:
+        dd = entry["alpha_max_drawdown"]
+        assert isinstance(dd, (int, float)) and not isinstance(dd, bool)
+        assert dd >= 0.0
 
 
 def test_default_parameters_work(wb: WeightBacktest):

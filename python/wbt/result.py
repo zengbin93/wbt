@@ -373,7 +373,13 @@ class BacktestResult:
 
     @cached_property
     def verdict(self) -> dict:
-        return self._wb.is_good_strategy()
+        """history 模式判定（逐年）。yearly_returns 复用其 yearly_metrics。"""
+        return self._wb.is_good_strategy(mode="history")
+
+    @cached_property
+    def verdict_recent(self) -> dict:
+        """recent 模式判定（尾部 recent_days 天）。"""
+        return self._wb.is_good_strategy(mode="recent")
 
     @cached_property
     def yearly_returns(self) -> YearlyReturns:
