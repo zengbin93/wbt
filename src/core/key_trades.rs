@@ -249,8 +249,10 @@ fn uf_union(parent: &mut [usize], a: usize, b: usize) {
 /// 对同一段持仓的拆分：一次开仓分批平仓（同 `open_dt`、不同 `close_dt`）、分批开仓一次
 /// 平仓（不同 `open_dt`、同 `close_dt`）。本函数按 `(sym_id, dir)` 分组，对 `open_dt`
 /// 或 `close_dt` 任一相同的记录用并查集做传递合并（覆盖 A-B 同开、B-C 同平的链式合并）；
-/// 每个连通分量取持仓 K 线数最长的一笔为代表，`count` 取成员之和，其余字段（含
-/// `profit_bp`——同 `(open,close)` 价格一致，已是 ±(close/open−1)·1e4）直接取代表笔。
+/// 每个连通分量取持仓 K 线数最长的一笔为代表，`count` 取成员之和；`profit_bp` /
+/// `open_price` / `close_price` 等价格类字段直接取代表笔——同一连通分量的成员之间
+/// 至多共享 open 或 close 中的一端，价格未必相等；选榜语义下「持仓最长的那段」即
+/// 「最具代表性」的主升段，足以代表整段持仓的展示口径，故不再按价格重算。
 ///
 /// 不变量：输出中同 `(sym_id, dir)` 的 `open_dt`、`close_dt` 各自唯一——任意两条同
 /// `open_dt`（或同 `close_dt`）必被并入同一分量，不会落到两个代表笔上。
