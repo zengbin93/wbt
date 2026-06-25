@@ -268,6 +268,22 @@ class HtmlReportBuilder:
         .verdict-cond.no .ck { color: var(--up); }
         .verdict-cond .ct { color: var(--ink); font-weight: 600; flex: none; }
         .verdict-cond .cd { color: var(--muted); }
+        .verdict-group { display: flex; flex-direction: column; gap: .35rem; }
+        .verdict-mode-title {
+            font-size: .82rem; font-weight: 700; color: var(--muted); letter-spacing: .03em;
+            text-transform: uppercase; margin: .6rem .15rem .1rem;
+        }
+        .verdict-details { margin: .5rem .15rem 0; }
+        .verdict-details > summary {
+            cursor: pointer; user-select: none; font-size: .85rem; font-weight: 600; color: var(--ink);
+            padding: .55rem .85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+            list-style: none;
+        }
+        .verdict-details > summary::-webkit-details-marker { display: none; }
+        .verdict-details > summary::before { content: "▸ "; color: var(--muted); }
+        .verdict-details[open] > summary::before { content: "▾ "; }
+        .verdict-detail-block { margin-top: .7rem; }
+        .verdict-detail-block .verdict-mode-title { margin-top: 0; }
 
         /* ============ Footer ============ */
         .footer {

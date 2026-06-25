@@ -46,7 +46,7 @@ class PyWeightBacktest:
         mode: str = "history",
         target_vol: float = 0.20,
         max_dd_threshold: float = 0.20,
-        min_year_days: int = 120,
+        min_year_days: int = 200,
         recent_days: int = 252,
         min_history_days: int = 60,
     ) -> dict[str, Any]: ...

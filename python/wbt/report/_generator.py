@@ -135,7 +135,7 @@ def _tab_specs(result: BacktestResult):
         (
             "策略审核",
             [
-                tbl("策略判定 & 年度指标", lambda: ht.verdict_card_html(result)),
+                tbl("策略判定（history + recent）", lambda: ht.verdict_section_html(result)),
                 tbl("回撤明细（Top 10）", lambda: ht.drawdowns_table_html(result)),
                 tbl("完整绩效指标", lambda: ht.stats_kv_html(result)),
             ],

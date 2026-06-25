@@ -40,7 +40,18 @@ def fmt_cell(v: object) -> str:
 _COUNT_KEYS = ("天数", "日数", "次数", "K线数", "间隔", "数量", "days", "count")
 _YEAR_KEYS = ("year", "年份")
 _RATIO_KEYS = ("夏普", "卡玛", "盈亏比", "盈亏平衡", "赢面")
-_PCT_KEYS = ("收益", "回撤", "波动", "胜率", "占比", "回报率", "覆盖", "abs_return", "alpha_return")
+_PCT_KEYS = (
+    "收益",
+    "回撤",
+    "波动",
+    "胜率",
+    "占比",
+    "回报率",
+    "覆盖",
+    "abs_return",
+    "alpha_return",
+    "alpha_max_drawdown",
+)
 
 
 def fmt_value(key: str, v: object) -> str:

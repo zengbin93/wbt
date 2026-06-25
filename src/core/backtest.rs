@@ -940,9 +940,11 @@ mod tests {
         assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("history"));
         assert!(r.get("is_good").and_then(|v| v.as_bool()).is_some());
         assert!(r.contains_key("yearly_metrics"));
-        assert!(r.contains_key("history_alpha_max_drawdown"));
         assert!(r.contains_key("cond_yearly_passed"));
-        assert!(r.contains_key("cond_history_dd_passed"));
+        assert!(r.contains_key("complete_year_count"));
+        // 全样本回撤硬门已取消，相关 key 不再返回。
+        assert!(!r.contains_key("history_alpha_max_drawdown"));
+        assert!(!r.contains_key("cond_history_dd_passed"));
     }
 
     #[test]

@@ -1,15 +1,17 @@
 //! is_good_strategy: 评价策略能不能搞
 //!
 //! 提供两种判定模式：
-//! - `history`：每个完整自然年绝对收益>0 或 波动率归一多头超额>0；且全样本多头超额最大回撤<阈值
-//! - `recent` ：过去一年绝对收益>0 或 波动率归一多头超额>0；且过去一年多头超额最大回撤<阈值 且 <错开 recent 窗口后的历史最大回撤
+//! - `history`：每个完整自然年（≥ `min_year_days`）满足三者之一即合格——
+//!   绝对收益>0 / 波动率归一多头超额>0 / **当年**多头超额最大回撤<阈值；所有完整年都合格才 `is_good`。
+//! - `recent` ：尾部 `recent_days` 天满足三者之一即可——绝对收益>0 / 波动率归一多头超额>0 /
+//!   近期多头超额最大回撤<阈值；**且**近期最大回撤严格小于错开 recent 窗口后的历史最大回撤（唯一硬门）。
 //!
 //! ## 波动率归一化口径（重要）
 //!
 //! [`compute_vol_adjusted_alpha`] 计算的归一化 scale 基于**全样本** long/bench 序列
 //! 的年化标准差，整段共用一组 (long_scale, bench_scale)。这意味着：
 //!
-//! - `Mode::History` 的 `history_alpha_max_drawdown` 在全样本归一化序列上计算 — 与口径一致。
+//! - `Mode::History` 的逐年 `alpha_max_drawdown` 在全样本归一化序列上按年切片计算 — 与口径一致。
 //! - `Mode::Recent` 的 `recent_alpha_max_drawdown` 与
 //!   `history_alpha_max_drawdown_excl_recent` 都是在**同一条**全样本归一化序列上分别取
 //!   尾部 / 头部计算，**不会**对 recent 窗口重新归一化。如果用户期望"recent 窗口按
@@ -44,12 +46,14 @@ pub(crate) enum Mode {
 }
 
 /// 单个完整自然年的指标聚合。`year_passed` 字段由 [`judge`] 主流程根据
-/// 业务条件（绝对收益>0 或 多头超额>0）回填，本算子内默认填 `false`。
+/// 业务条件（绝对收益>0 或 多头超额>0 或 当年超额回撤<阈值）回填，本算子内默认填 `false`。
+/// `alpha_max_drawdown` 是**当年**多头超额日序列的最大回撤绝对值（在全样本归一化序列上按年切片）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct YearMetric {
     pub year: i32,
     pub abs_return: f64,
     pub alpha_return: f64,
+    pub alpha_max_drawdown: f64,
     pub days: usize,
     pub is_complete_year: bool,
     pub year_passed: bool,
@@ -172,10 +176,12 @@ pub(crate) fn compute_yearly_metrics(
             let days = strat.len();
             let abs_return = strat.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
             let alpha_return = alpha.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+            let alpha_max_drawdown = local_max_drawdown_abs(&alpha);
             YearMetric {
                 year,
                 abs_return,
                 alpha_return,
+                alpha_max_drawdown,
                 days,
                 is_complete_year: days >= min_year_days,
                 year_passed: false,
@@ -245,11 +251,6 @@ pub(crate) fn compute_recent_window(
         alpha_return,
         alpha_max_drawdown,
     })
-}
-
-/// 全样本 alpha 序列的最大回撤（取绝对值）。用于 `history` 模式条件 B。
-pub(crate) fn compute_history_max_dd_full(alpha_daily: &[f64]) -> f64 {
-    local_max_drawdown_abs(alpha_daily)
 }
 
 /// 剔除尾部 `min(len, recent_days)` 天后计算历史 alpha 最大回撤（取绝对值）。
@@ -346,10 +347,14 @@ pub(crate) fn judge(
 
             let mut yearly =
                 compute_yearly_metrics(date_keys, strategy_daily, &alpha_daily, min_year_days)?;
+            // 逐年三路 OR：绝对收益>ε 或 多头超额>ε 或 当年超额回撤<阈值。
+            // alpha 退化时 alpha 派生两路不参与（避免"全 0 alpha → 回撤 0"凭空通过）。
             for m in yearly.iter_mut() {
                 if m.is_complete_year {
-                    m.year_passed =
-                        m.abs_return > RETURN_EPSILON || m.alpha_return > RETURN_EPSILON;
+                    m.year_passed = m.abs_return > RETURN_EPSILON
+                        || (!alpha_degenerate
+                            && (m.alpha_return > RETURN_EPSILON
+                                || m.alpha_max_drawdown < max_dd_threshold));
                 }
             }
 
@@ -362,8 +367,8 @@ pub(crate) fn judge(
                 for m in &complete {
                     if !m.year_passed {
                         reasons.push(format!(
-                            "year {} both metrics ≤ ε (abs_return={:.6}, alpha_return={:.6})",
-                            m.year, m.abs_return, m.alpha_return
+                            "year {} all three metrics fail (abs_return={:.6}, alpha_return={:.6}, alpha_max_drawdown={:.6} ≥ threshold {:.6})",
+                            m.year, m.abs_return, m.alpha_return, m.alpha_max_drawdown, max_dd_threshold
                         ));
                         ok = false;
                     }
@@ -371,37 +376,15 @@ pub(crate) fn judge(
                 ok
             };
 
-            let history_dd_full = compute_history_max_dd_full(&alpha_daily);
-            // alpha 退化时不让 cond_dd 凭"全 0 alpha → max_dd=0"通过
-            let cond_dd = if alpha_degenerate {
-                false
-            } else {
-                history_dd_full < max_dd_threshold
-            };
-            if !alpha_degenerate && !cond_dd {
-                reasons.push(format!(
-                    "history_alpha_max_drawdown {:.6} ≥ threshold {:.6}",
-                    history_dd_full, max_dd_threshold
-                ));
-            }
-
             out.insert(
                 "yearly_metrics".into(),
                 Value::Array(yearly.iter().map(year_metric_to_value).collect()),
             );
             out.insert("complete_year_count".into(), json!(complete.len()));
-            out.insert(
-                "history_alpha_max_drawdown".into(),
-                if alpha_degenerate {
-                    Value::Null
-                } else {
-                    json!(history_dd_full)
-                },
-            );
             out.insert("alpha_degenerate".into(), json!(alpha_degenerate));
             out.insert("cond_yearly_passed".into(), json!(cond_yearly));
-            out.insert("cond_history_dd_passed".into(), json!(cond_dd));
-            out.insert("is_good".into(), json!(cond_yearly && cond_dd));
+            // 退化时 alpha 派生字段无意义，全样本不再有独立回撤硬门 → 退化即 is_good=false。
+            out.insert("is_good".into(), json!(!alpha_degenerate && cond_yearly));
         }
         Mode::Recent => {
             out.insert("mode".into(), json!("recent"));
@@ -414,38 +397,32 @@ pub(crate) fn judge(
                 compute_history_max_dd_excl_recent(&alpha_daily, recent_days, min_history_days)
             };
 
-            // 复利绝对收益直接取自 strategy_daily（与 alpha 退化无关）。
-            let cond_return_value =
-                recent.abs_return > RETURN_EPSILON || recent.alpha_return > RETURN_EPSILON;
+            // 收益侧三路 OR：绝对收益>ε 或 多头超额>ε 或 近期超额回撤<阈值。
+            // 退化时 alpha 派生两路不参与，且整体 is_good 强制 false（见文档契约）。
+            let cond_return_value = recent.abs_return > RETURN_EPSILON
+                || recent.alpha_return > RETURN_EPSILON
+                || recent.alpha_max_drawdown < max_dd_threshold;
             let cond_return = !alpha_degenerate && cond_return_value;
             if !alpha_degenerate && !cond_return {
                 reasons.push(format!(
-                    "recent abs_return {:.6} ≤ ε and alpha_return {:.6} ≤ ε",
-                    recent.abs_return, recent.alpha_return
+                    "recent all three metrics fail (abs_return={:.6}, alpha_return={:.6}, alpha_max_drawdown={:.6} ≥ threshold {:.6})",
+                    recent.abs_return, recent.alpha_return, recent.alpha_max_drawdown, max_dd_threshold
                 ));
             }
 
+            // 唯一保留的硬门：近期最大回撤严格小于「剔除 recent 窗口后」的历史最大回撤。
             let history_window_short = history_dd_excl.is_none() && !alpha_degenerate;
             let (cond_dd, history_dd_excl_value) = if alpha_degenerate {
                 (false, Value::Null)
             } else {
                 match history_dd_excl {
                     Some(h) => {
-                        let ok = recent.alpha_max_drawdown < max_dd_threshold
-                            && recent.alpha_max_drawdown < h;
+                        let ok = recent.alpha_max_drawdown < h;
                         if !ok {
-                            if recent.alpha_max_drawdown >= max_dd_threshold {
-                                reasons.push(format!(
-                                    "recent_alpha_max_drawdown {:.6} ≥ threshold {:.6}",
-                                    recent.alpha_max_drawdown, max_dd_threshold
-                                ));
-                            }
-                            if recent.alpha_max_drawdown >= h {
-                                reasons.push(format!(
-                                    "recent_alpha_max_drawdown {:.6} ≥ history_excl {:.6}",
-                                    recent.alpha_max_drawdown, h
-                                ));
-                            }
+                            reasons.push(format!(
+                                "recent_alpha_max_drawdown {:.6} ≥ history_excl {:.6}",
+                                recent.alpha_max_drawdown, h
+                            ));
                         }
                         (ok, json!(h))
                     }
@@ -508,6 +485,7 @@ fn year_metric_to_value(m: &YearMetric) -> Value {
     obj.insert("year".into(), json!(m.year));
     obj.insert("abs_return".into(), json!(m.abs_return));
     obj.insert("alpha_return".into(), json!(m.alpha_return));
+    obj.insert("alpha_max_drawdown".into(), json!(m.alpha_max_drawdown));
     obj.insert("days".into(), json!(m.days));
     obj.insert("is_complete_year".into(), json!(m.is_complete_year));
     obj.insert("year_passed".into(), json!(m.year_passed));
@@ -836,16 +814,8 @@ mod tests {
     }
 
     // ===========================================================================
-    // compute_history_max_dd_full / excl_recent
+    // compute_history_max_dd_excl_recent
     // ===========================================================================
-
-    #[test]
-    fn history_max_dd_full_known_value() {
-        let alpha = vec![0.05_f64, -0.10, -0.05, 0.02, 0.03];
-        let dd = compute_history_max_dd_full(&alpha);
-        let expected = (1.05_f64 - 0.89775) / 1.05;
-        assert!((dd - expected).abs() < 1e-10);
-    }
 
     /// Disjoint check, min_history_days=0 disables floor.
     #[test]
@@ -854,7 +824,7 @@ mod tests {
         alpha.extend(std::iter::repeat_n(0.001_f64, 100));
         alpha.extend(std::iter::repeat_n(-0.005_f64, 252));
         let excl = compute_history_max_dd_excl_recent(&alpha, 252, 0).unwrap();
-        let full = compute_history_max_dd_full(&alpha);
+        let full = local_max_drawdown_abs(&alpha);
         assert!(excl < 1e-6);
         assert!(full > 0.5);
         assert!((excl - full).abs() > 0.1);
@@ -1021,36 +991,121 @@ mod tests {
     // judge: history mode
     // ===========================================================================
 
+    /// 单年样本：strat 每日恒定；long/bench 由闭包按 index 生成（用于构造可控的 alpha）。
+    fn year_block(
+        year: i32,
+        n: usize,
+        strat_per_day: f64,
+        long_fn: impl Fn(usize) -> f64,
+        bench_fn: impl Fn(usize) -> f64,
+    ) -> (Vec<i32>, Vec<f64>, Vec<f64>, Vec<f64>) {
+        let start = chrono::NaiveDate::from_ymd_opt(year, 1, 2).unwrap();
+        let mut k = Vec::new();
+        let (mut s, mut b, mut l) = (Vec::new(), Vec::new(), Vec::new());
+        for i in 0..n {
+            k.push(date_key_from_nd(start + chrono::Duration::days(i as i64)));
+            s.push(strat_per_day);
+            l.push(long_fn(i));
+            b.push(bench_fn(i));
+        }
+        (k, s, b, l)
+    }
+
+    // long/bench 漂移方向相反、形状不同 → alpha 非退化。漂移远大于振荡时单调，
+    // 用于"超额大幅下行 / 上行"这类需要明确符号与回撤的场景。
+    fn drift_down_long(i: usize) -> f64 {
+        -0.0008 + 0.0003 * ((i % 3) as f64 - 1.0)
+    }
+    fn drift_up_bench(i: usize) -> f64 {
+        0.0008 + 0.0003 * ((i % 5) as f64 - 2.0)
+    }
+
+    /// history 三路 OR —— 仅靠「绝对收益>0」过关（超额下行：alpha_return<0 且当年回撤≥阈值）。
     #[test]
-    fn history_passes_when_all_conditions_met() {
-        let (k, s, b, l) = build_two_year_samples(0.001, 0.001);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 1.0, 120, 252, 0).unwrap();
-        assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("history"));
+    fn history_year_passes_via_abs_return_only() {
+        let (k, s, b, l) = year_block(2020, 130, 0.001, drift_down_long, drift_up_bench);
+        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        let ym = r.get("yearly_metrics").and_then(|v| v.as_array()).unwrap();
+        let y = &ym[0];
+        assert!(y["abs_return"].as_f64().unwrap() > 0.0);
+        assert!(y["alpha_return"].as_f64().unwrap() <= 0.0);
+        assert!(y["alpha_max_drawdown"].as_f64().unwrap() >= 0.20);
+        assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(true));
+    }
+
+    /// history 三路 OR —— 仅靠「当年超额回撤<阈值」过关（绝对/超额收益均为 0）。
+    #[test]
+    fn history_year_passes_via_year_dd_only() {
+        // strat=0 → abs_return=0；long==bench → alpha≡0 → alpha_return=0、year_dd=0<阈值。
+        let osc = |i: usize| 0.0003 * ((i % 3) as f64 - 1.0);
+        let (k, s, b, l) = year_block(2020, 130, 0.0, osc, osc);
+        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        let ym = r.get("yearly_metrics").and_then(|v| v.as_array()).unwrap();
+        let y = &ym[0];
+        assert!(y["abs_return"].as_f64().unwrap().abs() < 1e-9);
+        assert!(y["alpha_return"].as_f64().unwrap().abs() < 1e-9);
+        assert!(y["alpha_max_drawdown"].as_f64().unwrap() < 0.20);
         assert_eq!(
             r.get("alpha_degenerate").and_then(|v| v.as_bool()),
             Some(false)
         );
-        assert_eq!(
-            r.get("cond_yearly_passed").and_then(|v| v.as_bool()),
-            Some(true)
-        );
-        assert_eq!(
-            r.get("cond_history_dd_passed").and_then(|v| v.as_bool()),
-            Some(true)
-        );
+        assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(r.get("reason").and_then(|v| v.as_str()), Some(""));
+    }
+
+    /// history 三路 OR —— 仅靠「波动率归一多头超额>0」过关（abs=0，当年回撤≥极小阈值）。
+    #[test]
+    fn history_year_passes_via_alpha_return_only() {
+        // 小漂移、相对振荡较大 → alpha 上行但有下行日 → alpha_return>0 且 year_dd>1e-9。
+        let long = |i: usize| 0.0002 + 0.0006 * ((i % 3) as f64 - 1.0);
+        let bench = |i: usize| -0.0002 + 0.0006 * ((i % 5) as f64 - 2.0);
+        let (k, s, b, l) = year_block(2020, 130, 0.0, long, bench);
+        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 1e-9, 120, 252, 0).unwrap();
+        let ym = r.get("yearly_metrics").and_then(|v| v.as_array()).unwrap();
+        let y = &ym[0];
+        assert!(y["abs_return"].as_f64().unwrap().abs() < 1e-9);
+        assert!(y["alpha_return"].as_f64().unwrap() > 0.0);
+        assert!(y["alpha_max_drawdown"].as_f64().unwrap() >= 1e-9);
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(true));
     }
 
+    /// 某完整年三路全败 → is_good=false，reason 点名该年。
     #[test]
-    fn history_fails_when_any_complete_year_both_metrics_negative() {
-        let (k, s, b, l) = build_two_year_samples(0.001, -0.001);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 1.0, 120, 252, 0).unwrap();
+    fn history_fails_when_year_fails_all_three() {
+        // strat<0（abs<0）；超额下行（alpha_return<0 且 year_dd≥阈值）。
+        let (k, s, b, l) = year_block(2020, 130, -0.001, drift_down_long, drift_up_bench);
+        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
         let reason = r.get("reason").and_then(|v| v.as_str()).unwrap_or("");
         assert!(
-            reason.contains("2021") || reason.contains("2020"),
-            "reason should mention failing year, got: {reason}"
+            reason.contains("2020") && reason.contains("all three"),
+            "reason should name failing year and all-three, got: {reason}"
         );
+        // 全样本回撤硬门已取消，相关 key 不再返回。
+        assert!(!r.contains_key("history_alpha_max_drawdown"));
+        assert!(!r.contains_key("cond_history_dd_passed"));
+    }
+
+    /// 逐年 AND：一年合格、一年三路全败 → 整体不通过。
+    #[test]
+    fn history_requires_all_complete_years_pass() {
+        let (mut k, mut s, mut b, mut l) =
+            year_block(2020, 130, 0.001, drift_down_long, drift_up_bench); // 年1：靠 abs 过
+        let (k2, s2, b2, l2) = year_block(2021, 130, -0.001, drift_down_long, drift_up_bench); // 年2：全败
+        k.extend(k2);
+        s.extend(s2);
+        b.extend(b2);
+        l.extend(l2);
+        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        assert_eq!(
+            r.get("complete_year_count").and_then(|v| v.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            r.get("cond_yearly_passed").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
     }
 
     #[test]
@@ -1062,37 +1117,13 @@ mod tests {
         assert!(reason.contains("no complete year") || reason.contains("complete year"));
     }
 
+    /// alpha 退化（long vol == 0）→ is_good=false，且不再返回全样本回撤相关 key。
     #[test]
-    fn history_fails_when_max_dd_exceeds_threshold() {
-        let mut k = Vec::new();
-        let mut s = Vec::new();
-        let mut b = Vec::new();
-        let mut l = Vec::new();
-        for i in 0..150 {
-            let nd = chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap()
-                + chrono::Duration::days(i as i64);
-            k.push(date_key_from_nd(nd));
-            s.push(0.002);
-            b.push(0.001 + 0.0005 * ((i % 3) as f64));
-            l.push(-(0.001 + 0.0005 * ((i % 3) as f64)));
-        }
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
-        assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
-        let dd = r
-            .get("history_alpha_max_drawdown")
-            .and_then(|v| v.as_f64())
-            .expect("history_alpha_max_drawdown must be set when not degenerate");
-        assert!(dd > 0.20);
-    }
-
-    /// F3 fix: alpha degenerate (long vol == 0) must NOT trivially pass cond_history_dd.
-    #[test]
-    fn history_alpha_degenerate_does_not_trivially_pass() {
+    fn history_alpha_degenerate_is_not_good() {
         let start = chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
         let keys = consecutive_keys(start, 130);
-        let s = vec![0.001_f64; 130];
-        // long vol == 0 -> vol_adjusted returns None -> alpha_degenerate
-        let long = vec![0.0_f64; 130];
+        let s = vec![0.001_f64; 130]; // abs_return>0，但退化时强制 is_good=false
+        let long = vec![0.0_f64; 130]; // long vol == 0 -> 退化
         let bench: Vec<f64> = (0..130)
             .map(|i| 0.001 + 0.0005 * ((i % 3) as f64))
             .collect();
@@ -1114,70 +1145,16 @@ mod tests {
             r.get("alpha_degenerate").and_then(|v| v.as_bool()),
             Some(true)
         );
-        assert_eq!(
-            r.get("cond_history_dd_passed").and_then(|v| v.as_bool()),
-            Some(false)
-        );
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
-        assert!(matches!(
-            r.get("history_alpha_max_drawdown"),
-            Some(Value::Null)
-        ));
+        assert!(!r.contains_key("history_alpha_max_drawdown"));
+        assert!(!r.contains_key("cond_history_dd_passed"));
     }
 
-    /// F8 fix: history degenerate -> history_alpha_max_drawdown is Null.
-    #[test]
-    fn history_alpha_max_drawdown_is_null_when_degenerate() {
-        let start = chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
-        let keys = consecutive_keys(start, 130);
-        let s = vec![0.001_f64; 130];
-        let long = vec![0.0_f64; 130];
-        let bench: Vec<f64> = (0..130)
-            .map(|i| 0.001 + 0.0005 * ((i % 3) as f64))
-            .collect();
-        let r = judge(
-            Mode::History,
-            &keys,
-            &s,
-            &bench,
-            &long,
-            252,
-            0.20,
-            1.0,
-            120,
-            252,
-            0,
-        )
-        .unwrap();
-        assert!(matches!(
-            r.get("history_alpha_max_drawdown"),
-            Some(Value::Null)
-        ));
-    }
-
-    /// F11 fix: year returns near 0 use RETURN_EPSILON.
+    /// 年度收益接近 0 时用 RETURN_EPSILON：abs≈0、超额下行 → 三路全败 → is_good=false。
     #[test]
     fn history_year_passed_uses_epsilon() {
-        let start = chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
-        let keys = consecutive_keys(start, 130);
-        let s = vec![1e-12_f64; 130];
-        let same: Vec<f64> = (0..130)
-            .map(|i| 0.001 + 0.0005 * ((i % 3) as f64))
-            .collect();
-        let r = judge(
-            Mode::History,
-            &keys,
-            &s,
-            &same,
-            &same,
-            252,
-            0.20,
-            1.0,
-            120,
-            252,
-            0,
-        )
-        .unwrap();
+        let (k, s, b, l) = year_block(2020, 130, 1e-12, drift_down_long, drift_up_bench);
+        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
     }
 
@@ -1309,5 +1286,98 @@ mod tests {
             r.get("history_alpha_max_drawdown_excl_recent"),
             Some(Value::Null)
         ));
+    }
+
+    /// recent 三路 OR —— 仅靠「近期超额回撤<阈值」过关（abs<0、alpha_return≈0），
+    /// 且近期回撤严格小于历史回撤这一硬门成立 → is_good=true。
+    #[test]
+    fn recent_passes_via_dd_branch_only() {
+        // 头段 148 天超额大幅下行（历史回撤大）；尾段 252 天 long/bench≡0 → 近期 alpha≡0。
+        let head = 148usize;
+        let total = head + 252;
+        let start = chrono::NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+        let keys = consecutive_keys(start, total);
+        let s = vec![-0.0001_f64; total]; // 近期 abs_return<0
+        let l: Vec<f64> = (0..total)
+            .map(|i| if i < head { drift_down_long(i) } else { 0.0 })
+            .collect();
+        let b: Vec<f64> = (0..total)
+            .map(|i| if i < head { drift_up_bench(i) } else { 0.0 })
+            .collect();
+        let r = judge(
+            Mode::Recent,
+            &keys,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            120,
+            252,
+            60,
+        )
+        .unwrap();
+        assert_eq!(
+            r.get("alpha_degenerate").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert!(r.get("recent_abs_return").and_then(|v| v.as_f64()).unwrap() < 0.0);
+        assert!(
+            r.get("recent_alpha_max_drawdown")
+                .and_then(|v| v.as_f64())
+                .unwrap()
+                < 0.20
+        );
+        assert_eq!(
+            r.get("cond_recent_return_passed").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            r.get("cond_recent_dd_passed").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(true));
+    }
+
+    /// 历史回撤硬门是严格小于：近期回撤恰好等于历史回撤时判 False。
+    #[test]
+    fn recent_strict_history_rejects_equal_dd() {
+        // 头段 [0,252) 与尾段 [252,504) 取相同的周期化形状 → 两窗 alpha 逐点相等 →
+        // recent_dd == history_excl，严格 `<` 应为 false。
+        let total = 504usize;
+        let start = chrono::NaiveDate::from_ymd_opt(2019, 1, 1).unwrap();
+        let keys = consecutive_keys(start, total);
+        let s = vec![0.001_f64; total]; // 收益侧 OR 通过（abs_return>0）
+        let l: Vec<f64> = (0..total)
+            .map(|i| 0.0002 + 0.0006 * (((i % 252) % 3) as f64 - 1.0))
+            .collect();
+        let b: Vec<f64> = (0..total)
+            .map(|i| -0.0002 + 0.0006 * (((i % 252) % 5) as f64 - 2.0))
+            .collect();
+        let r = judge(
+            Mode::Recent,
+            &keys,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            120,
+            252,
+            60,
+        )
+        .unwrap();
+        assert_eq!(
+            r.get("cond_recent_return_passed").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            r.get("cond_recent_dd_passed").and_then(|v| v.as_bool()),
+            Some(false),
+            "recent_dd == history_excl must NOT pass the strict `<` gate"
+        );
+        assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
     }
 }
