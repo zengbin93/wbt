@@ -46,6 +46,8 @@ class PyWeightBacktest:
         mode: str = "history",
         target_vol: float = 0.20,
         max_dd_threshold: float = 0.20,
+        max_alpha_dd_threshold: float = 0.30,
+        min_full_sharpe: float = 0.5,
         min_year_days: int = 200,
         recent_days: int = 252,
         min_history_days: int = 60,

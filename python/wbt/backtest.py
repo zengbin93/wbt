@@ -385,6 +385,8 @@ class WeightBacktest:
         mode: str = "history",
         target_vol: float = 0.20,
         max_dd_threshold: float = 0.20,
+        max_alpha_dd_threshold: float = 0.30,
+        min_full_sharpe: float = 0.5,
         min_year_days: int = 200,
         recent_days: int = 252,
         min_history_days: int = 60,
@@ -395,9 +397,9 @@ class WeightBacktest:
 
         - ``mode="history"``：每个完整自然年（≥ ``min_year_days``）满足**三者之一**即合格——
           绝对收益 > 0 **或** 波动率归一多头超额 > 0 **或** 当年多头超额最大回撤 <
-          ``max_dd_threshold``；所有完整自然年都合格才 ``is_good``。
-          （回撤条件已从"跨全样本的独立硬门"下放为逐年计算、并入年度 OR；不再有全样本级别的
-          回撤一票否决。）
+          ``max_dd_threshold``；所有完整自然年都合格后再过**两道全样本硬门**——
+          全样本超额回撤 ≤ ``max_alpha_dd_threshold`` **且** 全样本 Sharpe >
+          ``min_full_sharpe``。
         - ``mode="recent"``：尾部 ``recent_days`` 天满足**三者之一**即可——绝对收益 > 0 **或**
           波动率归一多头超额 > 0 **或** 近期多头超额最大回撤 < ``max_dd_threshold``；
           **且** 近期最大回撤严格小于"剔除 recent 窗口后"的历史最大回撤（唯一保留的硬门）。
@@ -407,6 +409,10 @@ class WeightBacktest:
         :param target_vol: 波动率归一目标年化波动率（默认 0.20）。
         :param max_dd_threshold: 多头超额最大回撤阈值（默认 0.20）。history 模式下为**逐年**
             回撤阈值，recent 模式下为近期窗口回撤阈值。
+        :param max_alpha_dd_threshold: history 模式全样本超额回撤硬门（默认 0.30）。全样本
+            超额回撤必须 **≤** 该值才通过；超出即 ``is_good=False``。
+        :param min_full_sharpe: history 模式全样本 Sharpe 硬门（默认 0.5）。全样本
+            Sharpe 必须 **>** 该值才通过；不满足即 ``is_good=False``。
         :param min_year_days: 视为"完整自然年"所需的最少交易日数（默认 200）。
         :param recent_days: ``"recent"`` 模式取序列尾部的日数（默认 252）。
         :param min_history_days: ``"recent"`` 模式下剔除 recent 窗口后的历史段必须达到
@@ -421,20 +427,23 @@ class WeightBacktest:
 
         - 输入序列含 NaN/Inf、long/bench 的年化波动率 ~= 0，归一化无法定义 → 返回 dict
           中 ``alpha_degenerate=True``，所有 alpha 派生字段为 ``None``，``is_good=False``。
-        - 输入日期 / 序列长度不匹配、空输入、``recent_days=0``、``target_vol<=0`` 等用户
-          错误 → 抛出 ``Exception``（Rust 端 ``WbtError::InvalidInput``）。
+        - 输入日期 / 序列长度不匹配、空输入、``recent_days=0``、``target_vol<=0``、
+          ``max_dd_threshold<=0``、``max_alpha_dd_threshold<=0`` 等用户错误 → 抛出
+          ``Exception``（Rust 端 ``WbtError::InvalidInput``）。
 
         :return: dict，顶层 key 用英文 snake_case，按字母序稳定排列。
 
             **history / recent 两个模式返回的 key 集合互斥**，按 ``mode`` 字段 dispatch；
             不要假设可以同时拿到两个模式的字段。
 
-            **history 模式必含 key**：``alpha_degenerate``、``cond_yearly_passed``、
-            ``complete_year_count``、``is_good``、``mode``、``reason``、``yearly_metrics``。
+            **history 模式必含 key**：``alpha_degenerate``、``cond_history_dd_passed``、
+            ``cond_history_sharpe_passed``、``cond_yearly_passed``、``complete_year_count``、
+            ``history_alpha_max_drawdown``（全样本超额回撤，退化时为 ``None``）、
+            ``history_alpha_sharpe``（全样本 Sharpe，退化时为 ``None``）、``is_good``、
+            ``mode``、``reason``、``yearly_metrics``。
             ``yearly_metrics`` 每项含 ``year``、``abs_return``、``alpha_return``、
             ``alpha_max_drawdown``（当年超额回撤）、``days``、``is_complete_year``、
-            ``year_passed``。全样本回撤硬门已取消，``history_alpha_max_drawdown`` /
-            ``cond_history_dd_passed`` 不再返回。
+            ``year_passed``。
 
             **recent 模式必含 key**：``alpha_degenerate``、``cond_recent_dd_passed``
             （现仅表示"近期回撤严格小于历史回撤"这一硬门）、``cond_recent_return_passed``
@@ -448,7 +457,14 @@ class WeightBacktest:
             ``reason`` 类型为 ``str``（成功时为空字符串）。
         """
         return self._inner.is_good_strategy(
-            mode, target_vol, max_dd_threshold, min_year_days, recent_days, min_history_days
+            mode,
+            target_vol,
+            max_dd_threshold,
+            max_alpha_dd_threshold,
+            min_full_sharpe,
+            min_year_days,
+            recent_days,
+            min_history_days,
         )
 
     @property
