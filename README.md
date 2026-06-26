@@ -4,7 +4,7 @@
 
 ![wbt backtest report](docs/images/overview.png)
 
-> The figure above is a real report produced by `wb.to_result()` + `wbt.plotting` on a 5-symbol, 5-year mock weight table (`mock_weights(...)`), rendered with zero configuration.
+> The figure above is a real report: a 5-symbol, 5-year (2019–2023) mock weight table passed through `WeightBacktest` → `wb.to_result()` → `wbt.plotting`, rendered with zero configuration. The sample is deliberately tuned to a strong profile (Sharpe ≈ 3.4, annualized ≈ 35.7%, max drawdown ≈ 9.0%) so the report is visually readable — the underlying weight signal mixes a lookahead edge with Gaussian noise purely for demo aesthetics, **not** a real strategy.
 
 [中文说明](README_CN.md)
 
@@ -97,7 +97,7 @@ For complete Python guide, see python/README.md.
 
 ## Example Report
 
-Every figure below is real output from a single `wb.to_result()` pass on the mock weight table — the same code path your strategy data takes. Each plotting function consumes one precomputed `BacktestResult` and performs zero data transformation.
+Every figure below is real output from the same tuned mock weight table (Sharpe ≈ 3.4) — one `wb.to_result()` pass, the same code path your strategy data takes. Each plotting function consumes one precomputed `BacktestResult` and performs zero data transformation.
 
 | Cumulative returns | Drawdown |
 |---|---|
