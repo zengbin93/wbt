@@ -122,7 +122,7 @@ Python 侧支持输入：
 - wb.to_result(target_vol=0.20) → BacktestResult：绘图与审核页面的标准输入数据对象（详见下文「可视化」）。
 - wb.segment_stats(...)：任意时间区间统计。
 - wb.long_alpha_stats：波动率调整后的多头超额指标。
-- wb.is_good_strategy(mode="history" | "recent", ...)：客观判定一个策略能不能搞。返回 dict，含 `is_good`（bool）、`reason`、`alpha_degenerate`（bool）、年度明细（history 模式）或最近窗口指标（recent 模式）以及各条件通过标记。可调参数：`target_vol`、`max_dd_threshold`、`min_year_days`、`recent_days`、`min_history_days`。`recent` 模式下，历史最大回撤在**剔除 recent 窗口后**的样本上计算（带可配置的 `min_history_days` floor），与 recent 窗口在时间上完全错开。Alpha 退化（NaN/Inf 或 long/bench 零方差）通过 `alpha_degenerate=True` 报告，所有 alpha 派生字段为 `None`，`is_good=False`——不会假阳性"零回撤通过"。返回 dict 的 key 按字母序稳定排列；`history` 与 `recent` 模式返回**互斥**的 key 集合（按 `mode` dispatch）。
+- wb.is_good_strategy(mode="history" | "recent", ...)：客观判定一个策略能不能搞。返回 dict，含 `is_good`（bool）、`reason`、`alpha_degenerate`（bool）、年度明细（history 模式）或最近窗口指标（recent 模式）以及各条件通过标记。可调参数：`target_vol`、`max_dd_threshold`、`max_alpha_dd_threshold`、`min_full_sharpe`、`min_year_days`、`recent_days`、`min_history_days`。`history` 模式下，逐年三路 OR（绝对收益>0 / α 收益>0 / 当年超额回撤<`max_dd_threshold`）通过后，还要过**两道全样本硬门**：全样本超额回撤 ≤ `max_alpha_dd_threshold`（默认 0.30）**且** 全样本 Sharpe > `min_full_sharpe`（默认 0.5）。`recent` 模式下，历史最大回撤在**剔除 recent 窗口后**的样本上计算（带可配置的 `min_history_days` floor），与 recent 窗口在时间上完全错开。Alpha 退化（NaN/Inf 或 long/bench 零方差）通过 `alpha_degenerate=True` 报告，所有 alpha 派生字段为 `None`，`is_good=False`——不会假阳性"零回撤通过"。返回 dict 的 key 按字母序稳定排列；`history` 与 `recent` 模式返回**互斥**的 key 集合（按 `mode` dispatch）。
 
 ## 独立工具函数
 

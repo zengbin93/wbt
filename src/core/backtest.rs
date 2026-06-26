@@ -562,6 +562,8 @@ impl WeightBacktest {
         mode: &str,
         target_vol: f64,
         max_dd_threshold: f64,
+        max_alpha_dd_threshold: f64,
+        min_full_sharpe: f64,
         min_year_days: usize,
         recent_days: usize,
         min_history_days: usize,
@@ -603,6 +605,8 @@ impl WeightBacktest {
             self.yearly_days,
             target_vol,
             max_dd_threshold,
+            max_alpha_dd_threshold,
+            min_full_sharpe,
             min_year_days,
             recent_days,
             min_history_days,
@@ -935,16 +939,18 @@ mod tests {
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
 
         let r = wb
-            .is_good_strategy("history", 0.20, 0.20, 120, 252, 60)
+            .is_good_strategy("history", 0.20, 0.20, 0.30, 0.5, 120, 252, 60)
             .expect("is_good_strategy history should succeed after backtest");
         assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("history"));
         assert!(r.get("is_good").and_then(|v| v.as_bool()).is_some());
         assert!(r.contains_key("yearly_metrics"));
         assert!(r.contains_key("cond_yearly_passed"));
         assert!(r.contains_key("complete_year_count"));
-        // 全样本回撤硬门已取消，相关 key 不再返回。
-        assert!(!r.contains_key("history_alpha_max_drawdown"));
-        assert!(!r.contains_key("cond_history_dd_passed"));
+        // 全样本两道硬门已恢复返回对应 key。
+        assert!(r.contains_key("history_alpha_max_drawdown"));
+        assert!(r.contains_key("cond_history_dd_passed"));
+        assert!(r.contains_key("history_alpha_sharpe"));
+        assert!(r.contains_key("cond_history_sharpe_passed"));
     }
 
     #[test]
@@ -954,7 +960,7 @@ mod tests {
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
 
         let r = wb
-            .is_good_strategy("recent", 0.20, 0.20, 120, 252, 60)
+            .is_good_strategy("recent", 0.20, 0.20, 0.30, 0.5, 120, 252, 60)
             .expect("is_good_strategy recent should succeed after backtest");
         assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("recent"));
         assert!(r.contains_key("recent_abs_return"));
@@ -967,7 +973,7 @@ mod tests {
     fn weight_backtest_is_good_strategy_returns_err_when_not_backtested() {
         let df = make_test_dataframe();
         let wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
-        let r = wb.is_good_strategy("history", 0.20, 0.20, 120, 252, 60);
+        let r = wb.is_good_strategy("history", 0.20, 0.20, 0.30, 0.5, 120, 252, 60);
         assert!(
             r.is_err(),
             "should error when backtest() has not been called"
@@ -979,7 +985,7 @@ mod tests {
         let df = make_test_dataframe();
         let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
         wb.backtest(Some(1), WeightType::TS, 252).unwrap();
-        let r = wb.is_good_strategy("xxx", 0.20, 0.20, 120, 252, 60);
+        let r = wb.is_good_strategy("xxx", 0.20, 0.20, 0.30, 0.5, 120, 252, 60);
         assert!(r.is_err(), "should error on invalid mode");
         let msg = format!("{}", r.unwrap_err());
         assert!(

@@ -339,7 +339,7 @@ impl PyWeightBacktest {
         hashmap_to_pydict(py, &map)
     }
 
-    #[pyo3(signature = (mode="history", target_vol=0.20, max_dd_threshold=0.20, min_year_days=200, recent_days=252, min_history_days=60))]
+    #[pyo3(signature = (mode="history", target_vol=0.20, max_dd_threshold=0.20, max_alpha_dd_threshold=0.30, min_full_sharpe=0.5, min_year_days=200, recent_days=252, min_history_days=60))]
     #[allow(clippy::too_many_arguments)]
     fn is_good_strategy<'py>(
         &self,
@@ -347,6 +347,8 @@ impl PyWeightBacktest {
         mode: &str,
         target_vol: f64,
         max_dd_threshold: f64,
+        max_alpha_dd_threshold: f64,
+        min_full_sharpe: f64,
         min_year_days: usize,
         recent_days: usize,
         min_history_days: usize,
@@ -357,6 +359,8 @@ impl PyWeightBacktest {
                 mode,
                 target_vol,
                 max_dd_threshold,
+                max_alpha_dd_threshold,
+                min_full_sharpe,
                 min_year_days,
                 recent_days,
                 min_history_days,

@@ -2,7 +2,8 @@
 //!
 //! 提供两种判定模式：
 //! - `history`：每个完整自然年（≥ `min_year_days`）满足三者之一即合格——
-//!   绝对收益>0 / 波动率归一多头超额>0 / **当年**多头超额最大回撤<阈值；所有完整年都合格才 `is_good`。
+//!   绝对收益>0 / 波动率归一多头超额>0 / **当年**多头超额最大回撤<阈值；所有完整年都合格才进入
+//!   全样本两道硬门——超额回撤 ≤ `max_alpha_dd_threshold`、Sharpe > `min_full_sharpe`。
 //! - `recent` ：尾部 `recent_days` 天满足三者之一即可——绝对收益>0 / 波动率归一多头超额>0 /
 //!   近期多头超额最大回撤<阈值；**且**近期最大回撤严格小于错开 recent 窗口后的历史最大回撤（唯一硬门）。
 //!
@@ -98,6 +99,32 @@ fn local_max_drawdown_abs(returns: &[f64]) -> f64 {
         }
     }
     max_dd
+}
+
+/// 全样本 Sharpe：`mean / std * sqrt(yearly_days)`，与 [`crate::core::daily_performance`]
+/// 口径一致（ddof=0、不做 4 位四舍五入、不裁剪到 [-5, 10]；这里是判定门，不进展示）。
+///
+/// - 空 / 全等序列 → `std == 0` → 返回 `0.0`（调用方按"未达 Sharpe 阈值"判定）。
+/// - 输入含 NaN/Inf → 返回 NaN。
+fn full_sample_sharpe(returns: &[f64], yearly_days: usize) -> f64 {
+    if returns.is_empty() {
+        return 0.0;
+    }
+    let std = std_inline(returns);
+    if !std.is_finite() {
+        return f64::NAN;
+    }
+    // 浮点累计误差会让「数学上常数」的序列算出极小 std；与现有 `VOL_EPSILON` 同口径：
+    // std 太小时视作"无波动"，Sharpe 退化为 0（"未达 Sharpe 阈值"路径）。
+    if std < VOL_EPSILON {
+        return 0.0;
+    }
+    let n = returns.len() as f64;
+    let mean = returns.iter().sum::<f64>() / n;
+    if !mean.is_finite() {
+        return f64::NAN;
+    }
+    mean / std * (yearly_days as f64).sqrt()
 }
 
 /// 给定多头日收益与基准日收益，按目标年化波动率分别归一化后做差，得到波动率归一多头超额日序列。
@@ -287,6 +314,8 @@ pub(crate) fn judge(
     yearly_days: usize,
     target_vol: f64,
     max_dd_threshold: f64,
+    max_alpha_dd_threshold: f64,
+    min_full_sharpe: f64,
     min_year_days: usize,
     recent_days: usize,
     min_history_days: usize,
@@ -318,6 +347,16 @@ pub(crate) fn judge(
     if !max_dd_threshold.is_finite() || max_dd_threshold <= 0.0 {
         return Err(WbtError::InvalidInput(format!(
             "max_dd_threshold must be positive and finite, got {max_dd_threshold}"
+        )));
+    }
+    if !max_alpha_dd_threshold.is_finite() || max_alpha_dd_threshold <= 0.0 {
+        return Err(WbtError::InvalidInput(format!(
+            "max_alpha_dd_threshold must be positive and finite, got {max_alpha_dd_threshold}"
+        )));
+    }
+    if !min_full_sharpe.is_finite() {
+        return Err(WbtError::InvalidInput(format!(
+            "min_full_sharpe must be finite, got {min_full_sharpe}"
         )));
     }
     for &dk in date_keys {
@@ -376,6 +415,35 @@ pub(crate) fn judge(
                 ok
             };
 
+            // 全样本两道硬门：超额回撤 ≤ 阈值、Sharpe > 阈值。退化时全部 NaN/无意义，
+            // 沿用"alpha 退化即 is_good=false"的既有契约。
+            let history_alpha_max_drawdown = if alpha_degenerate {
+                f64::NAN
+            } else {
+                local_max_drawdown_abs(&alpha_daily)
+            };
+            let history_alpha_sharpe = if alpha_degenerate {
+                f64::NAN
+            } else {
+                full_sample_sharpe(&alpha_daily, yearly_days)
+            };
+
+            let cond_history_dd =
+                !alpha_degenerate && history_alpha_max_drawdown <= max_alpha_dd_threshold;
+            let cond_history_sharpe = !alpha_degenerate && history_alpha_sharpe > min_full_sharpe;
+            if !alpha_degenerate && !cond_history_dd {
+                reasons.push(format!(
+                    "history full-sample excess drawdown {:.6} > max_alpha_dd_threshold {:.6}",
+                    history_alpha_max_drawdown, max_alpha_dd_threshold
+                ));
+            }
+            if !alpha_degenerate && !cond_history_sharpe {
+                reasons.push(format!(
+                    "history full-sample Sharpe {:.6} ≤ min_full_sharpe {:.6}",
+                    history_alpha_sharpe, min_full_sharpe
+                ));
+            }
+
             out.insert(
                 "yearly_metrics".into(),
                 Value::Array(yearly.iter().map(year_metric_to_value).collect()),
@@ -383,8 +451,31 @@ pub(crate) fn judge(
             out.insert("complete_year_count".into(), json!(complete.len()));
             out.insert("alpha_degenerate".into(), json!(alpha_degenerate));
             out.insert("cond_yearly_passed".into(), json!(cond_yearly));
-            // 退化时 alpha 派生字段无意义，全样本不再有独立回撤硬门 → 退化即 is_good=false。
-            out.insert("is_good".into(), json!(!alpha_degenerate && cond_yearly));
+            out.insert(
+                "history_alpha_max_drawdown".into(),
+                if alpha_degenerate {
+                    Value::Null
+                } else {
+                    json!(history_alpha_max_drawdown)
+                },
+            );
+            out.insert(
+                "history_alpha_sharpe".into(),
+                if alpha_degenerate {
+                    Value::Null
+                } else {
+                    json!(history_alpha_sharpe)
+                },
+            );
+            out.insert("cond_history_dd_passed".into(), json!(cond_history_dd));
+            out.insert(
+                "cond_history_sharpe_passed".into(),
+                json!(cond_history_sharpe),
+            );
+            out.insert(
+                "is_good".into(),
+                json!(!alpha_degenerate && cond_yearly && cond_history_dd && cond_history_sharpe),
+            );
         }
         Mode::Recent => {
             out.insert("mode".into(), json!("recent"));
@@ -578,6 +669,35 @@ mod tests {
         let alpha = vec![0.2_f64, -0.5, 2.0 / 3.0, 0.0];
         let dd = local_max_drawdown_abs(&alpha);
         assert!((dd - 0.5).abs() < 1e-10, "expected 0.5, got {dd}");
+    }
+
+    // ===========================================================================
+    // full_sample_sharpe
+    // ===========================================================================
+
+    #[test]
+    fn full_sample_sharpe_known_values() {
+        // 均值 0.01、ddof=0 std ≈ 0.008165、yearly_days=252：
+        // sharpe = 0.01 / 0.008165 * sqrt(252) ≈ 19.27
+        let returns = [0.0_f64, 0.02, 0.01];
+        let s = full_sample_sharpe(&returns, 252);
+        let expected = (0.01_f64 / (2.0_f64 / 3.0 * 0.0001).sqrt()) * (252.0_f64).sqrt();
+        assert!((s - expected).abs() < 1e-9, "expected {expected}, got {s}");
+    }
+
+    #[test]
+    fn full_sample_sharpe_empty_returns_zero() {
+        assert_eq!(full_sample_sharpe(&[], 252), 0.0);
+    }
+
+    #[test]
+    fn full_sample_sharpe_constant_returns_zero() {
+        assert_eq!(full_sample_sharpe(&[0.01; 50], 252), 0.0);
+    }
+
+    #[test]
+    fn full_sample_sharpe_nan_input_returns_nan() {
+        assert!(full_sample_sharpe(&[0.01, f64::NAN, 0.02], 252).is_nan());
     }
 
     // ===========================================================================
@@ -864,6 +984,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -882,6 +1004,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -901,6 +1025,8 @@ mod tests {
             252,
             0.0,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -920,6 +1046,50 @@ mod tests {
             252,
             0.20,
             -1.0,
+            0.30,
+            0.5,
+            120,
+            252,
+            60,
+        );
+        assert!(matches!(r, Err(WbtError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn judge_invalid_max_alpha_dd_threshold_errors() {
+        let keys = vec![20200101_i32];
+        let r = judge(
+            Mode::History,
+            &keys,
+            &[0.01],
+            &[0.01],
+            &[0.01],
+            252,
+            0.20,
+            0.20,
+            -0.1,
+            0.5,
+            120,
+            252,
+            60,
+        );
+        assert!(matches!(r, Err(WbtError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn judge_invalid_min_full_sharpe_errors() {
+        let keys = vec![20200101_i32];
+        let r = judge(
+            Mode::History,
+            &keys,
+            &[0.01],
+            &[0.01],
+            &[0.01],
+            252,
+            0.20,
+            0.20,
+            0.30,
+            f64::NAN,
             120,
             252,
             60,
@@ -940,6 +1110,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             0,
             60,
@@ -962,6 +1134,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -980,6 +1154,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -1021,10 +1197,27 @@ mod tests {
     }
 
     /// history 三路 OR —— 仅靠「绝对收益>0」过关（超额下行：alpha_return<0 且当年回撤≥阈值）。
+    /// 全样本硬门故意放宽（max_alpha_dd_threshold=1.0, min_full_sharpe=-1e9），让该用例只
+    /// 校验「绝对收益>0 即可解锁年度通过 + 不被两道全样本硬门否决」的行为。
     #[test]
     fn history_year_passes_via_abs_return_only() {
         let (k, s, b, l) = year_block(2020, 130, 0.001, drift_down_long, drift_up_bench);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
         let ym = r.get("yearly_metrics").and_then(|v| v.as_array()).unwrap();
         let y = &ym[0];
         assert!(y["abs_return"].as_f64().unwrap() > 0.0);
@@ -1034,12 +1227,29 @@ mod tests {
     }
 
     /// history 三路 OR —— 仅靠「当年超额回撤<阈值」过关（绝对/超额收益均为 0）。
+    /// alpha 序列恒为 0 → 全样本 Sharpe=0，门槛取 0.0 强制等于下限、应被 strict > 否决。
+    /// 因此把全样本硬门放空（min_full_sharpe=-1e9）来隔离「年度 OR」单点行为。
     #[test]
     fn history_year_passes_via_year_dd_only() {
         // strat=0 → abs_return=0；long==bench → alpha≡0 → alpha_return=0、year_dd=0<阈值。
         let osc = |i: usize| 0.0003 * ((i % 3) as f64 - 1.0);
         let (k, s, b, l) = year_block(2020, 130, 0.0, osc, osc);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
         let ym = r.get("yearly_metrics").and_then(|v| v.as_array()).unwrap();
         let y = &ym[0];
         assert!(y["abs_return"].as_f64().unwrap().abs() < 1e-9);
@@ -1054,13 +1264,29 @@ mod tests {
     }
 
     /// history 三路 OR —— 仅靠「波动率归一多头超额>0」过关（abs=0，当年回撤≥极小阈值）。
+    /// alpha 上行 → 全样本 Sharpe > 0.5 触发会让该用例失败；用 min_full_sharpe=-1e9 旁路。
     #[test]
     fn history_year_passes_via_alpha_return_only() {
         // 小漂移、相对振荡较大 → alpha 上行但有下行日 → alpha_return>0 且 year_dd>1e-9。
         let long = |i: usize| 0.0002 + 0.0006 * ((i % 3) as f64 - 1.0);
         let bench = |i: usize| -0.0002 + 0.0006 * ((i % 5) as f64 - 2.0);
         let (k, s, b, l) = year_block(2020, 130, 0.0, long, bench);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 1e-9, 120, 252, 0).unwrap();
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            1e-9,
+            1.0,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
         let ym = r.get("yearly_metrics").and_then(|v| v.as_array()).unwrap();
         let y = &ym[0];
         assert!(y["abs_return"].as_f64().unwrap().abs() < 1e-9);
@@ -1069,21 +1295,39 @@ mod tests {
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(true));
     }
 
-    /// 某完整年三路全败 → is_good=false，reason 点名该年。
+    /// 某完整年三路全败 → is_good=false，reason 点名该年；两道全样本硬门仍按字面行为走
+    /// （这里用 max=1.0 / Sharpe=-1e9 旁路，避免被双硬门再次阻断）。
     #[test]
     fn history_fails_when_year_fails_all_three() {
         // strat<0（abs<0）；超额下行（alpha_return<0 且 year_dd≥阈值）。
         let (k, s, b, l) = year_block(2020, 130, -0.001, drift_down_long, drift_up_bench);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
         let reason = r.get("reason").and_then(|v| v.as_str()).unwrap_or("");
         assert!(
             reason.contains("2020") && reason.contains("all three"),
             "reason should name failing year and all-three, got: {reason}"
         );
-        // 全样本回撤硬门已取消，相关 key 不再返回。
-        assert!(!r.contains_key("history_alpha_max_drawdown"));
-        assert!(!r.contains_key("cond_history_dd_passed"));
+        // 全样本硬门已恢复返回对应 key。
+        assert!(r.contains_key("history_alpha_max_drawdown"));
+        assert!(r.contains_key("cond_history_dd_passed"));
+        assert!(r.contains_key("history_alpha_sharpe"));
+        assert!(r.contains_key("cond_history_sharpe_passed"));
     }
 
     /// 逐年 AND：一年合格、一年三路全败 → 整体不通过。
@@ -1096,7 +1340,22 @@ mod tests {
         s.extend(s2);
         b.extend(b2);
         l.extend(l2);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
         assert_eq!(
             r.get("complete_year_count").and_then(|v| v.as_u64()),
             Some(2)
@@ -1111,13 +1370,29 @@ mod tests {
     #[test]
     fn history_fails_when_no_complete_year() {
         let (k, s, b, l) = build_two_year_samples(0.001, 0.001);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 1.0, 500, 252, 0).unwrap();
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            1.0,
+            1.0,
+            -1e9,
+            500,
+            252,
+            0,
+        )
+        .unwrap();
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
         let reason = r.get("reason").and_then(|v| v.as_str()).unwrap_or("");
         assert!(reason.contains("no complete year") || reason.contains("complete year"));
     }
 
-    /// alpha 退化（long vol == 0）→ is_good=false，且不再返回全样本回撤相关 key。
+    /// alpha 退化（long vol == 0）→ is_good=false；两道全样本硬门对应 key 一律为 None
+    /// （与既有「alpha 派生字段退化时为 null」契约一致）。
     #[test]
     fn history_alpha_degenerate_is_not_good() {
         let start = chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
@@ -1136,6 +1411,8 @@ mod tests {
             252,
             0.20,
             1.0,
+            0.30,
+            0.5,
             120,
             252,
             0,
@@ -1146,16 +1423,335 @@ mod tests {
             Some(true)
         );
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
-        assert!(!r.contains_key("history_alpha_max_drawdown"));
-        assert!(!r.contains_key("cond_history_dd_passed"));
+        assert!(matches!(
+            r.get("history_alpha_max_drawdown"),
+            Some(Value::Null)
+        ));
+        assert!(matches!(r.get("history_alpha_sharpe"), Some(Value::Null)));
+        assert_eq!(
+            r.get("cond_history_dd_passed").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            r.get("cond_history_sharpe_passed")
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
     }
 
     /// 年度收益接近 0 时用 RETURN_EPSILON：abs≈0、超额下行 → 三路全败 → is_good=false。
     #[test]
     fn history_year_passed_uses_epsilon() {
         let (k, s, b, l) = year_block(2020, 130, 1e-12, drift_down_long, drift_up_bench);
-        let r = judge(Mode::History, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 0).unwrap();
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
         assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
+    }
+
+    // ===========================================================================
+    // judge: history 全样本硬门
+    // ===========================================================================
+
+    /// 全样本超额回撤 = X。阈值取 X → `dd <= threshold` 通过；阈值取 X - 1e-6 → 不通过。
+    /// 用"先大跌再修复"的可控形态把 dd 锁在阈值附近。
+    #[test]
+    fn history_full_dd_threshold_boundary_is_le() {
+        let n = 130usize;
+        // long: 前 5 天单边 -0.10（资产腰折 dd=0.5），后 125 天 +0.005 修复（仍保持 0.5 峰值差）。
+        // 加 1e-6 噪声避免 long_vol=0；bench 用 0 ± small。
+        let long: Vec<f64> = (0..n)
+            .map(|i| if i < 5 { -0.10 } else { 0.005 })
+            .map(|x| x + 1e-6)
+            .collect();
+        let bench: Vec<f64> = (0..n).map(|i| 0.001 * ((i % 5) as f64 - 2.0)).collect();
+        let strat = vec![0.0_f64; n];
+        let keys = consecutive_keys(chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap(), n);
+
+        // 第一次：以阈值 1.0 跑 → 必过；同时拿到实际 dd。
+        let r = judge(
+            Mode::History,
+            &keys,
+            &strat,
+            &bench,
+            &long,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        let dd = r
+            .get("history_alpha_max_drawdown")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert!(
+            dd > 0.0 && dd < 1.0,
+            "fixture should yield a positive DD < 1.0, got {dd}"
+        );
+        assert_eq!(
+            r.get("cond_history_dd_passed").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+
+        // 阈值取 dd → `<=` 通过；阈值取 dd - 1e-6 → 不通过。
+        let r_eq = judge(
+            Mode::History,
+            &keys,
+            &strat,
+            &bench,
+            &long,
+            252,
+            0.20,
+            0.20,
+            dd,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            r_eq.get("cond_history_dd_passed").and_then(|v| v.as_bool()),
+            Some(true),
+            "dd {dd} == threshold should pass (`dd <= threshold`)"
+        );
+        let r_lt = judge(
+            Mode::History,
+            &keys,
+            &strat,
+            &bench,
+            &long,
+            252,
+            0.20,
+            0.20,
+            (dd - 1e-6).max(0.0),
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            r_lt.get("cond_history_dd_passed").and_then(|v| v.as_bool()),
+            Some(false),
+            "dd {dd} > threshold by 1e-6 should fail"
+        );
+    }
+
+    /// 全样本超额回撤 > 阈值 → 硬门否决、reason 给出具体值。
+    #[test]
+    fn history_full_dd_above_threshold_fails() {
+        // long 单边下行 -0.005（带极小噪声避免 long_vol=0），bench 微振。alpha 整体下行、
+        // 全样本 dd > 0.30。
+        let n = 130usize;
+        let keys = consecutive_keys(chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap(), n);
+        let strat = vec![0.0_f64; n];
+        let long: Vec<f64> = (0..n)
+            .map(|i| -0.005 + 1e-6 * (((i % 3) as f64) - 1.0))
+            .collect();
+        let bench: Vec<f64> = (0..n).map(|i| 0.001 * ((i % 5) as f64 - 2.0)).collect();
+        let r = judge(
+            Mode::History,
+            &keys,
+            &strat,
+            &bench,
+            &long,
+            252,
+            0.20,
+            0.20,
+            0.30,
+            -1e9,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        let dd = r
+            .get("history_alpha_max_drawdown")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert!(dd > 0.30, "fixture should produce dd > 0.30, got {dd}");
+        assert_eq!(
+            r.get("cond_history_dd_passed").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        let reason = r.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+        assert!(
+            reason.contains("history full-sample excess drawdown"),
+            "{reason}"
+        );
+    }
+
+    /// 全样本 Sharpe ≤ 阈值 → 硬门否决；反之通过。Sharpe 是严格大于。
+    #[test]
+    fn history_full_sharpe_gate_is_strict_greater() {
+        // long 单边 -0.002（带极小噪声避免 long_vol=0），bench 微振。alpha 均值负 → Sharpe 负。
+        let n = 130usize;
+        let keys = consecutive_keys(chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap(), n);
+        let strat = vec![0.0_f64; n];
+        let long: Vec<f64> = (0..n)
+            .map(|i| -0.002 + 1e-6 * (((i % 3) as f64) - 1.0))
+            .collect();
+        let bench: Vec<f64> = (0..n).map(|i| 0.001 * ((i % 5) as f64 - 2.0)).collect();
+        let r = judge(
+            Mode::History,
+            &keys,
+            &strat,
+            &bench,
+            &long,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            0.5,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        let sharpe = r
+            .get("history_alpha_sharpe")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert!(
+            sharpe.is_finite(),
+            "Sharpe should be finite on non-degenerate data"
+        );
+        assert!(
+            sharpe <= 0.5,
+            "fixture should produce Sharpe <= 0.5, got {sharpe}"
+        );
+        assert_eq!(
+            r.get("cond_history_sharpe_passed")
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+
+        // 把 min_full_sharpe 调到 Sharpe 之下 → Sharpe gate 通过。
+        let r2 = judge(
+            Mode::History,
+            &keys,
+            &strat,
+            &bench,
+            &long,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            sharpe - 1.0,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            r2.get("cond_history_sharpe_passed")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    /// Sharpe 严格大于 0.5 时，硬门应通过（验证「>」逻辑）。
+    #[test]
+    fn history_full_sharpe_above_default_passes() {
+        // long 上行（0.01 + 噪声），bench 微振下行。alpha 整体上行 → Sharpe 应 > 0.5。
+        let n = 252usize;
+        let keys = consecutive_keys(chrono::NaiveDate::from_ymd_opt(2020, 1, 2).unwrap(), n);
+        let strat = vec![0.0_f64; n];
+        let long: Vec<f64> = (0..n)
+            .map(|i| 0.01 + 0.001 * (((i % 7) as f64) - 3.0))
+            .collect();
+        let bench: Vec<f64> = (0..n).map(|i| 0.0005 * (((i % 5) as f64) - 2.0)).collect();
+        let r = judge(
+            Mode::History,
+            &keys,
+            &strat,
+            &bench,
+            &long,
+            252,
+            0.20,
+            0.20,
+            1.0,
+            0.5,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        let sharpe = r
+            .get("history_alpha_sharpe")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert!(
+            sharpe.is_finite(),
+            "Sharpe should be finite on non-degenerate data"
+        );
+        assert!(
+            sharpe > 0.5,
+            "fixture should produce Sharpe > 0.5, got {sharpe}"
+        );
+        assert_eq!(
+            r.get("cond_history_sharpe_passed")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    /// 默认参数下，年度 OR 通过 + 双硬门中 Sharpe 不达标 → is_good=false 且 reason 点名 Sharpe。
+    #[test]
+    fn history_default_sharpe_gate_rejects_low_quality() {
+        let (k, s, b, l) = year_block(2020, 130, 0.001, drift_down_long, drift_up_bench);
+        let r = judge(
+            Mode::History,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            0.30,
+            0.5,
+            120,
+            252,
+            0,
+        )
+        .unwrap();
+        // 年内绝对收益 > 0，所以 cond_yearly_passed=true；但 alpha 漂移向下，Sharpe 应为负。
+        let sharpe = r
+            .get("history_alpha_sharpe")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert!(
+            sharpe < 0.5,
+            "fixture should produce Sharpe < 0.5, got {sharpe}"
+        );
+        assert_eq!(
+            r.get("cond_history_sharpe_passed")
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(r.get("is_good").and_then(|v| v.as_bool()), Some(false));
+        let reason = r.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+        assert!(reason.contains("Sharpe"), "{reason}");
     }
 
     // ===========================================================================
@@ -1175,7 +1771,22 @@ mod tests {
             b.push(0.0003 * ((i % 3) as f64 - 1.0));
             l.push(0.0003 * ((i % 5) as f64 - 2.0));
         }
-        let r = judge(Mode::Recent, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 60).unwrap();
+        let r = judge(
+            Mode::Recent,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            0.30,
+            0.5,
+            120,
+            252,
+            60,
+        )
+        .unwrap();
         assert_eq!(r.get("mode").and_then(|v| v.as_str()), Some("recent"));
         assert_eq!(
             r.get("alpha_degenerate").and_then(|v| v.as_bool()),
@@ -1215,7 +1826,22 @@ mod tests {
             s.push(0.001);
             b.push(0.001 + 0.0005 * ((i % 3) as f64));
         }
-        let r = judge(Mode::Recent, &k, &s, &b, &l, 252, 0.20, 0.20, 120, 252, 60).unwrap();
+        let r = judge(
+            Mode::Recent,
+            &k,
+            &s,
+            &b,
+            &l,
+            252,
+            0.20,
+            0.20,
+            0.30,
+            0.5,
+            120,
+            252,
+            60,
+        )
+        .unwrap();
         assert_eq!(
             r.get("alpha_degenerate").and_then(|v| v.as_bool()),
             Some(true)
@@ -1240,6 +1866,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -1273,6 +1901,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -1313,6 +1943,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
@@ -1364,6 +1996,8 @@ mod tests {
             252,
             0.20,
             0.20,
+            0.30,
+            0.5,
             120,
             252,
             60,
