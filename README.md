@@ -1,53 +1,53 @@
 # wbt
 
-**A position-weighted backtesting engine for quantitative strategies** — a Rust core for speed and determinism, a Python-first API for research.
+**面向量化策略的持仓权重回测引擎** —— Rust 提供高性能、可复现的核心计算，Python 提供研究友好的接入接口。
 
-![wbt backtest report](docs/images/overview.png)
+![wbt 回测报告](docs/images/overview.png)
 
-> The figure above is a real report: a 5-symbol, 5-year (2019–2023) mock weight table passed through `WeightBacktest` → `wb.to_result()` → `wbt.plotting`, rendered with zero configuration. The sample is deliberately tuned to a strong profile (Sharpe ≈ 3.4, annualized ≈ 35.7%, max drawdown ≈ 9.0%) so the report is visually readable — the underlying weight signal mixes a lookahead edge with Gaussian noise purely for demo aesthetics, **not** a real strategy.
+> 上图是一份真实报告：5 品种、5 年（2019–2023）模拟权重表，经 `WeightBacktest` → `wb.to_result()` → `wbt.plotting` 零配置直接产出。样本刻意调成强表现（夏普 ≈ 3.4、年化 ≈ 35.7%、最大回撤 ≈ 9.0%）以便报告图清晰可读——其权重信号是把前瞻 edge 与高斯噪声混合，**仅用于演示美观，并非真实策略**。
 
-[中文说明](README_CN.md)
+[English](README_EN.md)
 
-## Why This Project Exists
+## 项目目标
 
-Most strategy teams treat **target position weights** as the canonical interface between signal generation and execution simulation: the signal layer decides "what weight to hold," the backtest layer turns those weights into returns, risk, and trades. Existing tools either simulate at the order/matching-engine level (too detailed, too slow) or are pure-Python loops that don't scale to large multi-symbol weight tables.
+多数策略团队都把**目标持仓权重**作为信号生成与执行模拟之间的标准接口：信号层决定"持有多大权重"，回测层把这些权重转成收益、风险与交易记录。现有工具要么在订单/撮合级别仿真（太细、太慢），要么是纯 Python 循环，撑不住大规模多品种权重表。
 
-wbt is built on one **unified backtesting principle**: given `(dt, symbol, weight, price)`, equity-curve PnL is a deterministic function of weight changes and bar returns. Everything else — daily attribution, long/short decomposition, drawdowns, trade pairs, alpha vs. benchmark, "is this strategy any good" — is derived from that single computation, computed once and reused everywhere.
+wbt 建立在一条**统一回测原理**上：给定 `(dt, symbol, weight, price)`，资金曲线盈亏是权重变化与 bar 收益的确定性函数。其它一切——日度归因、多空拆分、回撤、交易对、相对基准的超额、以及"这策略能不能搞"——都从这一次计算派生，**算一次、处处复用**。
 
-The goals:
+开发目标：
 
-1. **One consistent data contract** for any weight-based strategy (time-series or cross-sectional).
-2. **Fast and deterministic** computation — Rust core, parallelized, no Python in the hot path.
-3. **Python-first API** that drops into pandas / polars research workflows.
-4. **Plotting-ready outputs** — precomputed once, the plotting layer does zero data transformation.
+1. **统一数据契约**承接任意权重策略（时序或截面）。
+2. **高性能且可复现**——Rust 核心，并行计算，热路径里没有 Python。
+3. **Python 友好接口**，无缝接入 pandas / polars 研究流。
+4. **绘图即用输出**——一次性算好，绘图层零数据转换。
 
-## What Makes wbt Fast
+## 为什么快
 
-- **Rust + PyO3 core.** The entire backtest loop runs in Rust (`rayon` thread pool, configurable `n_jobs`); Python is only the entry point. The PyO3 boundary carries DataFrames as **Arrow IPC bytes** — no per-row serialization, no GIL contention in the compute path.
-- **O(N) counting sort** instead of polars' generic sort when grouping by `symbol` — linear in row count.
-- **Struct-of-Arrays + lazy materialization.** Results live in SoA form (`DailysSoA` / `PairsSoA`); a pandas/polars DataFrame is only built on demand and then cached. You don't pay to materialize tables you never read.
-- **Pinned, matched toolchain.** `pyo3 0.28` + `numpy 0.28` + `polars 0.53`, `abi3-py310` — one wheel covers Python 3.10–3.13.
+- **Rust + PyO3 核心。** 整个回测循环在 Rust 里跑（`rayon` 线程池，可配 `n_jobs`），Python 只是入口。PyO3 边界用 **Arrow IPC 字节**传 DataFrame——没有逐行序列化，计算路径里不抢 GIL。
+- **O(N) 计数排序**替代 polars 通用排序做 `symbol` 分组——与行数线性。
+- **SoA + 按需物化。** 结果以 Struct-of-Arrays 存放（`DailysSoA` / `PairsSoA`），pandas/polars DataFrame 只在需要时构建并缓存。你不会为从不读取的表付物化成本。
+- **锁定配套工具链。** `pyo3 0.28` + `numpy 0.28` + `polars 0.53`，`abi3-py310`——一份 wheel 覆盖 Python 3.10–3.13。
 
-## What wbt Is Good At
+## 适用场景
 
-- Time-series **and** cross-sectional weight backtests (`weight_type="ts" | "cs"`).
-- Multi-symbol daily performance attribution.
-- Long/short decomposition and segment-level metrics.
-- Strategy-vs-benchmark excess (alpha) analysis.
-- High-throughput computation from pandas, polars, or file inputs.
+- 时序**与**截面权重回测（`weight_type="ts" | "cs"`）。
+- 多品种日收益拆解与归因分析。
+- 多空拆分、分段统计和交易对评估。
+- 策略相对基准的超额（alpha）分析。
+- pandas、polars、文件输入等多种数据通路。
 
-## What wbt Is Not Trying To Solve
+## 非目标
 
-- Tick-level order book simulation.
-- Exchange matching-engine microstructure.
-- Broker-specific execution modeling.
+- 逐笔撮合与盘口微观结构仿真。
+- 交易所撮合机制级别的高频细节模拟。
+- 券商特定执行细节建模。
 
-If your strategy logic is naturally represented as target weights over time, wbt is a strong fit.
+如果你的策略天然可表示为"随时间变化的目标权重"，wbt 会更合适。
 
-## Repository Layout
+## 仓库结构
 
-- Rust crate: repository root
-- Python package: python/
+- Rust crate：仓库根目录
+- Python 包：python/
 
 ```text
 wbt/
@@ -60,9 +60,9 @@ wbt/
     `-- wbt/
 ```
 
-## Quick Start (Python Users)
+## Python 快速开始
 
-The Python package is in python/ and keeps the import path as import wbt.
+Python 子项目位于 python/，导入路径保持为 import wbt。
 
 ```bash
 cd python
@@ -71,7 +71,7 @@ uv run maturin develop --release
 uv run pytest -v
 ```
 
-Then in Python:
+示例：
 
 ```python
 import pandas as pd
@@ -93,123 +93,123 @@ print(wb.long_stats)
 print(wb.short_stats)
 ```
 
-For complete Python guide, see python/README.md.
+完整 Python 指南见 python/README_CN.md。
 
-## Example Report
+## 示例报告
 
-Every figure below is real output from the same tuned mock weight table (Sharpe ≈ 3.4) — one `wb.to_result()` pass, the same code path your strategy data takes. Each plotting function consumes one precomputed `BacktestResult` and performs zero data transformation.
+下面每张图都来自同一份调优过的模拟权重表（夏普 ≈ 3.4），一次 `wb.to_result()` 真实输出——和你真实策略数据走的是同一条代码路径。每个绘图函数只消费一个预先算好的 `BacktestResult`，零数据转换。
 
-| Cumulative returns | Drawdown |
+| 累计净值 | 回撤 |
 |---|---|
-| ![cumulative returns](docs/images/cumulative_returns.png) | ![drawdown](docs/images/drawdown.png) |
+| ![累计净值](docs/images/cumulative_returns.png) | ![回撤](docs/images/drawdown.png) |
 
-| Monthly heatmap | Yearly returns |
+| 月度热力图 | 年度收益 |
 |---|---|
-| ![monthly heatmap](docs/images/monthly_heatmap.png) | ![yearly returns](docs/images/yearly_returns.png) |
+| ![月度热力图](docs/images/monthly_heatmap.png) | ![年度收益](docs/images/yearly_returns.png) |
 
-| Rolling metrics | Daily return distribution |
+| 滚动指标 | 日收益分布 |
 |---|---|
-| ![rolling metrics](docs/images/rolling_metrics.png) | ![daily return dist](docs/images/daily_return_dist.png) |
+| ![滚动指标](docs/images/rolling_metrics.png) | ![日收益分布](docs/images/daily_return_dist.png) |
 
-| Per-symbol returns | Trade-pair PnL distribution |
+| 分品种收益 | 交易对盈亏分布 |
 |---|---|
-| ![symbol returns](docs/images/symbol_returns.png) | ![pairs pnl dist](docs/images/pairs_pnl_dist.png) |
+| ![分品种收益](docs/images/symbol_returns.png) | ![交易对盈亏分布](docs/images/pairs_pnl_dist.png) |
 
-| Stats comparison (long / short / long-short) |
+| 指标对比（多头 / 空头 / 多空） |
 |---|
-| ![stats comparison](docs/images/stats_comparison.png) |
+| ![指标对比](docs/images/stats_comparison.png) |
 
-## Quick Start (Rust Developers)
+## Rust 快速开始
 
-Run tests from repository root:
+在仓库根目录执行：
 
 ```bash
 cargo test
 ```
 
-Use as dependency:
+依赖方式：
 
 ```toml
 [dependencies]
 wbt = "0.1"
 ```
 
-## Data Contract (Core Idea)
+## 输入数据契约
 
-wbt expects four essential columns:
+wbt 的核心输入字段为：
 
-- dt: bar end timestamp
-- symbol: instrument identifier
-- weight: target position weight at bar end
-- price: trade/mark price
+- dt：K 线结束时间
+- symbol：标的代码
+- weight：该时点目标持仓权重
+- price：成交或估值价格
 
-Accepted Python inputs:
+Python 侧支持输入：
 
 - pandas.DataFrame
-- polars.DataFrame or polars.LazyFrame
-- file path (csv, parquet, feather, arrow)
+- polars.DataFrame / polars.LazyFrame
+- 文件路径（csv、parquet、feather、arrow）
 
-## Outputs You Can Use Immediately
+## 关键输出能力
 
-- wb.stats: full long-short evaluation summary.
-- wb.long_stats and wb.short_stats: directional breakdown.
-- wb.daily_return and wb.dailys: daily series for analytics.
-- wb.alpha and wb.alpha_stats: strategy-vs-benchmark excess analysis.
-- wb.pairs: trade-pair table for per-trade evaluation.
-- wb.aggregated_pairs / wb.key_trades(top=3): open-close records deduplicated by (symbol, open time, close time), and the top-N best/worst trades per year (computed in Rust).
-- wb.to_result(target_vol=0.20) → BacktestResult: the standard input object for plotting and the strategy-review page (see "Plotting" below).
-- wb.segment_stats(...): metrics for arbitrary date windows.
-- wb.long_alpha_stats: volatility-scaled long-side alpha metrics.
-- wb.is_good_strategy(mode="history" | "recent", ...): objective verdict on whether a strategy is worth pursuing. Returns a dict with `is_good` (bool), `reason`, `alpha_degenerate` (bool), per-year breakdown (history mode) or recent-window metrics (recent mode), and condition flags. Adjustable parameters: `target_vol`, `max_dd_threshold`, `max_alpha_dd_threshold`, `min_full_sharpe`, `min_year_days`, `recent_days`, `min_history_days`. In `history` mode, the per-year three-way OR (abs return > 0 / alpha return > 0 / within-year excess drawdown < `max_dd_threshold`) is then gated by **two full-sample hard gates**: full-sample excess drawdown ≤ `max_alpha_dd_threshold` (default 0.30) **and** full-sample Sharpe > `min_full_sharpe` (default 0.5). In `recent` mode, the historical max drawdown is computed on the segment **excluding** the recent window (with a configurable `min_history_days` floor), so the two never overlap by construction. Degenerate alpha (NaN/Inf or zero variance in long/bench) is reported via `alpha_degenerate=True` with all alpha-derived fields set to `None`, and `is_good=False` — no false-positive "zero drawdown" pass-through. Returned dict keys are stable alphabetical order; `history` and `recent` modes return **disjoint** key sets (dispatch on `mode`).
+- wb.stats：多空综合绩效指标。
+- wb.long_stats / wb.short_stats：多头与空头拆分指标。
+- wb.daily_return / wb.dailys：日度收益明细序列。
+- wb.alpha / wb.alpha_stats：相对基准超额分析。
+- wb.pairs：交易对级别评估数据。
+- wb.aggregated_pairs / wb.key_trades(top=3)：按 (品种, 开仓时间, 平仓时间) 聚合去重的开平记录，以及每年最赚/最亏各 N 笔关键交易（Rust 计算）。
+- wb.to_result(target_vol=0.20) → BacktestResult：绘图与审核页面的标准输入数据对象（详见下文「可视化」）。
+- wb.segment_stats(...)：任意时间区间统计。
+- wb.long_alpha_stats：波动率调整后的多头超额指标。
+- wb.is_good_strategy(mode="history" | "recent", ...)：客观判定一个策略能不能搞。返回 dict，含 `is_good`（bool）、`reason`、`alpha_degenerate`（bool）、年度明细（history 模式）或最近窗口指标（recent 模式）以及各条件通过标记。可调参数：`target_vol`、`max_dd_threshold`、`max_alpha_dd_threshold`、`min_full_sharpe`、`min_year_days`、`recent_days`、`min_history_days`。`history` 模式下，逐年三路 OR（绝对收益>0 / α 收益>0 / 当年超额回撤<`max_dd_threshold`）通过后，还要过**两道全样本硬门**：全样本超额回撤 ≤ `max_alpha_dd_threshold`（默认 0.30）**且** 全样本 Sharpe > `min_full_sharpe`（默认 0.5）。`recent` 模式下，历史最大回撤在**剔除 recent 窗口后**的样本上计算（带可配置的 `min_history_days` floor），与 recent 窗口在时间上完全错开。Alpha 退化（NaN/Inf 或 long/bench 零方差）通过 `alpha_degenerate=True` 报告，所有 alpha 派生字段为 `None`，`is_good=False`——不会假阳性"零回撤通过"。返回 dict 的 key 按字母序稳定排列；`history` 与 `recent` 模式返回**互斥**的 key 集合（按 `mode` dispatch）。
 
-## Standalone Utility Functions
+## 独立工具函数
 
-Beyond the `WeightBacktest` class, wbt exposes several stand-alone helpers at the top level:
+除了 `WeightBacktest` 类，wbt 顶层还导出一组独立工具：
 
-- `daily_performance(returns, yearly_days=252)`: full performance metrics on a daily return series (Rust core).
-- `top_drawdowns(returns, top=10)`: top-N drawdown windows (Rust core).
-- `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`: rolling-window daily performance (Rust core).
-- `cal_yearly_days(dts)`: infer yearly trading-day count from a date series (Rust core).
-- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False, **kwargs)`: ensemble multiple strategy weights (`mean` / `vote` / `sum_clip`). Returns a new DataFrame (input `df` is not mutated). `sum_clip` mode additionally accepts `clip_min=-1, clip_max=1` via kwargs.
-- `cal_trade_price(df, digits=None, **kwargs)`: TWAP / VWAP and next-bar trade-price table grouped by symbol. Accepts `windows=(5, 10, 15, 20, 30, 60)` and `copy=True` via kwargs.
-- `log_strategy_info(strategy, df)`: pretty-print per-symbol weight summaries via loguru.
-- `mock_symbol_kline(...)` / `mock_weights(...)`: generators for quick experiments.
+- `daily_performance(returns, yearly_days=252)`：基于日收益序列的完整绩效指标（Rust 核心）。
+- `top_drawdowns(returns, top=10)`：Top-N 回撤窗口（Rust 核心）。
+- `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`：滚动窗口日度绩效（Rust 核心）。
+- `cal_yearly_days(dts)`：根据日期序列自动推断年度交易日数（Rust 核心）。
+- `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False, **kwargs)`：多策略权重集成（`mean` / `vote` / `sum_clip`）。返回新 DataFrame（不修改入参 `df`）。`sum_clip` 模式可通过 kwargs 传 `clip_min=-1, clip_max=1`。
+- `cal_trade_price(df, digits=None, **kwargs)`：按品种计算 TWAP / VWAP 与下根 K 线交易价表。kwargs 支持 `windows=(5, 10, 15, 20, 30, 60)` 与 `copy=True`。
+- `log_strategy_info(strategy, df)`：用 loguru 打印每个品种的权重摘要。
+- `mock_symbol_kline(...)` / `mock_weights(...)`：快速实验的模拟数据生成器。
 
-The Rust-backed helpers emit warnings (e.g. short-span fallback in `cal_yearly_days`) via the `log` crate; `pyo3-log` bridges them into Python's standard `logging` module, so any loguru `InterceptHandler` setup will receive them transparently.
+Rust 端发出的 warning（如 `cal_yearly_days` 跨度不足时回退到 252）通过 `log` crate 触发，再由 `pyo3-log` 桥接到 Python 标准 `logging`，loguru 用户配置一次 `InterceptHandler` 即可接管。
 
-## HTML Report Generation
+## HTML 报告生成
 
-`wbt.generate_backtest_report(df, output_path)` produces a self-contained HTML report (overview, long/short comparison, key-trades tabs). Internally it runs a single `wb.to_result()` pre-processing pass, then delegates to `wbt.plotting`.
+`wbt.generate_backtest_report(df, output_path)` 输出一个自包含的 HTML 报告（回测概览、多空对比、关键交易等标签页）。内部仅做一次 `wb.to_result()` 预处理，再交由 `wbt.plotting` 绘图。
 
-## Plotting
+## 可视化
 
-Every plotting function takes a single **`BacktestResult`** as its standard input — all data is precomputed once, so the plotting layer performs zero data transformation:
+所有绘图函数以 **`BacktestResult`** 为标准输入——一次性算好绘图所需的全部数据，绘图函数零数据转换：
 
 ```python
-result = wb.to_result()            # standard input object
+result = wb.to_result()            # 标准输入数据对象
 from wbt.plotting import plot_cumulative_returns, plot_key_trades
 fig = plot_cumulative_returns(result, keys=["多空", "多头", "空头"])
 plot_key_trades(result, to_html=True)
-result.to_dict(full=True)          # JSON-safe, for serving the review page over HTTP
+result.to_dict(full=True)          # JSON 安全，供审核页面走 HTTP
 ```
 
-- `BacktestResult` fields: `dates` / `year_starts` / `curves` (raw curves keyed 多空/多头/空头/基准/超额) / `curves_voladj` (volatility-normalized, lazy) / `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`, plus review fields `drawdowns` / `key_trades` / `verdict` (all lazy `cached_property`).
-- `wbt.plotting` (all single-purpose figures, no subplots): `plot_cumulative_returns` (`voladj=True` for vol-normalized), `plot_drawdown`, `plot_daily_return_dist`, `plot_monthly_heatmap`, `plot_symbol_returns`, `plot_yearly_returns`, `plot_rolling_metrics`, `plot_pairs_pnl_dist`, `plot_pairs_hold_dist`, `plot_colored_table`, `plot_stats_comparison`, `plot_segment_comparison`, `plot_key_trades`, `plot_drawdowns_table`, `plot_verdict`.
-- `wbt.report`: `generate_backtest_report`, `HtmlReportBuilder`, `get_performance_metrics_cards`.
+- `BacktestResult` 字段：`dates` / `year_starts` / `curves`（原始曲线，键 多空/多头/空头/基准/超额）/ `curves_voladj`（波动率归一，按需）/ `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`，以及审核字段 `drawdowns` / `key_trades` / `verdict`（均为按需 `cached_property`）。
+- `wbt.plotting`（均为单一职责单图，无组合图）：`plot_cumulative_returns`（`voladj=True` 为波动率归一）/ `plot_drawdown` / `plot_daily_return_dist` / `plot_monthly_heatmap` / `plot_symbol_returns` / `plot_yearly_returns` / `plot_rolling_metrics` / `plot_pairs_pnl_dist` / `plot_pairs_hold_dist` / `plot_colored_table` / `plot_stats_comparison` / `plot_segment_comparison` / `plot_key_trades` / `plot_drawdowns_table` / `plot_verdict`。
+- `wbt.report`：`generate_backtest_report` / `HtmlReportBuilder` / `get_performance_metrics_cards`。
 
-## Development Workflow
+## 开发与质量检查
 
-- Rust checks run from repository root.
-- Python checks run from python/.
-- CI validates both layers.
+- Rust 相关命令在仓库根目录执行。
+- Python 相关命令在 python/ 目录执行。
+- CI 会同时校验这两部分。
 
-Typical local quality checks:
+常用命令：
 
 ```bash
-# repository root
+# 仓库根目录
 cargo test
 
-# python subproject
+# python 子项目
 cd python
 uv run pytest -v
 uv run ruff format --check .
@@ -217,23 +217,23 @@ uv run ruff check . --no-fix
 uv run basedpyright
 ```
 
-## Related Docs
+## 相关文档
 
-- English Python guide: python/README.md
-- Chinese Python guide: python/README_CN.md
-- Design notes: docs/desgin.md
+- Python 英文文档：python/README.md
+- Python 中文文档：python/README_CN.md
+- 设计记录：docs/desgin.md
 
-## Related Open-Source Projects
+## 相关开源项目
 
-wbt sits in a small ecosystem of quantitative-research tools. The most closely related projects:
+wbt 处于一组量化研究工具的生态中，几个最相关的项目如下：
 
-- [**czsc**](https://github.com/waditu/czsc) — A comprehensive Python framework for Chan Theory (缠论) quantitative trading: signals, strategies, traders, EDA, and plotting. Since v1.0.x its core algorithms are implemented in Rust and exposed via PyO3 (`czsc._native`). **Relation to wbt:** wbt migrated 5 evaluation/utility functions from czsc (`cal_yearly_days`, `rolling_daily_performance`, `weights_simple_ensemble`, `cal_trade_price`, `log_strategy_info`) and keeps numerical results aligned with the czsc reference (see `python/tests/test_compare_with_czsc_script.py`). czsc strategies naturally emit the weight tables that wbt consumes.
+- [**czsc**](https://github.com/waditu/czsc) — 基于缠论的综合性量化交易 Python 框架，覆盖信号、策略、Trader、EDA 与可视化；自 v1.0.x 起将核心算法用 Rust 实现并通过 PyO3 暴露（`czsc._native`）。**与 wbt 的关系：** wbt 从 czsc 迁移了 5 个评估 / 工具函数（`cal_yearly_days`、`rolling_daily_performance`、`weights_simple_ensemble`、`cal_trade_price`、`log_strategy_info`），并保持数值口径与 czsc 对齐（见 `python/tests/test_compare_with_czsc_script.py`）；czsc 端的策略天然产出可被 wbt 消费的权重表。
 
-- [**wmr**](https://github.com/zengbin93/wmr) — A strategy weight management system backed by ClickHouse and DuckDB, focused on persisting, versioning, and querying per-strategy position weights at scale. **Relation to wbt:** wmr is the data layer for weight tables (storage / retrieval); wbt is the compute layer that turns those tables into backtest metrics, daily series, and HTML reports.
+- [**wmr**](https://github.com/zengbin93/wmr) — 基于 ClickHouse 与 DuckDB 的策略持仓权重管理系统，专注于大规模权重数据的持久化、版本管理与查询。**与 wbt 的关系：** wmr 是权重表的数据层（存储 / 检索），wbt 是把权重表转化为回测指标、日序列与 HTML 报告的计算层。
 
-- [**talib-rs**](https://github.com/0xcjun/talib-rs) — A pure-Rust technical-analysis library, designed as a drop-in replacement for the classic C TA-Lib (bit-exact results, SIMD-accelerated, no C dependency). **Relation to wbt:** a peer project on the Rust side — wbt focuses on weight-driven backtesting and performance metrics, while talib-rs covers canonical TA indicators. The two compose well when a strategy needs both indicator computation and weight-based backtesting inside the same Rust/Python pipeline.
+- [**talib-rs**](https://github.com/0xcjun/talib-rs) — 纯 Rust 实现的技术分析库，定位为经典 C 版 TA-Lib 的 drop-in 替代（结果逐位对齐、SIMD 加速、无 C 依赖）。**与 wbt 的关系：** Rust 侧的同侪项目——wbt 聚焦权重回测与绩效指标，talib-rs 覆盖标准技术指标。当策略需要"指标计算 + 权重回测"同时在 Rust/Python 栈里完成时，两者可组合使用。
 
-Together they sketch a typical research-to-evaluation pipeline: **czsc** (signals & strategies) → **wmr** (weight storage) → **wbt** (backtest & metrics), with **talib-rs** providing reusable Rust-native indicator computation along the way.
+整体上，三者勾勒出一条典型的研究到评估管线：**czsc**（信号与策略）→ **wmr**（权重存储）→ **wbt**（回测与指标），**talib-rs** 则在沿线提供可复用的 Rust 原生指标计算能力。
 
 ## License
 

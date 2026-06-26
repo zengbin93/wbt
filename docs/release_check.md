@@ -123,12 +123,12 @@ Python 侧（`cd python`）：
 - [ ] **公共 API 表面四方对齐**——以下四处提到的函数名、参数名、参数顺序、默认值、返回类型必须**完全一致**：
   - `python/wbt/__init__.py` 的 `__all__`；
   - `python/wbt/_wbt.pyi` 的类型签名；
-  - `README.md` / `README_CN.md` 的 API 列表与示例；
+  - `README.md`（中文，GitHub 主页默认）/ `README_EN.md`（英文镜像）的 API 列表与示例；
   - `python/scripts/quick_start.ipynb` 中实际调用的 API。
 - [ ] **行为描述一致**：README、docstring、`_wbt.pyi` 注释中对函数行为的描述（NaN/None/异常处理、列名、单位、时间精度、错误类型）与实际实现一致。
 - [ ] **示例可运行性**：README 中每个代码块都能在干净环境中复制粘贴跑通（导入路径、参数名、依赖版本匹配当前代码）。
 - [ ] **版本号占位更新**：README、文档、CHANGELOG（若有）中所有「自 v0.x 起」「需要 wbt ≥ X」「Python ≥ 3.10」等占位已校对并更新到目标版本。
-- [ ] **双语镜像同步**：`README.md` 与 `README_CN.md` 的 API 列表、示例段、minimum-version 段保持镜像一致；若仅改了一边，发版前补齐另一边。
+- [ ] **双语镜像同步**：`README.md`（中文）与 `README_EN.md`（英文）的 API 列表、示例段、minimum-version 段保持镜像一致；若仅改了一边，发版前补齐另一边。
 - [ ] **破坏性变更迁移指引**：若本版本有破坏性变更，README 顶部或显著位置已写明迁移说明（旧用法 → 新用法的代码对照），并在 Release notes 中重复一次。
 - [ ] **发现不一致时的标准处理流程**：
   1. 默认假设是**文档错**（代码已经通过测试 + LLM review）；
