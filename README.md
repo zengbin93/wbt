@@ -1,25 +1,39 @@
 # wbt
 
-Position-weighted backtesting engine for quantitative strategies, with a Rust core and Python bindings.
+**A position-weighted backtesting engine for quantitative strategies** — a Rust core for speed and determinism, a Python-first API for research.
+
+![wbt backtest report](docs/images/overview.png)
+
+> The figure above is a real report produced by `wb.to_result()` + `wbt.plotting` on a 5-symbol, 5-year mock weight table (`mock_weights(...)`), rendered with zero configuration.
 
 [中文说明](README_CN.md)
 
 ## Why This Project Exists
 
-Many strategy teams use position weights as the canonical interface between signal generation and execution simulation. Existing backtesting tools often focus on order-level simulation or are too slow for large, multi-symbol weight datasets.
+Most strategy teams treat **target position weights** as the canonical interface between signal generation and execution simulation: the signal layer decides "what weight to hold," the backtest layer turns those weights into returns, risk, and trades. Existing tools either simulate at the order/matching-engine level (too detailed, too slow) or are pure-Python loops that don't scale to large multi-symbol weight tables.
 
-The goals of wbt are:
+wbt is built on one **unified backtesting principle**: given `(dt, symbol, weight, price)`, equity-curve PnL is a deterministic function of weight changes and bar returns. Everything else — daily attribution, long/short decomposition, drawdowns, trade pairs, alpha vs. benchmark, "is this strategy any good" — is derived from that single computation, computed once and reused everywhere.
 
-1. Keep one consistent data contract for weight-based strategies.
-2. Provide fast and deterministic computation with Rust.
-3. Expose a Python-first API for research workflows.
-4. Offer built-in evaluation outputs and plotting-ready data structures.
+The goals:
+
+1. **One consistent data contract** for any weight-based strategy (time-series or cross-sectional).
+2. **Fast and deterministic** computation — Rust core, parallelized, no Python in the hot path.
+3. **Python-first API** that drops into pandas / polars research workflows.
+4. **Plotting-ready outputs** — precomputed once, the plotting layer does zero data transformation.
+
+## What Makes wbt Fast
+
+- **Rust + PyO3 core.** The entire backtest loop runs in Rust (`rayon` thread pool, configurable `n_jobs`); Python is only the entry point. The PyO3 boundary carries DataFrames as **Arrow IPC bytes** — no per-row serialization, no GIL contention in the compute path.
+- **O(N) counting sort** instead of polars' generic sort when grouping by `symbol` — linear in row count.
+- **Struct-of-Arrays + lazy materialization.** Results live in SoA form (`DailysSoA` / `PairsSoA`); a pandas/polars DataFrame is only built on demand and then cached. You don't pay to materialize tables you never read.
+- **Pinned, matched toolchain.** `pyo3 0.28` + `numpy 0.28` + `polars 0.53`, `abi3-py310` — one wheel covers Python 3.10–3.13.
 
 ## What wbt Is Good At
 
-- Time-series and cross-sectional weight backtests.
+- Time-series **and** cross-sectional weight backtests (`weight_type="ts" | "cs"`).
 - Multi-symbol daily performance attribution.
 - Long/short decomposition and segment-level metrics.
+- Strategy-vs-benchmark excess (alpha) analysis.
 - High-throughput computation from pandas, polars, or file inputs.
 
 ## What wbt Is Not Trying To Solve
@@ -80,6 +94,30 @@ print(wb.short_stats)
 ```
 
 For complete Python guide, see python/README.md.
+
+## Example Report
+
+Every figure below is real output from a single `wb.to_result()` pass on the mock weight table — the same code path your strategy data takes. Each plotting function consumes one precomputed `BacktestResult` and performs zero data transformation.
+
+| Cumulative returns | Drawdown |
+|---|---|
+| ![cumulative returns](docs/images/cumulative_returns.png) | ![drawdown](docs/images/drawdown.png) |
+
+| Monthly heatmap | Yearly returns |
+|---|---|
+| ![monthly heatmap](docs/images/monthly_heatmap.png) | ![yearly returns](docs/images/yearly_returns.png) |
+
+| Rolling metrics | Daily return distribution |
+|---|---|
+| ![rolling metrics](docs/images/rolling_metrics.png) | ![daily return dist](docs/images/daily_return_dist.png) |
+
+| Per-symbol returns | Trade-pair PnL distribution |
+|---|---|
+| ![symbol returns](docs/images/symbol_returns.png) | ![pairs pnl dist](docs/images/pairs_pnl_dist.png) |
+
+| Stats comparison (long / short / long-short) |
+|---|
+| ![stats comparison](docs/images/stats_comparison.png) |
 
 ## Quick Start (Rust Developers)
 

@@ -1,25 +1,39 @@
 # wbt
 
-一个面向量化策略的持仓权重回测引擎，使用 Rust 提供高性能核心，并通过 Python 绑定提供易用接口。
+**面向量化策略的持仓权重回测引擎** —— Rust 提供高性能、可复现的核心计算，Python 提供研究友好的接入接口。
+
+![wbt 回测报告](docs/images/overview.png)
+
+> 上图是 `wb.to_result()` + `wbt.plotting` 在一份 5 品种、5 年的模拟权重表（`mock_weights(...)`）上零配置直接产出的真实报告。
 
 [English](README.md)
 
 ## 项目目标
 
-很多策略研究流程都以持仓权重作为策略表达的核心接口，但常见回测工具要么偏向订单级撮合模拟，要么在大规模多品种数据上速度不足。
+多数策略团队都把**目标持仓权重**作为信号生成与执行模拟之间的标准接口：信号层决定"持有多大权重"，回测层把这些权重转成收益、风险与交易记录。现有工具要么在订单/撮合级别仿真（太细、太慢），要么是纯 Python 循环，撑不住大规模多品种权重表。
 
-wbt 的开发目标是：
+wbt 建立在一条**统一回测原理**上：给定 `(dt, symbol, weight, price)`，资金曲线盈亏是权重变化与 bar 收益的确定性函数。其它一切——日度归因、多空拆分、回撤、交易对、相对基准的超额、以及"这策略能不能搞"——都从这一次计算派生，**算一次、处处复用**。
 
-1. 用统一的数据契约承接权重策略输入。
-2. 用 Rust 保证计算性能与结果稳定性。
-3. 提供 Python 友好的研究接口，降低接入成本。
-4. 内置可直接用于评估与可视化的数据输出。
+开发目标：
+
+1. **统一数据契约**承接任意权重策略（时序或截面）。
+2. **高性能且可复现**——Rust 核心，并行计算，热路径里没有 Python。
+3. **Python 友好接口**，无缝接入 pandas / polars 研究流。
+4. **绘图即用输出**——一次性算好，绘图层零数据转换。
+
+## 为什么快
+
+- **Rust + PyO3 核心。** 整个回测循环在 Rust 里跑（`rayon` 线程池，可配 `n_jobs`），Python 只是入口。PyO3 边界用 **Arrow IPC 字节**传 DataFrame——没有逐行序列化，计算路径里不抢 GIL。
+- **O(N) 计数排序**替代 polars 通用排序做 `symbol` 分组——与行数线性。
+- **SoA + 按需物化。** 结果以 Struct-of-Arrays 存放（`DailysSoA` / `PairsSoA`），pandas/polars DataFrame 只在需要时构建并缓存。你不会为从不读取的表付物化成本。
+- **锁定配套工具链。** `pyo3 0.28` + `numpy 0.28` + `polars 0.53`，`abi3-py310`——一份 wheel 覆盖 Python 3.10–3.13。
 
 ## 适用场景
 
-- 时序策略与截面策略的权重回测。
+- 时序**与**截面权重回测（`weight_type="ts" | "cs"`）。
 - 多品种日收益拆解与归因分析。
 - 多空拆分、分段统计和交易对评估。
+- 策略相对基准的超额（alpha）分析。
 - pandas、polars、文件输入等多种数据通路。
 
 ## 非目标
@@ -28,7 +42,7 @@ wbt 的开发目标是：
 - 交易所撮合机制级别的高频细节模拟。
 - 券商特定执行细节建模。
 
-如果你的策略天然可表示为“随时间变化的目标权重”，wbt 会更合适。
+如果你的策略天然可表示为"随时间变化的目标权重"，wbt 会更合适。
 
 ## 仓库结构
 
@@ -80,6 +94,30 @@ print(wb.short_stats)
 ```
 
 完整 Python 指南见 python/README_CN.md。
+
+## 示例报告
+
+下面每张图都是同一份模拟权重表跑一次 `wb.to_result()` 的真实输出——和你真实策略数据走的是同一条代码路径。每个绘图函数只消费一个预先算好的 `BacktestResult`，零数据转换。
+
+| 累计净值 | 回撤 |
+|---|---|
+| ![累计净值](docs/images/cumulative_returns.png) | ![回撤](docs/images/drawdown.png) |
+
+| 月度热力图 | 年度收益 |
+|---|---|
+| ![月度热力图](docs/images/monthly_heatmap.png) | ![年度收益](docs/images/yearly_returns.png) |
+
+| 滚动指标 | 日收益分布 |
+|---|---|
+| ![滚动指标](docs/images/rolling_metrics.png) | ![日收益分布](docs/images/daily_return_dist.png) |
+
+| 分品种收益 | 交易对盈亏分布 |
+|---|---|
+| ![分品种收益](docs/images/symbol_returns.png) | ![交易对盈亏分布](docs/images/pairs_pnl_dist.png) |
+
+| 指标对比（多头 / 空头 / 多空） |
+|---|
+| ![指标对比](docs/images/stats_comparison.png) |
 
 ## Rust 快速开始
 
