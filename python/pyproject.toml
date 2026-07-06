@@ -23,7 +23,7 @@ Documentation = "https://github.com/zengbin93/wbt/tree/main/python"
 manifest-path = "../Cargo.toml"
 python-source = "."
 module-name = "wbt._wbt"
-features = []
+features = ["python"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

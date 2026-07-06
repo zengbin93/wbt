@@ -229,7 +229,8 @@ uv run basedpyright
 repo-root/
 |-- Cargo.toml
 |-- src/
-|   |-- lib.rs                       # PyO3 绑定（pyfunction、_wbt pymodule）
+|   |-- lib.rs                       # 纯 Rust crate 入口；默认不编译 Python 绑定
+|   |-- python.rs                    # PyO3 绑定（python feature 下启用）
 |   `-- core/
 |       |-- cal_yearly_days.rs       # cal_yearly_days 的 Rust 核心
 |       |-- daily_performance.rs

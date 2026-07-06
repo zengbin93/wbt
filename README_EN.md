@@ -23,10 +23,10 @@ The goals:
 
 ## What Makes wbt Fast
 
-- **Rust + PyO3 core.** The entire backtest loop runs in Rust (`rayon` thread pool, configurable `n_jobs`); Python is only the entry point. The PyO3 boundary carries DataFrames as **Arrow IPC bytes** — no per-row serialization, no GIL contention in the compute path.
+- **Pure Rust core with optional PyO3 bindings.** The entire backtest loop runs in Rust (`rayon` thread pool, configurable `n_jobs`); the default Rust crate has no Python dependency. The Python package enables PyO3 through the `python` feature and carries DataFrames as **Arrow IPC bytes** — no per-row serialization, no GIL contention in the compute path.
 - **O(N) counting sort** instead of polars' generic sort when grouping by `symbol` — linear in row count.
 - **Struct-of-Arrays + lazy materialization.** Results live in SoA form (`DailysSoA` / `PairsSoA`); a pandas/polars DataFrame is only built on demand and then cached. You don't pay to materialize tables you never read.
-- **Pinned, matched toolchain.** `pyo3 0.28` + `numpy 0.28` + `polars 0.53`, `abi3-py310` — one wheel covers Python 3.10–3.13.
+- **Pinned, matched toolchain.** The default Rust build stays Rust-only; the Python wheel path pins `pyo3 0.28` + `numpy 0.28` + `polars 0.53`, `abi3-py310` — one wheel covers Python 3.10–3.13.
 
 ## What wbt Is Good At
 
@@ -91,6 +91,26 @@ wb = WeightBacktest(df, digits=2, fee_rate=0.0002, n_jobs=4, weight_type="ts")
 print(wb.stats)
 print(wb.long_stats)
 print(wb.short_stats)
+```
+
+## Quick Start (Rust Users)
+
+The default Rust crate does not enable Python bindings and does not pull in `pyo3` / `numpy` / `pyo3-log`; the Python extension is built only with the `python` feature.
+
+```toml
+[dependencies]
+wbt = "0.4"
+```
+
+```rust
+use wbt::core::{WeightBacktest, WeightType};
+
+let mut wb = WeightBacktest::from_file("weights.parquet", 2, Some(0.0002))?;
+wb.backtest(Some(4), WeightType::TS, 252)?;
+
+if let Some(report) = &wb.report {
+    println!("{:?}", report.stats.annual_trade_count);
+}
 ```
 
 For complete Python guide, see python/README.md.
