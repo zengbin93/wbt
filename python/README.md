@@ -230,7 +230,8 @@ uv run basedpyright
 repo-root/
 |-- Cargo.toml
 |-- src/
-|   |-- lib.rs                       # PyO3 bindings (pyfunctions, _wbt pymodule)
+|   |-- lib.rs                       # pure Rust crate entry; Python bindings are off by default
+|   |-- python.rs                    # PyO3 bindings (enabled by the python feature)
 |   `-- core/
 |       |-- cal_yearly_days.rs       # Rust core for cal_yearly_days
 |       |-- daily_performance.rs

@@ -23,10 +23,10 @@ wbt 建立在一条**统一回测原理**上：给定 `(dt, symbol, weight, pric
 
 ## 为什么快
 
-- **Rust + PyO3 核心。** 整个回测循环在 Rust 里跑（`rayon` 线程池，可配 `n_jobs`），Python 只是入口。PyO3 边界用 **Arrow IPC 字节**传 DataFrame——没有逐行序列化，计算路径里不抢 GIL。
+- **纯 Rust 核心，可选 PyO3 绑定。** 整个回测循环在 Rust 里跑（`rayon` 线程池，可配 `n_jobs`），Rust crate 默认不依赖 Python；Python 包通过 `python` feature 启用 PyO3，并用 **Arrow IPC 字节**传 DataFrame——没有逐行序列化，计算路径里不抢 GIL。
 - **O(N) 计数排序**替代 polars 通用排序做 `symbol` 分组——与行数线性。
 - **SoA + 按需物化。** 结果以 Struct-of-Arrays 存放（`DailysSoA` / `PairsSoA`），pandas/polars DataFrame 只在需要时构建并缓存。你不会为从不读取的表付物化成本。
-- **锁定配套工具链。** `pyo3 0.28` + `numpy 0.28` + `polars 0.53`，`abi3-py310`——一份 wheel 覆盖 Python 3.10–3.13。
+- **锁定配套工具链。** 纯 Rust 默认构建只依赖 Rust 生态；Python wheel 构建路径锁定 `pyo3 0.28` + `numpy 0.28` + `polars 0.53`，`abi3-py310`——一份 wheel 覆盖 Python 3.10–3.13。
 
 ## 适用场景
 
@@ -91,6 +91,26 @@ wb = WeightBacktest(df, digits=2, fee_rate=0.0002, n_jobs=4, weight_type="ts")
 print(wb.stats)
 print(wb.long_stats)
 print(wb.short_stats)
+```
+
+## Rust 快速开始
+
+默认 Rust crate 不启用 Python 绑定，也不会拉取 `pyo3` / `numpy` / `pyo3-log` 依赖；Python 扩展只在 `python` feature 下构建。
+
+```toml
+[dependencies]
+wbt = "0.4"
+```
+
+```rust
+use wbt::core::{WeightBacktest, WeightType};
+
+let mut wb = WeightBacktest::from_file("weights.parquet", 2, Some(0.0002))?;
+wb.backtest(Some(4), WeightType::TS, 252)?;
+
+if let Some(report) = &wb.report {
+    println!("{:?}", report.stats.annual_trade_count);
+}
 ```
 
 完整 Python 指南见 python/README_CN.md。

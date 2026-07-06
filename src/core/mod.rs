@@ -2,7 +2,6 @@ use crate::core::native_engine::{DailysSoA, PairsSoA};
 use anyhow::Context;
 use errors::WbtError;
 use polars::prelude::*;
-use report::Report;
 use std::path::Path;
 
 mod backtest;
@@ -21,6 +20,8 @@ pub mod trade_dir;
 pub mod utils;
 pub mod yearly_return;
 
+pub use evaluate_pairs::EvaluatePairs;
+pub use report::{Report, StatsReport, SymbolsReport};
 pub use utils::WeightType;
 
 /// 持仓权重回测

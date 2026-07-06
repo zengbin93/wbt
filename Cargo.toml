@@ -15,9 +15,13 @@ categories = ["finance", "science"]
 name = "wbt"
 crate-type = ["cdylib", "lib"]
 
+[features]
+default = []
+python = ["dep:numpy", "dep:pyo3", "dep:pyo3-log"]
+
 [dependencies]
-pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310", "generate-import-lib"] }
-numpy = "0.28"
+pyo3 = { version = "0.28", optional = true, features = ["extension-module", "abi3-py310", "generate-import-lib"] }
+numpy = { version = "0.28", optional = true }
 polars = { version = "0.53", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings", "parquet", "csv"] }
 rayon = "1.12"
 chrono = { version = "0.4", features = ["serde"] }
@@ -29,7 +33,7 @@ strum = "0.28"
 strum_macros = "0.28"
 hashbrown = "0.17"
 log = "0.4"
-pyo3-log = "0.13"
+pyo3-log = { version = "0.13", optional = true }
 
 [profile.release]
 lto = "fat"
