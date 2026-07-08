@@ -62,7 +62,6 @@ impl From<Report> for Value {
                 symbol.symbol,
                 json!({
                     "daily": symbol.daily,
-                    "pairs": symbol.pair,
                 }),
             );
         }
@@ -218,6 +217,9 @@ mod tests {
         assert!(val.is_object());
         let obj = val.as_object().unwrap();
         assert!(obj.contains_key("TEST"));
+        let symbol_obj = obj["TEST"].as_object().unwrap();
+        assert!(symbol_obj.contains_key("daily"));
+        assert!(!symbol_obj.contains_key("pairs"));
         assert!(obj.contains_key("品种等权日收益"));
         assert!(obj.contains_key("绩效评价"));
         assert!(obj.contains_key("多头统计"));

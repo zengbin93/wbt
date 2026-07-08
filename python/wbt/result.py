@@ -313,8 +313,8 @@ class BacktestResult:
         for direction, sub in agg.groupby("交易方向"):
             key = str(direction)
             # 盈亏比例单位 BP → 百分比
-            pnl_pct[key] = sub["盈亏比例"].to_numpy(dtype=float) / 100.0
-            holds[key] = sub["持仓K线数"].to_numpy(dtype=float)
+            pnl_pct[key] = np.round(sub["盈亏比例"].to_numpy(dtype=float) / 100.0, 4)
+            holds[key] = sub["持仓K线数"].to_numpy(dtype=int)
         return PairsDist(pnl_pct=pnl_pct, holds=holds)
 
     # -------------------------------------------------------- cached (按需)
