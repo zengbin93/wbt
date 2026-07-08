@@ -115,6 +115,14 @@ def test_pairs_dist_grouped(result: BacktestResult) -> None:
         assert len(arr) == len(pd_.holds[k])
 
 
+def test_pairs_dist_json_payload_is_compact(result: BacktestResult) -> None:
+    pairs_dist = result.to_dict()["pairs_dist"]
+    for values in pairs_dist["pnl_pct"].values():
+        assert all(round(v, 4) == v for v in values)
+    for values in pairs_dist["holds"].values():
+        assert all(isinstance(v, int) for v in values)
+
+
 # ---------------------------------------------------------------------------
 # C 按需计算（cached_property）
 # ---------------------------------------------------------------------------
@@ -189,6 +197,18 @@ def test_to_dict_json_safe(result: BacktestResult) -> None:
     assert "drawdowns" in d_full
     assert "curves_voladj" in d_full
     assert isinstance(s, str)
+
+
+def test_to_dict_does_not_include_raw_pairs(result: BacktestResult) -> None:
+    def has_pairs_key(obj: object) -> bool:
+        if isinstance(obj, dict):
+            return "pairs" in obj or any(has_pairs_key(v) for v in obj.values())
+        if isinstance(obj, list):
+            return any(has_pairs_key(v) for v in obj)
+        return False
+
+    assert not has_pairs_key(result.to_dict())
+    assert not has_pairs_key(result.to_dict(full=True))
 
 
 def test_stats_by_side_keys(result: BacktestResult) -> None:
