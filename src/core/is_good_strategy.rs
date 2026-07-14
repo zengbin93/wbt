@@ -166,7 +166,8 @@ pub(crate) fn compute_vol_adjusted_alpha(
     )
 }
 
-/// 按年聚合策略绝对收益与波动率归一多头超额，输出每年的复利收益、交易日数和"完整自然年"标记。
+/// 按年聚合策略绝对收益与波动率归一多头超额，输出每年的单利收益（`Σr`）、交易日数和"完整自然年"标记。
+/// 口径与 [`crate::core::daily_performance`] 的绝对收益一致（SKZ-195 统一为单利）。
 ///
 /// 输入要求：`date_keys` / `strategy_daily` / `alpha_daily` 等长；`date_keys` 是
 /// YYYYMMDD 整数（与 `DailyTotals::date_keys` 一致）。长度不一致或 date_key 无效
@@ -201,8 +202,8 @@ pub(crate) fn compute_yearly_metrics(
         .into_iter()
         .map(|(year, (strat, alpha))| {
             let days = strat.len();
-            let abs_return = strat.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
-            let alpha_return = alpha.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+            let abs_return: f64 = strat.iter().sum();
+            let alpha_return: f64 = alpha.iter().sum();
             let alpha_max_drawdown = local_max_drawdown_abs(&alpha);
             YearMetric {
                 year,
@@ -263,8 +264,8 @@ pub(crate) fn compute_recent_window(
     let strat_w = &strategy_daily[start_idx..];
     let alpha_w = &alpha_daily[start_idx..];
 
-    let abs_return = strat_w.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
-    let alpha_return = alpha_w.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+    let abs_return: f64 = strat_w.iter().sum();
+    let alpha_return: f64 = alpha_w.iter().sum();
     let alpha_max_drawdown = local_max_drawdown_abs(alpha_w);
 
     let start_date = parse_date_key_strict(date_keys[start_idx])?;
@@ -824,7 +825,7 @@ mod tests {
     }
 
     #[test]
-    fn yearly_metrics_uses_compound_formula() {
+    fn yearly_metrics_uses_simple_formula() {
         let keys: Vec<i32> = (0..5)
             .map(|i| {
                 let nd = chrono::NaiveDate::from_ymd_opt(2020, 3, 2).unwrap()
@@ -839,9 +840,10 @@ mod tests {
         let m = &metrics[0];
         assert_eq!(m.year, 2020);
         assert_eq!(m.days, 5);
-        let expected_abs = strat.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+        // 单利：逐日收益直接求和，与 daily_performance 绝对收益口径一致。
+        let expected_abs: f64 = strat.iter().sum();
         assert!((m.abs_return - expected_abs).abs() < 1e-12);
-        let expected_alpha = alpha.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+        let expected_alpha: f64 = alpha.iter().sum();
         assert!((m.alpha_return - expected_alpha).abs() < 1e-12);
     }
 
@@ -898,14 +900,15 @@ mod tests {
     }
 
     #[test]
-    fn recent_window_compound_formula_exact() {
+    fn recent_window_simple_formula_exact() {
         let start = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
         let keys = consecutive_keys(start, 5);
         let strat = vec![0.01_f64, -0.02, 0.015, 0.005, -0.01];
         let alpha = vec![0.003_f64, -0.001, 0.002, 0.0, -0.0005];
         let r = compute_recent_window(&keys, &strat, &alpha, 252).unwrap();
-        let expected_abs = strat.iter().fold(1.0_f64, |acc, x| acc * (1.0 + x)) - 1.0;
-        let expected_alpha = alpha.iter().fold(1.0_f64, |acc, x| acc * (1.0 + x)) - 1.0;
+        // 单利：窗口内逐日收益直接求和。
+        let expected_abs: f64 = strat.iter().sum();
+        let expected_alpha: f64 = alpha.iter().sum();
         assert!((r.abs_return - expected_abs).abs() < 1e-12);
         assert!((r.alpha_return - expected_alpha).abs() < 1e-12);
     }

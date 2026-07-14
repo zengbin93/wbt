@@ -36,6 +36,10 @@ def test_compare_script_exposes_public_api() -> None:
     assert callable(module.load_vista_calculate_yearly_returns)
 
 
+@pytest.mark.skip(
+    reason="SKZ-195: wbt.yearly_return 口径已从复利改为单利，与 vista 的复利公式不再 bit-exact 一致；"
+    "此对比在 vista 侧同步改单利前失效",
+)
 @pytest.mark.skipif(
     not REAL_DATA_PATH.exists(),
     reason=f"real data not available: {REAL_DATA_PATH}",

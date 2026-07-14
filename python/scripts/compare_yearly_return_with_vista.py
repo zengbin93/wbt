@@ -1,5 +1,9 @@
 """逐行对比 wbt.yearly_return 与 vista.calculate_yearly_returns 的输出。
 
+⚠️ 口径已分叉（SKZ-195）：wbt.yearly_return 现为**单利** ``Σr``，vista 仍是**复利**
+``(1+r).prod()-1``，两者不再 bit-exact 一致，本对比脚本预期会报差异。仅作历史留存/口径
+回溯用；如需重新对齐，需先决定 vista 侧是否同步改单利。
+
 前置条件：
 - 真实持仓权重数据（默认 /Volumes/jun/全A日线测试_20170101_20250429.feather）
 - vista 源码可读（默认 /Users/0xjun/Documents/cursorPro/vista）
