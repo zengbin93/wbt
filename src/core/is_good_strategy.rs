@@ -74,28 +74,31 @@ fn parse_date_key_strict(dk: i32) -> Result<NaiveDate, WbtError> {
 /// 直接从日收益序列计算最大回撤的绝对值，**不**依赖
 /// [`crate::core::daily_performance`] 的早返回与四舍五入。
 ///
-/// - 累积净值 `nav = ∏(1+r)`；峰值跟踪；每步 `dd = (peak - nav) / peak`。
+/// 口径：**单利**，与 [`crate::core::daily_performance::calc_underwater`] 一致（SKZ-195
+/// 统一为单利）。累积收益 `cum = Σr`；峰值跟踪 `peak = max(cum)`；每步水下
+/// `underwater = cum - peak`，最大回撤 = `max(peak - cum)`（收益空间的绝对回撤，非比例）。
+/// 首个 bar 的 `peak` 即取 `cum`，故不在第 0 天记回撤，与 `calc_underwater` 同口径。
+/// （历史上曾用复利净值 `nav = ∏(1+r)`、`dd = (peak - nav) / peak`。）
+///
 /// - 空输入返回 0。任一 r 不是有限值 → 返回 NaN（由调用方决策是否当作退化）。
 fn local_max_drawdown_abs(returns: &[f64]) -> f64 {
     if returns.is_empty() {
         return 0.0;
     }
-    let mut nav = 1.0_f64;
-    let mut peak = 1.0_f64;
+    let mut cum = 0.0_f64;
+    let mut peak = f64::NEG_INFINITY;
     let mut max_dd = 0.0_f64;
     for &r in returns {
         if !r.is_finite() {
             return f64::NAN;
         }
-        nav *= 1.0 + r;
-        if nav > peak {
-            peak = nav;
+        cum += r;
+        if cum > peak {
+            peak = cum;
         }
-        if peak > 0.0 {
-            let dd = (peak - nav) / peak;
-            if dd > max_dd {
-                max_dd = dd;
-            }
+        let dd = peak - cum;
+        if dd > max_dd {
+            max_dd = dd;
         }
     }
     max_dd
@@ -166,7 +169,8 @@ pub(crate) fn compute_vol_adjusted_alpha(
     )
 }
 
-/// 按年聚合策略绝对收益与波动率归一多头超额，输出每年的复利收益、交易日数和"完整自然年"标记。
+/// 按年聚合策略绝对收益与波动率归一多头超额，输出每年的单利收益（`Σr`）、交易日数和"完整自然年"标记。
+/// 口径与 [`crate::core::daily_performance`] 的绝对收益一致（SKZ-195 统一为单利）。
 ///
 /// 输入要求：`date_keys` / `strategy_daily` / `alpha_daily` 等长；`date_keys` 是
 /// YYYYMMDD 整数（与 `DailyTotals::date_keys` 一致）。长度不一致或 date_key 无效
@@ -201,8 +205,8 @@ pub(crate) fn compute_yearly_metrics(
         .into_iter()
         .map(|(year, (strat, alpha))| {
             let days = strat.len();
-            let abs_return = strat.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
-            let alpha_return = alpha.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+            let abs_return: f64 = strat.iter().sum();
+            let alpha_return: f64 = alpha.iter().sum();
             let alpha_max_drawdown = local_max_drawdown_abs(&alpha);
             YearMetric {
                 year,
@@ -263,8 +267,8 @@ pub(crate) fn compute_recent_window(
     let strat_w = &strategy_daily[start_idx..];
     let alpha_w = &alpha_daily[start_idx..];
 
-    let abs_return = strat_w.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
-    let alpha_return = alpha_w.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+    let abs_return: f64 = strat_w.iter().sum();
+    let alpha_return: f64 = alpha_w.iter().sum();
     let alpha_max_drawdown = local_max_drawdown_abs(alpha_w);
 
     let start_date = parse_date_key_strict(date_keys[start_idx])?;
@@ -639,12 +643,12 @@ mod tests {
 
     #[test]
     fn local_max_drawdown_known_curve() {
-        // [+0.05, -0.10, -0.05, 0.02, 0.03]:
-        // nav: 1.05, 0.945, 0.89775, 0.91571, 0.94318
-        // peak: 1.05; trough: 0.89775; dd = (1.05 - 0.89775)/1.05
+        // 单利：[+0.05, -0.10, -0.05, 0.02, 0.03]
+        // cum:  0.05, -0.05, -0.10, -0.08, -0.05
+        // peak: 0.05（首个 bar），谷底 cum = -0.10 → 最大回撤 = 0.05 - (-0.10) = 0.15
         let alpha = vec![0.05_f64, -0.10, -0.05, 0.02, 0.03];
         let dd = local_max_drawdown_abs(&alpha);
-        let expected = (1.05_f64 - 0.89775) / 1.05;
+        let expected = 0.05_f64 - (-0.10);
         assert!(
             (dd - expected).abs() < 1e-10,
             "expected {expected}, got {dd}"
@@ -662,10 +666,11 @@ mod tests {
         assert!(local_max_drawdown_abs(&alpha).is_nan());
     }
 
-    /// F2 regression: cum_return ~= 0 but real mid-window dd must still be reported.
+    /// F2 regression: 末端累计收益 ~= 0，但中途真实回撤必须照报。
     #[test]
     fn local_max_drawdown_survives_cumzero_with_real_dd() {
-        // 1.0 -> 1.2 -> 0.6 -> 1.0 -> 1.0: cum_return ~= 0, mid dd 50%
+        // 单利 cum: 0.2, -0.3, 0.3667, 0.3667；末端 ~= 0.3667 但中途从 peak=0.2
+        // 跌到 -0.3 → 回撤 = 0.2 - (-0.3) = 0.5。
         let alpha = vec![0.2_f64, -0.5, 2.0 / 3.0, 0.0];
         let dd = local_max_drawdown_abs(&alpha);
         assert!((dd - 0.5).abs() < 1e-10, "expected 0.5, got {dd}");
@@ -824,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn yearly_metrics_uses_compound_formula() {
+    fn yearly_metrics_uses_simple_formula() {
         let keys: Vec<i32> = (0..5)
             .map(|i| {
                 let nd = chrono::NaiveDate::from_ymd_opt(2020, 3, 2).unwrap()
@@ -839,9 +844,10 @@ mod tests {
         let m = &metrics[0];
         assert_eq!(m.year, 2020);
         assert_eq!(m.days, 5);
-        let expected_abs = strat.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+        // 单利：逐日收益直接求和，与 daily_performance 绝对收益口径一致。
+        let expected_abs: f64 = strat.iter().sum();
         assert!((m.abs_return - expected_abs).abs() < 1e-12);
-        let expected_alpha = alpha.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+        let expected_alpha: f64 = alpha.iter().sum();
         assert!((m.alpha_return - expected_alpha).abs() < 1e-12);
     }
 
@@ -898,14 +904,15 @@ mod tests {
     }
 
     #[test]
-    fn recent_window_compound_formula_exact() {
+    fn recent_window_simple_formula_exact() {
         let start = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
         let keys = consecutive_keys(start, 5);
         let strat = vec![0.01_f64, -0.02, 0.015, 0.005, -0.01];
         let alpha = vec![0.003_f64, -0.001, 0.002, 0.0, -0.0005];
         let r = compute_recent_window(&keys, &strat, &alpha, 252).unwrap();
-        let expected_abs = strat.iter().fold(1.0_f64, |acc, x| acc * (1.0 + x)) - 1.0;
-        let expected_alpha = alpha.iter().fold(1.0_f64, |acc, x| acc * (1.0 + x)) - 1.0;
+        // 单利：窗口内逐日收益直接求和。
+        let expected_abs: f64 = strat.iter().sum();
+        let expected_alpha: f64 = alpha.iter().sum();
         assert!((r.abs_return - expected_abs).abs() < 1e-12);
         assert!((r.alpha_return - expected_alpha).abs() < 1e-12);
     }
@@ -1197,8 +1204,10 @@ mod tests {
     }
 
     /// history 三路 OR —— 仅靠「绝对收益>0」过关（超额下行：alpha_return<0 且当年回撤≥阈值）。
-    /// 全样本硬门故意放宽（max_alpha_dd_threshold=1.0, min_full_sharpe=-1e9），让该用例只
+    /// 全样本硬门故意放空（max_alpha_dd_threshold=1e9, min_full_sharpe=-1e9），让该用例只
     /// 校验「绝对收益>0 即可解锁年度通过 + 不被两道全样本硬门否决」的行为。
+    /// 注：单利口径下超额回撤是收益空间的绝对值、无 1.0 上界（不同于复利净值比例回撤），
+    /// 故这里用 1e9 而非 1.0 才能真正旁路该硬门。
     #[test]
     fn history_year_passes_via_abs_return_only() {
         let (k, s, b, l) = year_block(2020, 130, 0.001, drift_down_long, drift_up_bench);
@@ -1211,7 +1220,7 @@ mod tests {
             252,
             0.20,
             0.20,
-            1.0,
+            1e9,
             -1e9,
             120,
             252,

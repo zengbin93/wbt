@@ -234,9 +234,10 @@ class WeightBacktest:
         return self._map_symbols(arrow_bytes_to_pd_df(self._inner.daily_return()))
 
     def yearly_return(self, min_days: int = 120) -> pd.DataFrame:
-        """计算每个 symbol 的年度收益（按年复利）
+        """计算每个 symbol 的年度收益（按年单利）
 
-        基于 daily_return 宽表按年分组，用 (1+r1)*(1+r2)*...*(1+rn) - 1 公式计算。
+        基于 daily_return 宽表按年分组，用 r1 + r2 + ... + rn 单利求和计算，
+        与 stats 的绝对收益口径一致（SKZ-195 统一为单利）。
         策略整体收益用 symbol='total' 表示。
 
         :param min_days: int, default 120，每年最少交易日数量；不足的 (year, symbol) 会被跳过

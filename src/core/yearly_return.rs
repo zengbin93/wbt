@@ -1,7 +1,8 @@
 //! 从 daily_return 宽表计算年度收益长表
 //!
-//! 参考：vista/utils/yearly_return.py 中的 `calculate_yearly_returns`
-//! 核心公式：每年复利收益 = (1+r1)*(1+r2)*...*(1+rn) - 1
+//! 口径：**单利**，与 `daily_performance` 的绝对收益（`Σr`）保持一致。
+//! 核心公式：每年单利收益 = r1 + r2 + ... + rn
+//! （历史上曾用复利 `∏(1+r)-1`；现按 SKZ-195 统一为单利。）
 
 use crate::core::errors::WbtError;
 use polars::prelude::*;
@@ -48,7 +49,7 @@ pub fn compute_yearly_returns(wide_df: &DataFrame, min_days: usize) -> Result<Da
         })
         .collect();
 
-    // 3. 按 (year, symbol) 聚合 + min_days 过滤 + 复利
+    // 3. 按 (year, symbol) 聚合 + min_days 过滤 + 单利
     let mut out_years: Vec<i32> = Vec::new();
     let mut out_symbols: Vec<String> = Vec::new();
     let mut out_returns: Vec<f64> = Vec::new();
@@ -63,7 +64,7 @@ pub fn compute_yearly_returns(wide_df: &DataFrame, min_days: usize) -> Result<Da
         }
         for (year, rs) in by_year {
             if rs.len() >= min_days {
-                let yearly_ret = rs.iter().fold(1.0_f64, |acc, r| acc * (1.0 + r)) - 1.0;
+                let yearly_ret: f64 = rs.iter().sum();
                 out_years.push(year);
                 out_symbols.push(sym.clone());
                 out_returns.push(yearly_ret);
@@ -148,9 +149,9 @@ mod tests {
     }
 
     #[test]
-    fn single_year_single_symbol_compound_return() {
+    fn single_year_single_symbol_simple_return() {
         // 三天日收益：0.01, 0.02, -0.01
-        // 年度复利 = 1.01 * 1.02 * 0.99 - 1 = 0.019898
+        // 年度单利 = 0.01 + 0.02 - 0.01 = 0.02
         let df = wide(
             &["2020-03-01", "2020-03-02", "2020-03-03"],
             &[("A", vec![Some(0.01), Some(0.02), Some(-0.01)])],
@@ -160,7 +161,7 @@ mod tests {
         let (y, s, r) = row(&out, 0);
         assert_eq!(y, 2020);
         assert_eq!(s, "A");
-        let expected = 1.01_f64 * 1.02 * 0.99 - 1.0;
+        let expected = 0.01_f64 + 0.02 - 0.01;
         assert!((r - expected).abs() < 1e-12, "expected {expected}, got {r}");
     }
 
@@ -178,8 +179,9 @@ mod tests {
         let (y1, _, r1) = row(&out, 1);
         assert_eq!(y0, 2020);
         assert_eq!(y1, 2021);
-        assert!((r0 - (1.10_f64 * 1.10 - 1.0)).abs() < 1e-12);
-        assert!((r1 - (0.95_f64 * 0.95 - 1.0)).abs() < 1e-12);
+        // 单利：2020 = 0.10 + 0.10 = 0.20；2021 = -0.05 + -0.05 = -0.10
+        assert!((r0 - (0.10_f64 + 0.10)).abs() < 1e-12);
+        assert!((r1 - (-0.05_f64 - 0.05)).abs() < 1e-12);
     }
 
     #[test]
@@ -263,7 +265,7 @@ mod tests {
     #[test]
     fn none_values_excluded_from_day_count() {
         // A 在 2020 有 2 天非空 + 1 天 None；min_days=2 应通过（只数非空）
-        // 年度收益只对非空天数复利
+        // 年度收益只对非空天数单利求和
         let df = wide(
             &["2020-01-02", "2020-01-03", "2020-01-04"],
             &[("A", vec![Some(0.01), None, Some(0.02)])],
@@ -271,7 +273,7 @@ mod tests {
         let out = compute_yearly_returns(&df, 2).unwrap();
         assert_eq!(out.height(), 1);
         let (_, _, r) = row(&out, 0);
-        let expected = 1.01_f64 * 1.02 - 1.0;
+        let expected = 0.01_f64 + 0.02;
         assert!((r - expected).abs() < 1e-12);
     }
 

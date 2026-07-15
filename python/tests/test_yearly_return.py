@@ -43,14 +43,14 @@ def test_yearly_return_single_year_contains_symbols_and_total(wb: WeightBacktest
     assert {"SYM_A", "SYM_B", "total"}.issubset(syms)
 
 
-def test_yearly_return_multi_year_matches_vista_formula() -> None:
+def test_yearly_return_multi_year_matches_simple_formula() -> None:
     df = _multi_year_dfw()
     wb = WeightBacktest(df, digits=2, fee_rate=0.0002, n_jobs=1, weight_type="ts", yearly_days=252)
 
     result = wb.yearly_return(min_days=5)
     assert set(result["year"].unique()) == {2023, 2024}
 
-    # vista 公式：(1+r).prod() - 1，按 (year, symbol) 自行复算一致
+    # 单利口径（SKZ-195）：逐日收益直接求和 Σr，按 (year, symbol) 自行复算一致
     daily = wb.daily_return.copy()
     daily["date"] = pd.to_datetime(daily["date"])
     daily = daily.set_index("date")
@@ -59,7 +59,7 @@ def test_yearly_return_multi_year_matches_vista_formula() -> None:
         sym = str(row["symbol"])
         actual = float(row["return"])
         series = daily[daily.index.year == year][sym].dropna()
-        expected = float((1 + series).prod() - 1)
+        expected = float(series.sum())
         assert abs(actual - expected) < 1e-10, f"(year={year}, sym={sym}) expected {expected}, got {actual}"
 
 
