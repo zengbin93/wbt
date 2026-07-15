@@ -8,6 +8,8 @@
 
 [中文说明](README.md)
 
+> **v0.5.0 BREAKING (SKZ-195)**: all return / net-value accumulation is unified to **simple interest** (`Σr`). Previously `WeightBacktest.yearly_return()` and the yearly/recent returns and excess drawdown of `is_good_strategy()` used **compound** `∏(1+r)-1` / compound net-value drawdown; they are now simple-interest, consistent with the stats absolute return and the equity curve. This is a numeric-convention change — old compound values are not directly comparable; see the [v0.5.0 release notes](docs/release_notes/v0.5.0.md) for migration.
+
 ## Why This Project Exists
 
 Most strategy teams treat **target position weights** as the canonical interface between signal generation and execution simulation: the signal layer decides "what weight to hold," the backtest layer turns those weights into returns, risk, and trades. Existing tools either simulate at the order/matching-engine level (too detailed, too slow) or are pure-Python loops that don't scale to large multi-symbol weight tables.
