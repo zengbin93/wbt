@@ -2,7 +2,7 @@
 //!
 //! 口径：**单利**，与 `daily_performance` 的绝对收益（`Σr`）保持一致。
 //! 核心公式：每年单利收益 = r1 + r2 + ... + rn
-//! （历史上曾用复利 `∏(1+r)-1`，对齐 vista/czsc；现按 SKZ-195 统一为单利。）
+//! （历史上曾用复利 `∏(1+r)-1`；现按 SKZ-195 统一为单利。）
 
 use crate::core::errors::WbtError;
 use polars::prelude::*;
