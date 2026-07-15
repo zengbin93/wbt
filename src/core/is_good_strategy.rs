@@ -1204,8 +1204,10 @@ mod tests {
     }
 
     /// history 三路 OR —— 仅靠「绝对收益>0」过关（超额下行：alpha_return<0 且当年回撤≥阈值）。
-    /// 全样本硬门故意放宽（max_alpha_dd_threshold=1.0, min_full_sharpe=-1e9），让该用例只
+    /// 全样本硬门故意放空（max_alpha_dd_threshold=1e9, min_full_sharpe=-1e9），让该用例只
     /// 校验「绝对收益>0 即可解锁年度通过 + 不被两道全样本硬门否决」的行为。
+    /// 注：单利口径下超额回撤是收益空间的绝对值、无 1.0 上界（不同于复利净值比例回撤），
+    /// 故这里用 1e9 而非 1.0 才能真正旁路该硬门。
     #[test]
     fn history_year_passes_via_abs_return_only() {
         let (k, s, b, l) = year_block(2020, 130, 0.001, drift_down_long, drift_up_bench);
@@ -1218,7 +1220,7 @@ mod tests {
             252,
             0.20,
             0.20,
-            1.0,
+            1e9,
             -1e9,
             120,
             252,
