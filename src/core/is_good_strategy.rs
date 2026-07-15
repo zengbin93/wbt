@@ -74,28 +74,31 @@ fn parse_date_key_strict(dk: i32) -> Result<NaiveDate, WbtError> {
 /// 直接从日收益序列计算最大回撤的绝对值，**不**依赖
 /// [`crate::core::daily_performance`] 的早返回与四舍五入。
 ///
-/// - 累积净值 `nav = ∏(1+r)`；峰值跟踪；每步 `dd = (peak - nav) / peak`。
+/// 口径：**单利**，与 [`crate::core::daily_performance::calc_underwater`] 一致（SKZ-195
+/// 统一为单利）。累积收益 `cum = Σr`；峰值跟踪 `peak = max(cum)`；每步水下
+/// `underwater = cum - peak`，最大回撤 = `max(peak - cum)`（收益空间的绝对回撤，非比例）。
+/// 首个 bar 的 `peak` 即取 `cum`，故不在第 0 天记回撤，与 `calc_underwater` 同口径。
+/// （历史上曾用复利净值 `nav = ∏(1+r)`、`dd = (peak - nav) / peak`。）
+///
 /// - 空输入返回 0。任一 r 不是有限值 → 返回 NaN（由调用方决策是否当作退化）。
 fn local_max_drawdown_abs(returns: &[f64]) -> f64 {
     if returns.is_empty() {
         return 0.0;
     }
-    let mut nav = 1.0_f64;
-    let mut peak = 1.0_f64;
+    let mut cum = 0.0_f64;
+    let mut peak = f64::NEG_INFINITY;
     let mut max_dd = 0.0_f64;
     for &r in returns {
         if !r.is_finite() {
             return f64::NAN;
         }
-        nav *= 1.0 + r;
-        if nav > peak {
-            peak = nav;
+        cum += r;
+        if cum > peak {
+            peak = cum;
         }
-        if peak > 0.0 {
-            let dd = (peak - nav) / peak;
-            if dd > max_dd {
-                max_dd = dd;
-            }
+        let dd = peak - cum;
+        if dd > max_dd {
+            max_dd = dd;
         }
     }
     max_dd
@@ -640,12 +643,12 @@ mod tests {
 
     #[test]
     fn local_max_drawdown_known_curve() {
-        // [+0.05, -0.10, -0.05, 0.02, 0.03]:
-        // nav: 1.05, 0.945, 0.89775, 0.91571, 0.94318
-        // peak: 1.05; trough: 0.89775; dd = (1.05 - 0.89775)/1.05
+        // 单利：[+0.05, -0.10, -0.05, 0.02, 0.03]
+        // cum:  0.05, -0.05, -0.10, -0.08, -0.05
+        // peak: 0.05（首个 bar），谷底 cum = -0.10 → 最大回撤 = 0.05 - (-0.10) = 0.15
         let alpha = vec![0.05_f64, -0.10, -0.05, 0.02, 0.03];
         let dd = local_max_drawdown_abs(&alpha);
-        let expected = (1.05_f64 - 0.89775) / 1.05;
+        let expected = 0.05_f64 - (-0.10);
         assert!(
             (dd - expected).abs() < 1e-10,
             "expected {expected}, got {dd}"
@@ -663,10 +666,11 @@ mod tests {
         assert!(local_max_drawdown_abs(&alpha).is_nan());
     }
 
-    /// F2 regression: cum_return ~= 0 but real mid-window dd must still be reported.
+    /// F2 regression: 末端累计收益 ~= 0，但中途真实回撤必须照报。
     #[test]
     fn local_max_drawdown_survives_cumzero_with_real_dd() {
-        // 1.0 -> 1.2 -> 0.6 -> 1.0 -> 1.0: cum_return ~= 0, mid dd 50%
+        // 单利 cum: 0.2, -0.3, 0.3667, 0.3667；末端 ~= 0.3667 但中途从 peak=0.2
+        // 跌到 -0.3 → 回撤 = 0.2 - (-0.3) = 0.5。
         let alpha = vec![0.2_f64, -0.5, 2.0 / 3.0, 0.0];
         let dd = local_max_drawdown_abs(&alpha);
         assert!((dd - 0.5).abs() < 1e-10, "expected 0.5, got {dd}");
