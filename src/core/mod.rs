@@ -5,6 +5,7 @@ use polars::prelude::*;
 use std::path::Path;
 
 mod backtest;
+pub mod backtest_result_wire;
 pub mod cal_yearly_days;
 pub mod daily_performance;
 pub mod errors;

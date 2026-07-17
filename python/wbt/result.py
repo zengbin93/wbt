@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
+import math
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -24,6 +25,8 @@ import pandas as pd
 from wbt.top_drawdowns import top_drawdowns
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from wbt.backtest import WeightBacktest
 
 logger = logging.getLogger(__name__)
@@ -133,11 +136,18 @@ def _aligned(df: pd.DataFrame, date_col: str, val_col: str, index: pd.DatetimeIn
 
 
 def _json_safe(obj: Any) -> Any:
-    """递归转 JSON 安全类型：ndarray→list、np 标量→python、日期/时间→ISO 字符串。"""
+    """递归转 JSON 安全类型：ndarray→list、np 标量→python、日期/时间→ISO 字符串。
+
+    非有限浮点（NaN / Infinity / -Infinity）统一转 None：这些是非标准 JSON 常量，
+    orjson、Rust serde_json 等严格解析器会拒绝，跨语言共享时必须消除。
+    """
     if isinstance(obj, np.ndarray):
         return [_json_safe(x) for x in obj.tolist()]
     if isinstance(obj, np.generic):
-        return obj.item()
+        val = obj.item()
+        if isinstance(val, float) and not math.isfinite(val):
+            return None
+        return val
     if isinstance(obj, (pd.Timestamp, _dt.date, _dt.datetime)):
         return obj.isoformat()
     if isinstance(obj, dict):
@@ -156,7 +166,11 @@ def _json_safe(obj: Any) -> Any:
             "hold_bars": obj.hold_bars,
             "count": obj.count,
         }
-    if obj is None or isinstance(obj, (str, int, float, bool)):
+    if isinstance(obj, bool):
+        return obj
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if obj is None or isinstance(obj, (str, int)):
         return obj
     return str(obj)
 
@@ -444,16 +458,16 @@ class BacktestResult:
             "curves": {k: _json_safe(c) for k, c in self.curves.items()},
             "return_dist": {
                 "values_pct": _json_safe(self.return_dist.values_pct),
-                "mean_pct": self.return_dist.mean_pct,
-                "std_pct": self.return_dist.std_pct,
+                "mean_pct": _json_safe(self.return_dist.mean_pct),
+                "std_pct": _json_safe(self.return_dist.std_pct),
             },
             "monthly": {
                 "years": self.monthly.years,
                 "months": self.monthly.months,
                 "z": _json_safe(self.monthly.z),
                 "text": _json_safe(self.monthly.text),
-                "month_win_rate": self.monthly.month_win_rate,
-                "year_win_rate": self.monthly.year_win_rate,
+                "month_win_rate": _json_safe(self.monthly.month_win_rate),
+                "year_win_rate": _json_safe(self.monthly.year_win_rate),
             },
             "symbol_returns": {
                 "symbols": self.symbol_returns.symbols,
@@ -488,3 +502,20 @@ class BacktestResult:
             }
             out["segment_comparison"] = _json_safe(self.segment_comparison)
         return out
+
+    # --------------------------------------------------------------- msgpack
+    def to_msgpack(self, *, full: bool = True) -> bytes:
+        """序列化为 MessagePack 字节（完整嵌套结果对象的二进制交换格式）。
+
+        封装格式见 ``wbt.serialization``：外层带 ``format`` / ``format_version``，
+        payload 为 ``to_dict(full=full)``。需要 ``msgpack`` 依赖（``pip install wbt[msgpack]``）。
+        """
+        from wbt.serialization import to_msgpack
+
+        return to_msgpack(self, full=full)
+
+    def dump_msgpack(self, path: str | Path, *, full: bool = True) -> None:
+        """把结果写为 ``.msgpack`` 文件。参数同 :meth:`to_msgpack`。"""
+        from wbt.serialization import dump_msgpack
+
+        dump_msgpack(self, path, full=full)
