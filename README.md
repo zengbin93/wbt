@@ -219,6 +219,21 @@ result.to_dict(full=True)          # JSON 安全，供审核页面走 HTTP
 - `wbt.plotting`（均为单一职责单图，无组合图）：`plot_cumulative_returns`（`voladj=True` 为波动率归一）/ `plot_drawdown` / `plot_daily_return_dist` / `plot_monthly_heatmap` / `plot_symbol_returns` / `plot_yearly_returns` / `plot_rolling_metrics` / `plot_pairs_pnl_dist` / `plot_pairs_hold_dist` / `plot_colored_table` / `plot_stats_comparison` / `plot_segment_comparison` / `plot_key_trades` / `plot_drawdowns_table` / `plot_verdict`。
 - `wbt.report`：`generate_backtest_report` / `HtmlReportBuilder` / `get_performance_metrics_cards`。
 
+## 结果序列化（MessagePack）
+
+`to_dict()` 是 JSON 安全结构（`NaN` / `Infinity` 一律转 `null`，可直接 `json.dumps(..., allow_nan=False)`）。当需要在 Python/Rust 之间交换**完整嵌套结果对象**时，MessagePack 比 compact JSON 更小更快（受控链路实测约 4.2MB vs 5.9MB）：
+
+```python
+result = wb.to_result()
+result.dump_msgpack("backtest_results.msgpack", full=True)   # 写文件
+payload = wbt.load_msgpack("backtest_results.msgpack")       # 读回 dict（不反构造成 BacktestResult）
+```
+
+- 需要 `msgpack` 依赖：`pip install wbt[msgpack]`。
+- 封装格式带 `format="wbt.backtest_result"` 与 `format_version=1`；`format` 或版本不符会被拒绝。
+- Rust 侧 `wbt::core::backtest_result_wire::decode_wire` 可读取同一份字节并返回 payload。
+- **定位**：MessagePack 用于完整嵌套结果对象的交换，**不替代** Arrow IPC / Parquet 处理收益曲线、rolling、drawdowns、key_trades 等列式表格热数据。
+
 ## 开发与质量检查
 
 - Rust 相关命令在仓库根目录执行。
