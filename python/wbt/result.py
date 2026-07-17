@@ -12,8 +12,8 @@
 
 from __future__ import annotations
 
-import contextlib
 import datetime as _dt
+import logging
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -25,6 +25,8 @@ from wbt.top_drawdowns import top_drawdowns
 
 if TYPE_CHECKING:
     from wbt.backtest import WeightBacktest
+
+logger = logging.getLogger(__name__)
 
 # curves 键 → daily_return / alpha 的来源列
 _CURVE_KEYS = ("多空", "多头", "空头", "基准", "超额")
@@ -420,9 +422,13 @@ class BacktestResult:
         n = len(self.dates)
         if n > 0:
             sdt = pd.Timestamp(self.dates[max(0, n - self.yearly_days)])
-            # 区间过短等异常时降级为仅全样本
-            with contextlib.suppress(Exception):
+            # 区间过短等异常时降级为仅全样本。segment_stats 的错误在 Rust FFI 边界统一
+            # 转成 PyException（Python Exception 基类），无法收窄到更具体的类型，故这里
+            # 捕获 Exception 但留一行 debug 痕迹，避免真实 bug 被静默成"近1年面板消失"。
+            try:
                 out["近1年"] = self._wb.segment_stats(sdt=sdt, kind="多空")
+            except Exception:
+                logger.debug("segment_stats 近1年区间计算失败，降级为仅全样本", exc_info=True)
         return out
 
     # ---------------------------------------------------------------- to_dict

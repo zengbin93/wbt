@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import hashlib
-from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -109,7 +108,6 @@ def _build_phase_arrays(n: int) -> tuple[np.ndarray, np.ndarray]:
     return trends, volatilities
 
 
-@lru_cache(maxsize=10)
 def mock_symbol_kline(
     symbol: str,
     freq: str,
@@ -221,7 +219,6 @@ def mock_symbol_kline(
     )
 
 
-@lru_cache(maxsize=10)
 def mock_weights(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     freq: str = "日线",
