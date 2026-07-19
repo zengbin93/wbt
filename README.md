@@ -229,9 +229,8 @@ result.dump_msgpack("backtest_results.msgpack", full=True)   # 写文件
 payload = wbt.load_msgpack("backtest_results.msgpack")       # 读回 dict（不反构造成 BacktestResult）
 ```
 
-- 需要 `msgpack` 依赖：`pip install wbt[msgpack]`。
 - 封装格式带 `format="wbt.backtest_result"` 与 `format_version=1`；`format` 或版本不符会被拒绝。
-- Rust 侧 `wbt::core::backtest_result_wire::decode_wire` 可读取同一份字节并返回 payload。
+- Python 读写走 Rust/PyO3 封装；Rust 侧 `wbt::core::backtest_result_wire::{encode_wire, decode_wire}` 可读写同一份字节。
 - **定位**：MessagePack 用于完整嵌套结果对象的交换，**不替代** Arrow IPC / Parquet 处理收益曲线、rolling、drawdowns、key_trades 等列式表格热数据。
 
 ## 开发与质量检查

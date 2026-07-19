@@ -3,12 +3,12 @@ use std::io::Cursor;
 use std::str::FromStr;
 
 use polars::prelude::*;
-use pyo3::exceptions::PyException;
+use pyo3::exceptions::{PyException, PyOSError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyBytesMethods, PyDict, PyList};
-use serde_json::Value;
+use pyo3::types::{PyBytes, PyBytesMethods, PyDict, PyList, PyTuple};
+use serde_json::{Map, Value};
 
-use crate::core::{WeightBacktest, WeightType};
+use crate::core::{WeightBacktest, WeightType, backtest_result_wire};
 
 // ---------------------------------------------------------------------------
 // Arrow IPC <-> Polars DataFrame helpers
@@ -92,6 +92,74 @@ fn value_to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, pyo3::PyA
             py_dict.into_any()
         }
     })
+}
+
+fn py_to_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<Value> {
+    if obj.is_none() {
+        Ok(Value::Null)
+    } else if let Ok(v) = obj.extract::<bool>() {
+        Ok(Value::Bool(v))
+    } else if let Ok(v) = obj.extract::<i64>() {
+        Ok(Value::from(v))
+    } else if let Ok(v) = obj.extract::<u64>() {
+        Ok(Value::from(v))
+    } else if let Ok(v) = obj.extract::<f64>() {
+        serde_json::Number::from_f64(v)
+            .map(Value::Number)
+            .ok_or_else(|| PyValueError::new_err("msgpack payload contains non-finite float"))
+    } else if let Ok(v) = obj.extract::<String>() {
+        Ok(Value::String(v))
+    } else if let Ok(dict) = obj.cast::<PyDict>() {
+        let mut map = Map::with_capacity(dict.len());
+        for (key, value) in dict {
+            let key = key.extract::<String>().map_err(|_| {
+                PyValueError::new_err("msgpack payload mapping keys must be strings")
+            })?;
+            map.insert(key, py_to_value(&value)?);
+        }
+        Ok(Value::Object(map))
+    } else if let Ok(list) = obj.cast::<PyList>() {
+        let mut values = Vec::with_capacity(list.len());
+        for item in list {
+            values.push(py_to_value(&item)?);
+        }
+        Ok(Value::Array(values))
+    } else if let Ok(tuple) = obj.cast::<PyTuple>() {
+        let mut values = Vec::with_capacity(tuple.len());
+        for item in tuple {
+            values.push(py_to_value(&item)?);
+        }
+        Ok(Value::Array(values))
+    } else {
+        Err(PyValueError::new_err(format!(
+            "unsupported msgpack payload value: {}",
+            obj.get_type().name()?
+        )))
+    }
+}
+
+#[pyfunction]
+fn to_msgpack<'py>(
+    py: Python<'py>,
+    payload: Bound<'py, pyo3::PyAny>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let payload = py_to_value(&payload)?;
+    let bytes = backtest_result_wire::encode_wire(payload)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &bytes))
+}
+
+fn wire_to_py_err(err: crate::core::errors::WbtError) -> PyErr {
+    match err {
+        crate::core::errors::WbtError::Io(msg) => PyOSError::new_err(msg),
+        other => PyValueError::new_err(other.to_string()),
+    }
+}
+
+#[pyfunction]
+fn load_msgpack<'py>(py: Python<'py>, path: &str) -> PyResult<Bound<'py, pyo3::PyAny>> {
+    let payload = backtest_result_wire::load_wire(path).map_err(wire_to_py_err)?;
+    value_to_py(py, &payload)
 }
 
 // ---------------------------------------------------------------------------
@@ -580,5 +648,7 @@ fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(top_drawdowns, m)?)?;
     m.add_function(wrap_pyfunction!(cal_yearly_days, m)?)?;
     m.add_function(wrap_pyfunction!(rolling_daily_performance, m)?)?;
+    m.add_function(wrap_pyfunction!(to_msgpack, m)?)?;
+    m.add_function(wrap_pyfunction!(load_msgpack, m)?)?;
     Ok(())
 }

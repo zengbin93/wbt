@@ -12,8 +12,8 @@ requires-python = ">=3.10"
 dependencies = ["numpy", "pandas>=2.2", "pyarrow", "polars", "plotly", "loguru"]
 
 [project.optional-dependencies]
-msgpack = ["msgpack>=1.0"]
-dev = ["basedpyright", "maturin>=1.0,<2.0", "pytest", "ruff", "msgpack>=1.0"]
+msgpack = []
+dev = ["basedpyright", "maturin>=1.0,<2.0", "pytest", "ruff"]
 
 [project.urls]
 Homepage = "https://github.com/zengbin93/wbt"

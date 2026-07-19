@@ -1,14 +1,14 @@
-//! BacktestResult MessagePack 交换格式的读取（Rust 侧）。
+//! BacktestResult MessagePack 交换格式的读写（Rust 侧）。
 //!
-//! 与 Python `wbt.serialization` 对应：解析封装头（`format` / `format_version`），
-//! 校验通过后返回 `payload`（完整嵌套结果对象）。第一版用 `serde_json::Value` 兼容整个
+//! 与 Python `wbt.serialization` 对应：写入时补封装头（`format` / `format_version`），
+//! 读取时校验通过后返回 `payload`（完整嵌套结果对象）。第一版用 `serde_json::Value` 兼容整个
 //! payload，不维护巨大的强类型 struct；后续若需直接消费 `curves` / `rolling` 等热点字段，
 //! 再逐步强类型化。
 //!
 //! 定位：完整嵌套结果对象的交换格式，不替代 Arrow IPC / Parquet 处理列式表格热数据。
 
 use crate::core::errors::WbtError;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::path::Path;
 
 /// 封装格式标识，须与 Python 端 `wbt.serialization.FORMAT` 一致。
@@ -16,12 +16,38 @@ pub const FORMAT: &str = "wbt.backtest_result";
 /// 当前支持的封装版本，须与 Python 端 `wbt.serialization.FORMAT_VERSION` 一致。
 pub const FORMAT_VERSION: u64 = 1;
 
+/// 编码 MessagePack 字节，外层补充封装头。
+pub fn encode_wire(payload: Value) -> Result<Vec<u8>, WbtError> {
+    if !payload.is_object() {
+        return Err(WbtError::InvalidInput(
+            "invalid msgpack payload: expected mapping".into(),
+        ));
+    }
+    let envelope = json!({
+        "format": FORMAT,
+        "format_version": FORMAT_VERSION,
+        "payload": payload,
+    });
+    rmp_serde::to_vec_named(&envelope)
+        .map_err(|e| WbtError::InvalidInput(format!("failed to encode msgpack: {e}")))
+}
+
 /// 解码 MessagePack 字节，校验封装头后返回 `payload`。
 ///
 /// `format` 不匹配或 `format_version` 未知均返回 [`WbtError::InvalidInput`]。
 pub fn decode_wire(bytes: &[u8]) -> Result<Value, WbtError> {
     let envelope: Value = rmp_serde::from_slice(bytes)
         .map_err(|e| WbtError::InvalidInput(format!("failed to decode msgpack: {e}")))?;
+    unwrap_envelope(envelope)
+}
+
+fn unwrap_envelope(envelope: Value) -> Result<Value, WbtError> {
+    if !envelope.is_object() {
+        return Err(WbtError::InvalidInput(format!(
+            "invalid msgpack envelope: expected mapping, got {}",
+            value_type_name(&envelope)
+        )));
+    }
 
     let format = envelope.get("format").and_then(Value::as_str);
     if format != Some(FORMAT) {
@@ -42,6 +68,17 @@ pub fn decode_wire(bytes: &[u8]) -> Result<Value, WbtError> {
         _ => Err(WbtError::InvalidInput(
             "invalid msgpack envelope: missing or malformed payload".into(),
         )),
+    }
+}
+
+fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "NoneType",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "int",
+        Value::String(_) => "str",
+        Value::Array(_) => "list",
+        Value::Object(_) => "dict",
     }
 }
 
@@ -78,6 +115,14 @@ mod tests {
         let payload = decode_wire(&pack(&valid_envelope())).unwrap();
         assert_eq!(payload["symbol_count"].as_u64(), Some(2));
         assert_eq!(payload["dates"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn encode_wraps_payload() {
+        let payload = valid_envelope()["payload"].clone();
+        let encoded = encode_wire(payload).unwrap();
+        let decoded = decode_wire(&encoded).unwrap();
+        assert_eq!(decoded["symbol_count"].as_u64(), Some(2));
     }
 
     #[test]

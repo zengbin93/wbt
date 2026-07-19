@@ -508,7 +508,7 @@ class BacktestResult:
         """序列化为 MessagePack 字节（完整嵌套结果对象的二进制交换格式）。
 
         封装格式见 ``wbt.serialization``：外层带 ``format`` / ``format_version``，
-        payload 为 ``to_dict(full=full)``。需要 ``msgpack`` 依赖（``pip install wbt[msgpack]``）。
+        payload 为 ``to_dict(full=full)``。
         """
         from wbt.serialization import to_msgpack
 

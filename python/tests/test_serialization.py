@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 
-import msgpack
 import numpy as np
 import pytest
 
@@ -54,17 +53,22 @@ def test_roundtrip_via_methods(result: BacktestResult, tmp_path) -> None:
     assert set(payload["curves"].keys()) == {"多空", "多头", "空头", "基准", "超额"}
 
 
-def test_envelope_has_format_and_version(result: BacktestResult) -> None:
-    data = result.to_msgpack(full=False)
-    envelope = msgpack.unpackb(data, raw=False)
-    assert envelope["format"] == FORMAT == "wbt.backtest_result"
-    assert envelope["format_version"] == FORMAT_VERSION == 1
-    assert isinstance(envelope["payload"], dict)
+def test_roundtrip_keeps_format_constants(result: BacktestResult, tmp_path) -> None:
+    path = tmp_path / "format.msgpack"
+    path.write_bytes(result.to_msgpack(full=False))
+    payload = load_msgpack(path)
+    assert FORMAT == "wbt.backtest_result"
+    assert FORMAT_VERSION == 1
+    assert payload["symbol_count"] == result.symbol_count
 
 
-def test_full_flag_controls_payload(result: BacktestResult) -> None:
-    compact = msgpack.unpackb(result.to_msgpack(full=False), raw=False)["payload"]
-    full = msgpack.unpackb(result.to_msgpack(full=True), raw=False)["payload"]
+def test_full_flag_controls_payload(result: BacktestResult, tmp_path) -> None:
+    compact_path = tmp_path / "compact.msgpack"
+    full_path = tmp_path / "full.msgpack"
+    compact_path.write_bytes(result.to_msgpack(full=False))
+    full_path.write_bytes(result.to_msgpack(full=True))
+    compact = load_msgpack(compact_path)
+    full = load_msgpack(full_path)
     assert "drawdowns" not in compact
     assert "drawdowns" in full
 
@@ -78,22 +82,19 @@ def test_top_level_helpers_exposed(result: BacktestResult) -> None:
 # ---------------------------------------------------------------------------
 # 错误封装被拒绝
 # ---------------------------------------------------------------------------
-def test_wrong_format_rejected(tmp_path) -> None:
-    path = tmp_path / "bad_format.msgpack"
-    path.write_bytes(msgpack.packb({"format": "nope", "format_version": 1, "payload": {}}, use_bin_type=True))
-    with pytest.raises(ValueError, match="unexpected format"):
-        load_msgpack(path)
-
-
-def test_unknown_version_rejected(tmp_path) -> None:
-    path = tmp_path / "bad_version.msgpack"
-    path.write_bytes(msgpack.packb({"format": FORMAT, "format_version": 999, "payload": {}}, use_bin_type=True))
-    with pytest.raises(ValueError, match="unsupported format_version"):
-        load_msgpack(path)
-
-
-def test_non_mapping_envelope_rejected(tmp_path) -> None:
-    path = tmp_path / "bad_envelope.msgpack"
-    path.write_bytes(msgpack.packb([1, 2, 3], use_bin_type=True))
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize(
+    ("data", "message"),
+    [
+        (b"\x81\xa6format\xa4nope", "unexpected format"),
+        (
+            b"\x83\xa6format\xb3wbt.backtest_result\xaeformat_version\xcd\x03\xe7\xa7payload\x80",
+            "unsupported format_version",
+        ),
+        (b"\x93\x01\x02\x03", "expected mapping"),
+    ],
+)
+def test_invalid_envelope_rejected(tmp_path, data: bytes, message: str) -> None:
+    path = tmp_path / "bad.msgpack"
+    path.write_bytes(data)
+    with pytest.raises(ValueError, match=message):
         load_msgpack(path)

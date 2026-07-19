@@ -229,9 +229,8 @@ result.dump_msgpack("backtest_results.msgpack", full=True)   # write file
 payload = wbt.load_msgpack("backtest_results.msgpack")       # read back as dict (not reconstructed into BacktestResult)
 ```
 
-- Requires the `msgpack` dependency: `pip install wbt[msgpack]`.
 - The envelope carries `format="wbt.backtest_result"` and `format_version=1`; a wrong `format` or unknown version is rejected.
-- On the Rust side, `wbt::core::backtest_result_wire::decode_wire` reads the same bytes and returns the payload.
+- Python I/O uses the Rust/PyO3 wrapper; on the Rust side, `wbt::core::backtest_result_wire::{encode_wire, decode_wire}` reads/writes the same bytes.
 - **Scope**: MessagePack is for exchanging the full nested result object; it does **not** replace Arrow IPC / Parquet for columnar hot tables such as return curves, rolling, drawdowns, or key_trades.
 
 ## Development Workflow
