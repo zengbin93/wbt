@@ -74,14 +74,14 @@ class TestPlotCumulativeReturns:
         assert len(fig.data) >= 1
 
     def test_multiple_keys(self, result):
-        fig = plot_cumulative_returns(result, keys=["多空", "多头", "空头"])
-        assert len(fig.data) == 3
+        fig = plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"])
+        assert [trace.name for trace in fig.data] == ["策略收益", "策略多头", "策略空头", "基准收益"]
 
     def test_voladj(self, result):
         """voladj=True 时可绘制派生的空头超额曲线。"""
         fig = plot_cumulative_returns(result, keys=["多空", "超额", "空头超额"], voladj=True)
         assert isinstance(fig, go.Figure)
-        assert [trace.name for trace in fig.data] == ["多空", "超额", "空头超额"]
+        assert [trace.name for trace in fig.data] == ["策略收益", "多头超额", "空头超额"]
 
     def test_to_html(self, result):
         html = plot_cumulative_returns(result, to_html=True)

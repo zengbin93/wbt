@@ -18,6 +18,14 @@ if TYPE_CHECKING:
     from wbt.result import BacktestResult
 
 _FALLBACK_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#9b59b6", "#f39c12", "#1abc9c"]
+_CURVE_LABELS = {
+    "多空": "策略收益",
+    "多头": "策略多头",
+    "空头": "策略空头",
+    "基准": "基准收益",
+    "超额": "多头超额",
+    "空头超额": "空头超额",
+}
 
 
 def plot_cumulative_returns(
@@ -50,7 +58,7 @@ def plot_cumulative_returns(
                 x=result.dates,
                 y=curve.cum,
                 mode="lines",
-                name=key,
+                name=_CURVE_LABELS.get(key, key),
                 line={"color": CURVE_COLORS.get(key, _FALLBACK_COLORS[i % len(_FALLBACK_COLORS)]), "width": 1.5},
             )
         )
