@@ -18,6 +18,7 @@ from wbt.result import (
 )
 
 CURVE_KEYS = {"多空", "多头", "空头", "基准", "超额"}
+VOLADJ_CURVE_KEYS = CURVE_KEYS | {"空头超额"}
 
 
 @pytest.fixture
@@ -130,7 +131,7 @@ def test_curves_voladj_cached_and_keys(result: BacktestResult) -> None:
     va1 = result.curves_voladj
     va2 = result.curves_voladj
     assert va1 is va2, "cached_property 应缓存同一对象"
-    assert set(va1.keys()) == CURVE_KEYS
+    assert set(va1.keys()) == VOLADJ_CURVE_KEYS
     n = len(result.dates)
     for c in va1.values():
         assert len(c.cum) == n
@@ -221,13 +222,13 @@ def test_stats_by_side_keys(result: BacktestResult) -> None:
 def test_curves_voladj_hits_target_vol(result: BacktestResult) -> None:
     """波动率归一后各曲线年化波动率 ≈ target_vol（非退化序列）。
 
-    「超额」例外：它是 norm(多头) − norm(基准) 之差，波动率取决于两者相关性，
-    不再等于 target_vol，故单独排除（其口径由 test_curves_voladj_excess_is_diff 校验）。
+    「超额」和「空头超额」由归一后的曲线加减派生，波动率取决于相关性，
+    不再等于 target_vol，故单独排除（口径由对应公式测试校验）。
     """
     target = 0.20
     sqrt_yd = float(np.sqrt(result.yearly_days))
     for key, c in result.curves_voladj.items():
-        if key == "超额" or c.daily.size <= 1:
+        if key in {"超额", "空头超额"} or c.daily.size <= 1:
             continue
         annual_vol = float(np.std(c.daily, ddof=1)) * sqrt_yd
         if annual_vol == 0:
@@ -240,6 +241,13 @@ def test_curves_voladj_excess_is_diff(result: BacktestResult) -> None:
     va = result.curves_voladj
     expected = va["多头"].daily - va["基准"].daily
     np.testing.assert_allclose(va["超额"].daily, expected, rtol=0, atol=1e-12)
+
+
+def test_curves_voladj_short_excess_is_sum(result: BacktestResult) -> None:
+    """空头超额 == 归一空头 + 归一基准。"""
+    va = result.curves_voladj
+    expected = va["空头"].daily + va["基准"].daily
+    np.testing.assert_allclose(va["空头超额"].daily, expected, rtol=0, atol=1e-12)
 
 
 def test_monthly_z_rows_match_yearly_totals(result: BacktestResult) -> None:

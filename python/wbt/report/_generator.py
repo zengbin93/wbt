@@ -159,7 +159,7 @@ def _tab_specs(result: BacktestResult):
                 fig(
                     "波动率归一累计收益",
                     lambda: plot_cumulative_returns(
-                        result, keys=["多空", "多头", "空头", "基准", "超额"], voladj=True, title=""
+                        result, keys=["多空", "多头", "空头", "基准", "超额", "空头超额"], voladj=True, title=""
                     ),
                     fw=False,
                 ),
