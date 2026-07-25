@@ -21,6 +21,7 @@ CURVE_COLORS = {
     "空头": COLOR_SHORT,
     "基准": "#7f8c8d",
     "超额": "#9b59b6",
+    "空头超额": "#1abc9c",
 }
 
 

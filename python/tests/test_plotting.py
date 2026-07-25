@@ -78,10 +78,10 @@ class TestPlotCumulativeReturns:
         assert len(fig.data) == 3
 
     def test_voladj(self, result):
-        """voladj=True 时消费 curves_voladj，仍能出曲线。"""
-        fig = plot_cumulative_returns(result, keys=["多空", "超额"], voladj=True)
+        """voladj=True 时可绘制派生的空头超额曲线。"""
+        fig = plot_cumulative_returns(result, keys=["多空", "超额", "空头超额"], voladj=True)
         assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert [trace.name for trace in fig.data] == ["多空", "超额", "空头超额"]
 
     def test_to_html(self, result):
         html = plot_cumulative_returns(result, to_html=True)
