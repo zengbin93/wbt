@@ -202,7 +202,7 @@ Typical usage:
 result = wb.to_result()
 
 fig1 = plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"])
-fig2 = plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准", "超额", "空头超额"], voladj=True)
+fig2 = plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准", "多头超额", "空头超额"], voladj=True)
 fig3 = plot_drawdown(result)
 fig4 = plot_pairs_pnl_dist(result)
 

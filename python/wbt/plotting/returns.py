@@ -23,7 +23,7 @@ _CURVE_LABELS = {
     "多头": "策略多头",
     "空头": "策略空头",
     "基准": "基准收益",
-    "超额": "多头超额",
+    "多头超额": "多头超额",
     "空头超额": "空头超额",
 }
 
@@ -38,7 +38,7 @@ def plot_cumulative_returns(
     """绘制累计收益曲线。
 
     :param result: BacktestResult，直接消费 dates / curves / year_starts
-    :param keys: 要绘制的曲线键，默认 ["多空"]；波动率归一曲线还支持 空头超额
+    :param keys: 要绘制的曲线键，默认 ["多空"]；波动率归一曲线还支持多头超额、空头超额
     :param voladj: 是否使用波动率归一后的曲线（result.curves_voladj），默认 False
     :param title: 图标题，None 时按 voladj 取默认值
     """
@@ -134,7 +134,7 @@ def plot_yearly_returns(
 
     years = [str(y) for y in yr.years]
     fig.add_trace(go.Bar(x=years, y=yr.abs_returns, name="绝对收益", marker_color=COLOR_TOTAL))
-    fig.add_trace(go.Bar(x=years, y=yr.alpha_returns, name="超额收益", marker_color=CURVE_COLORS["超额"]))
+    fig.add_trace(go.Bar(x=years, y=yr.alpha_returns, name="超额收益", marker_color=CURVE_COLORS["多头超额"]))
     fig.update_layout(barmode="group")
     apply_default_layout(fig, title=title, height=400)
     fig.update_xaxes(title_text="年份")
