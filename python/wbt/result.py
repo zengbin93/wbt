@@ -521,3 +521,15 @@ class BacktestResult:
         from wbt.serialization import dump_msgpack
 
         dump_msgpack(self, path, full=full)
+
+    def to_json(self, *, full: bool = True) -> bytes:
+        """序列化为带版本 envelope 的 UTF-8 JSON 字节。"""
+        from wbt.serialization import to_json
+
+        return to_json(self, full=full)
+
+    def dump_json(self, path: str | Path, *, full: bool = True) -> None:
+        """把结果写为带版本 envelope 的 ``.json`` 文件。"""
+        from wbt.serialization import dump_json
+
+        dump_json(self, path, full=full)

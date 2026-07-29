@@ -12,7 +12,15 @@ from wbt.result import (
     ReturnDist,
     SymbolReturns,
 )
-from wbt.serialization import dump_msgpack, load_msgpack, to_msgpack
+from wbt.serialization import (
+    assert_payload_equal,
+    dump_json,
+    dump_msgpack,
+    load_json,
+    load_msgpack,
+    to_json,
+    to_msgpack,
+)
 from wbt.top_drawdowns import top_drawdowns
 from wbt.utils import (
     cal_trade_price,
@@ -33,16 +41,20 @@ __all__ = [
     "SymbolReturns",
     "WeightBacktest",
     "backtest",
+    "assert_payload_equal",
     "cal_trade_price",
     "cal_yearly_days",
     "daily_performance",
+    "dump_json",
     "dump_msgpack",
     "generate_backtest_report",
     "load_msgpack",
     "log_strategy_info",
+    "load_json",
     "mock_symbol_kline",
     "mock_weights",
     "rolling_daily_performance",
+    "to_json",
     "to_msgpack",
     "top_drawdowns",
     "weights_simple_ensemble",
