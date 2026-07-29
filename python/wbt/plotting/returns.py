@@ -23,7 +23,6 @@ _CURVE_LABELS = {
     "多头": "策略多头",
     "空头": "策略空头",
     "基准": "基准收益",
-    "超额": "多头超额",
     "多头超额": "多头超额",
     "空头超额": "空头超额",
 }
@@ -135,7 +134,7 @@ def plot_yearly_returns(
 
     years = [str(y) for y in yr.years]
     fig.add_trace(go.Bar(x=years, y=yr.abs_returns, name="绝对收益", marker_color=COLOR_TOTAL))
-    fig.add_trace(go.Bar(x=years, y=yr.alpha_returns, name="超额收益", marker_color=CURVE_COLORS["超额"]))
+    fig.add_trace(go.Bar(x=years, y=yr.alpha_returns, name="超额收益", marker_color=CURVE_COLORS["多头超额"]))
     fig.update_layout(barmode="group")
     apply_default_layout(fig, title=title, height=400)
     fig.update_xaxes(title_text="年份")

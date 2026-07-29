@@ -215,7 +215,7 @@ plot_key_trades(result, to_html=True)
 result.to_dict(full=True)          # JSON 安全，供审核页面走 HTTP
 ```
 
-- `BacktestResult` 字段：`dates` / `year_starts` / `curves`（原始曲线，键 多空/多头/空头/基准/超额）/ `curves_voladj`（波动率归一，按需；额外包含 `多头超额 = norm(多头) - norm(基准)`、`空头超额 = norm(空头) + norm(基准)`，`超额`保留为多头超额的兼容别名）/ `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`，以及审核字段 `drawdowns` / `key_trades` / `verdict`（均为按需 `cached_property`）。
+- `BacktestResult` 字段：`dates` / `year_starts` / `curves`（原始曲线，键 多空/多头/空头/基准/超额）/ `curves_voladj`（波动率归一，按需；额外包含 `多头超额 = norm(多头) - norm(基准)`、`空头超额 = norm(空头) + norm(基准)`）/ `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`，以及审核字段 `drawdowns` / `key_trades` / `verdict`（均为按需 `cached_property`）。
 - `wbt.plotting`（均为单一职责单图，无组合图）：`plot_cumulative_returns`（`voladj=True` 为波动率归一）/ `plot_drawdown` / `plot_daily_return_dist` / `plot_monthly_heatmap` / `plot_symbol_returns` / `plot_yearly_returns` / `plot_rolling_metrics` / `plot_pairs_pnl_dist` / `plot_pairs_hold_dist` / `plot_colored_table` / `plot_stats_comparison` / `plot_segment_comparison` / `plot_key_trades` / `plot_drawdowns_table` / `plot_verdict`。
 - `wbt.report`：`generate_backtest_report` / `HtmlReportBuilder` / `get_performance_metrics_cards`。
 
