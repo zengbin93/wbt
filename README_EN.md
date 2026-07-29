@@ -219,20 +219,24 @@ result.to_dict(full=True)          # JSON-safe, for serving the review page over
 - `wbt.plotting` (all single-purpose figures, no subplots): `plot_cumulative_returns` (`voladj=True` for vol-normalized), `plot_drawdown`, `plot_daily_return_dist`, `plot_monthly_heatmap`, `plot_symbol_returns`, `plot_yearly_returns`, `plot_rolling_metrics`, `plot_pairs_pnl_dist`, `plot_pairs_hold_dist`, `plot_colored_table`, `plot_stats_comparison`, `plot_segment_comparison`, `plot_key_trades`, `plot_drawdowns_table`, `plot_verdict`.
 - `wbt.report`: `generate_backtest_report`, `HtmlReportBuilder`, `get_performance_metrics_cards`.
 
-## Result Serialization (MessagePack)
+## Result Serialization (JSON / MessagePack)
 
-`to_dict()` returns a JSON-safe structure (`NaN` / `Infinity` are coerced to `null`, so `json.dumps(..., allow_nan=False)` never raises). To exchange the **full nested result object** between Python and Rust, MessagePack is smaller and faster than compact JSON (measured ~4.2MB vs 5.9MB on a controlled link):
+`to_dict()` returns a JSON-safe structure (`NaN` / `Infinity` are coerced to `null`, so `json.dumps(..., allow_nan=False)` never raises). JSON and MessagePack use the same versioned envelope (`format` / `format_version` / `payload`) and both loaders return the payload dict:
 
 ```python
 result = wb.to_result()
-result.dump_msgpack("backtest_results.msgpack", full=True)   # write file
-payload = wbt.load_msgpack("backtest_results.msgpack")       # read back as dict (not reconstructed into BacktestResult)
+result.dump_json("backtest_results.json", full=True)
+json_payload = wbt.load_json("backtest_results.json")
+
+result.dump_msgpack("backtest_results.msgpack", full=True)
+msgpack_payload = wbt.load_msgpack("backtest_results.msgpack")
+wbt.assert_payload_equal(json_payload, msgpack_payload)  # values and types match recursively
 ```
 
-- Requires the `msgpack` dependency: `pip install wbt[msgpack]`.
-- The envelope carries `format="wbt.backtest_result"` and `format_version=1`; a wrong `format` or unknown version is rejected.
-- On the Rust side, `wbt::core::backtest_result_wire::decode_wire` reads the same bytes and returns the payload.
-- **Scope**: MessagePack is for exchanging the full nested result object; it does **not** replace Arrow IPC / Parquet for columnar hot tables such as return curves, rolling, drawdowns, or key_trades.
+- JSON has no extra dependency; MessagePack requires `msgpack`: `pip install wbt[msgpack]`.
+- Non-finite floats are converted to `null` by the shared normalizer; invalid formats, versions, or JSON-value domains are rejected.
+- On the Rust side, `wbt::core::backtest_result_wire::decode_wire` reads MessagePack bytes and returns the payload.
+- **Scope**: both formats exchange the full nested result object; they do **not** replace Arrow IPC / Parquet for columnar hot tables such as return curves, rolling, drawdowns, or key_trades.
 
 ## Development Workflow
 
