@@ -18,7 +18,7 @@ from wbt.result import (
 )
 
 CURVE_KEYS = {"多空", "多头", "空头", "基准", "超额"}
-VOLADJ_CURVE_KEYS = CURVE_KEYS | {"空头超额"}
+VOLADJ_CURVE_KEYS = CURVE_KEYS | {"多头超额", "空头超额"}
 
 
 @pytest.fixture
@@ -222,13 +222,13 @@ def test_stats_by_side_keys(result: BacktestResult) -> None:
 def test_curves_voladj_hits_target_vol(result: BacktestResult) -> None:
     """波动率归一后各曲线年化波动率 ≈ target_vol（非退化序列）。
 
-    「超额」和「空头超额」由归一后的曲线加减派生，波动率取决于相关性，
+    「超额」「多头超额」和「空头超额」由归一后的曲线加减派生，波动率取决于相关性，
     不再等于 target_vol，故单独排除（口径由对应公式测试校验）。
     """
     target = 0.20
     sqrt_yd = float(np.sqrt(result.yearly_days))
     for key, c in result.curves_voladj.items():
-        if key in {"超额", "空头超额"} or c.daily.size <= 1:
+        if key in {"超额", "多头超额", "空头超额"} or c.daily.size <= 1:
             continue
         annual_vol = float(np.std(c.daily, ddof=1)) * sqrt_yd
         if annual_vol == 0:
@@ -236,11 +236,12 @@ def test_curves_voladj_hits_target_vol(result: BacktestResult) -> None:
         assert annual_vol == pytest.approx(target, rel=1e-6), key
 
 
-def test_curves_voladj_excess_is_diff(result: BacktestResult) -> None:
-    """归一超额 == 归一多头 − 归一基准（先各自归一化、再相减）。"""
+def test_curves_voladj_long_excess_is_diff(result: BacktestResult) -> None:
+    """多头超额 == 归一多头 − 归一基准（先各自归一化、再相减）。"""
     va = result.curves_voladj
     expected = va["多头"].daily - va["基准"].daily
-    np.testing.assert_allclose(va["超额"].daily, expected, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(va["多头超额"].daily, expected, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(va["超额"].daily, va["多头超额"].daily, rtol=0, atol=1e-12)
 
 
 def test_curves_voladj_short_excess_is_sum(result: BacktestResult) -> None:

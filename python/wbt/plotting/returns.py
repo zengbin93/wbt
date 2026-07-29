@@ -24,6 +24,7 @@ _CURVE_LABELS = {
     "空头": "策略空头",
     "基准": "基准收益",
     "超额": "多头超额",
+    "多头超额": "多头超额",
     "空头超额": "空头超额",
 }
 
@@ -38,7 +39,7 @@ def plot_cumulative_returns(
     """绘制累计收益曲线。
 
     :param result: BacktestResult，直接消费 dates / curves / year_starts
-    :param keys: 要绘制的曲线键，默认 ["多空"]；波动率归一曲线还支持 空头超额
+    :param keys: 要绘制的曲线键，默认 ["多空"]；波动率归一曲线还支持多头超额、空头超额
     :param voladj: 是否使用波动率归一后的曲线（result.curves_voladj），默认 False
     :param title: 图标题，None 时按 voladj 取默认值
     """

@@ -338,9 +338,9 @@ class BacktestResult:
     def curves_voladj(self) -> dict[str, Curve]:
         """波动率归一后的同名曲线；scale = target_vol / (daily.std · √yearly_days)。
 
-        「超额」定义为 ``norm(多头) − norm(基准)``，「空头超额」定义为
+        「多头超额」定义为 ``norm(多头) − norm(基准)``，「空头超额」定义为
         ``norm(空头) + norm(基准)``。二者均由各自归一后的曲线派生，年化波动率
-        不一定等于 target_vol。
+        不一定等于 target_vol。「超额」保留为「多头超额」的兼容别名。
         """
         out: dict[str, Curve] = {}
         sqrt_yd = float(np.sqrt(self.yearly_days))
@@ -352,7 +352,9 @@ class BacktestResult:
             scale = (self._target_vol / annual_vol) if annual_vol > 0 else 1.0
             out[key] = _build_curve(c.daily * scale)
         if "多头" in out and "基准" in out:
-            out["超额"] = _build_curve(out["多头"].daily - out["基准"].daily)
+            long_excess = _build_curve(out["多头"].daily - out["基准"].daily)
+            out["多头超额"] = long_excess
+            out["超额"] = long_excess  # 兼容既有调用
         if "空头" in out and "基准" in out:
             out["空头超额"] = _build_curve(out["空头"].daily + out["基准"].daily)
         return out

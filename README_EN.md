@@ -215,7 +215,7 @@ plot_key_trades(result, to_html=True)
 result.to_dict(full=True)          # JSON-safe, for serving the review page over HTTP
 ```
 
-- `BacktestResult` fields: `dates` / `year_starts` / `curves` (raw curves keyed 多空/多头/空头/基准/超额) / `curves_voladj` (volatility-normalized and lazy, additionally including `空头超额 = norm(空头) + norm(基准)`) / `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`, plus review fields `drawdowns` / `key_trades` / `verdict` (all lazy `cached_property`).
+- `BacktestResult` fields: `dates` / `year_starts` / `curves` (raw curves keyed 多空/多头/空头/基准/超额) / `curves_voladj` (volatility-normalized and lazy, additionally including `多头超额 = norm(多头) - norm(基准)` and `空头超额 = norm(空头) + norm(基准)`; `超额` remains a compatibility alias for 多头超额) / `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`, plus review fields `drawdowns` / `key_trades` / `verdict` (all lazy `cached_property`).
 - `wbt.plotting` (all single-purpose figures, no subplots): `plot_cumulative_returns` (`voladj=True` for vol-normalized), `plot_drawdown`, `plot_daily_return_dist`, `plot_monthly_heatmap`, `plot_symbol_returns`, `plot_yearly_returns`, `plot_rolling_metrics`, `plot_pairs_pnl_dist`, `plot_pairs_hold_dist`, `plot_colored_table`, `plot_stats_comparison`, `plot_segment_comparison`, `plot_key_trades`, `plot_drawdowns_table`, `plot_verdict`.
 - `wbt.report`: `generate_backtest_report`, `HtmlReportBuilder`, `get_performance_metrics_cards`.
 
