@@ -43,6 +43,39 @@ def test_json_safe_coerces_non_finite() -> None:
 
 
 # ---------------------------------------------------------------------------
+# JSON / MessagePack 共用 wire envelope：严格类型一致性
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("full", [False, True])
+def test_json_and_msgpack_roundtrip_preserve_normalized_payload_types(
+    result: BacktestResult, tmp_path, full: bool
+) -> None:
+    result.stats["wire_contract"] = {
+        "unicode": "回测结果",
+        "empty_list": [],
+        "empty_object": {},
+        "int": 1,
+        "float": 1.5,
+        "bool": True,
+        "nested": [np.float64("nan"), {"positive": np.float64("inf"), "negative": float("-inf")}],
+    }
+    json_path = tmp_path / "backtest_results.json"
+    msgpack_path = tmp_path / "backtest_results.msgpack"
+
+    result.dump_json(json_path, full=full)
+    result.dump_msgpack(msgpack_path, full=full)
+
+    json_payload = wbt.load_json(json_path)
+    msgpack_payload = wbt.load_msgpack(msgpack_path)
+    wbt.assert_payload_equal(json_payload, msgpack_payload)
+    assert json_payload["stats"]["wire_contract"]["nested"] == [None, {"positive": None, "negative": None}]
+
+
+def test_payload_comparison_rejects_equal_but_different_types() -> None:
+    with pytest.raises(AssertionError, match="type mismatch"):
+        wbt.assert_payload_equal({"value": True}, {"value": 1})
+
+
+# ---------------------------------------------------------------------------
 # MessagePack 读写
 # ---------------------------------------------------------------------------
 def test_roundtrip_via_methods(result: BacktestResult, tmp_path) -> None:
