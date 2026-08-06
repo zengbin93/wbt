@@ -187,8 +187,19 @@ def _bar_reference(data: pd.DataFrame, digits: int, fee_rate: float) -> pd.DataF
     ref["short_return"] = ref["short_edge"] - ref["short_cost"]
     ref["date"] = ref["dt"].dt.normalize()
     columns = [
-        "n1b", "edge", "return", "cost", "turnover", "long_edge", "short_edge",
-        "long_cost", "short_cost", "long_turnover", "short_turnover", "long_return", "short_return",
+        "n1b",
+        "edge",
+        "return",
+        "cost",
+        "turnover",
+        "long_edge",
+        "short_edge",
+        "long_cost",
+        "short_cost",
+        "long_turnover",
+        "short_turnover",
+        "long_return",
+        "short_return",
     ]
     return ref.groupby(["symbol", "date"], as_index=False, sort=True)[columns].sum()
 
