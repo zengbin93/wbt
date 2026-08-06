@@ -52,7 +52,7 @@ impl WeightBacktest {
         // dt列格式转换
         let mut dfw = Self::convert_datetime(dfw).context("Failed to convert datetime")?;
         // weight列格式处理
-        Self::round_weight(&mut dfw).context("Failed to round weight")?;
+        Self::round_weight(&mut dfw, digits).context("Failed to round weight")?;
 
         let symbols = Self::unique_symbols(&dfw).context("Failed to unique_symbols")?;
 
@@ -397,14 +397,15 @@ impl WeightBacktest {
         }
     }
 
-    /// 四舍五入 DataFrame 中的 `weight` 列，保留 4 位小数
-    pub(crate) fn round_weight(df: &mut DataFrame) -> Result<(), WbtError> {
+    /// 四舍五入 DataFrame 中的 `weight` 列，保留指定小数位
+    pub(crate) fn round_weight(df: &mut DataFrame, digits: i64) -> Result<(), WbtError> {
+        let scale = 10_f64.powi(digits as i32);
         let weight_s = df.column("weight")?.as_materialized_series().clone();
         let rounded = weight_s
             .f64()
             .unwrap()
             .into_iter()
-            .map(|opt| opt.map(|val| (val * 10000.0).round() / 10000.0))
+            .map(|opt| opt.map(|val| (val * scale).round() / scale))
             .collect::<Float64Chunked>();
         let _ = df.replace("weight", rounded.into_series().into())?;
         Ok(())
@@ -448,7 +449,7 @@ mod tests {
         // Input weights: [0.511, 0.0, -0.25, 0.0, 0.0]
         // round_weight rounds to 4 decimal places: all already ≤ 4 digits, so unchanged
         let mut df = raw_example_data();
-        WeightBacktest::round_weight(&mut df).unwrap();
+        WeightBacktest::round_weight(&mut df, 4).unwrap();
         let weights: Vec<f64> = df
             .column("weight")
             .unwrap()
@@ -602,7 +603,7 @@ mod tests {
             "price" => &[100.0]
         }
         .unwrap();
-        WeightBacktest::round_weight(&mut df).unwrap();
+        WeightBacktest::round_weight(&mut df, 4).unwrap();
         let w = df
             .column("weight")
             .unwrap()
@@ -623,7 +624,7 @@ mod tests {
             "price" => &[100.0]
         }
         .unwrap();
-        WeightBacktest::round_weight(&mut df).unwrap();
+        WeightBacktest::round_weight(&mut df, 4).unwrap();
         let w = df
             .column("weight")
             .unwrap()
@@ -633,6 +634,29 @@ mod tests {
             .get(0)
             .unwrap();
         assert_eq!(w, 0.0);
+    }
+
+    #[test]
+    fn new_normalizes_weight_with_digits() {
+        let df = df! {
+            "dt" => &["2019-01-02 09:01:00"],
+            "symbol" => &["A"],
+            "weight" => &[0.125_f64],
+            "price" => &[100.0_f64]
+        }
+        .unwrap();
+
+        let wb = WeightBacktest::new(df, 2, None).unwrap();
+        let weight = wb
+            .dfw
+            .column("weight")
+            .unwrap()
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .get(0)
+            .unwrap();
+        assert_eq!(weight, 0.13);
     }
 
     // --- from_file ---

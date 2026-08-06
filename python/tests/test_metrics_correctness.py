@@ -535,8 +535,9 @@ class TestSegmentStats:
         pairs = bt.pairs.copy()
         dailys["date_int"] = pd.to_datetime(dailys["date"]).dt.strftime("%Y%m%d").astype(int)
 
-        actual_sdt = sdt if sdt is not None else int(dailys["date_int"].min())
-        actual_edt = edt if edt is not None else int(dailys["date_int"].max())
+        stats = bt.stats
+        actual_sdt = sdt if sdt is not None else int(pd.Timestamp(stats["开始日期"]).strftime("%Y%m%d"))
+        actual_edt = edt if edt is not None else int(pd.Timestamp(stats["结束日期"]).strftime("%Y%m%d"))
 
         # Filter dailys by date
         mask = (dailys["date_int"] >= actual_sdt) & (dailys["date_int"] <= actual_edt)
@@ -586,32 +587,35 @@ class TestSegmentStats:
     # ------------------------------------------------------------------
 
     def test_full_range_matches_stats(self, bt: WeightBacktest) -> None:
-        """segment_stats(None, None, '多空') should match stats."""
+        """Full segment returns match stats; trades use the effective return dates."""
         stats = bt.stats
         seg = bt.segment_stats()
+        ref = self._python_segment(bt, None, None, "多空")
         assert seg["绝对收益"] == pytest.approx(stats["绝对收益"], abs=0.001)
         assert seg["年化收益"] == pytest.approx(stats["年化收益"], abs=0.001)
         assert seg["夏普比率"] == pytest.approx(stats["夏普比率"], abs=0.01)
         assert seg["最大回撤"] == pytest.approx(stats["最大回撤"], abs=0.001)
-        assert seg["交易次数"] == stats["交易次数"]
-        assert seg["交易胜率"] == pytest.approx(stats["交易胜率"], abs=0.001)
+        assert seg["交易次数"] == ref["trade_count"]
+        assert seg["交易胜率"] == pytest.approx(ref["trade_wr"], abs=0.001)
         assert seg["日胜率"] == pytest.approx(stats["日胜率"], abs=0.001)
 
     def test_full_range_long_matches_long_stats(self, bt: WeightBacktest) -> None:
-        """segment_stats(kind='多头') full range should match long_stats."""
+        """Full long segment trades use the effective return dates."""
         seg = bt.segment_stats(kind="多头")
         ls = bt.long_stats
+        ref = self._python_segment(bt, None, None, "多头")
         assert seg["绝对收益"] == pytest.approx(ls["绝对收益"], abs=0.001)
-        assert seg["交易次数"] == ls["交易次数"]
-        assert seg["交易胜率"] == pytest.approx(ls["交易胜率"], abs=0.001)
+        assert seg["交易次数"] == ref["trade_count"]
+        assert seg["交易胜率"] == pytest.approx(ref["trade_wr"], abs=0.001)
 
     def test_full_range_short_matches_short_stats(self, bt: WeightBacktest) -> None:
-        """segment_stats(kind='空头') full range should match short_stats."""
+        """Full short segment trades use the effective return dates."""
         seg = bt.segment_stats(kind="空头")
         ss = bt.short_stats
+        ref = self._python_segment(bt, None, None, "空头")
         assert seg["绝对收益"] == pytest.approx(ss["绝对收益"], abs=0.001)
-        assert seg["交易次数"] == ss["交易次数"]
-        assert seg["交易胜率"] == pytest.approx(ss["交易胜率"], abs=0.001)
+        assert seg["交易次数"] == ref["trade_count"]
+        assert seg["交易胜率"] == pytest.approx(ref["trade_wr"], abs=0.001)
 
     # ------------------------------------------------------------------
     # Partial range: value-level correctness

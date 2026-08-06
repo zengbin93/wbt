@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -152,6 +153,90 @@ class TestDailys:
         df = wb.dailys
         expected = df["long_edge"] + df["short_edge"]
         pd.testing.assert_series_equal(df["edge"], expected, check_names=False, atol=1e-8)
+
+
+def _round_half_away_from_zero(values: pd.Series, digits: int) -> pd.Series:
+    scale = 10**digits
+    return np.sign(values) * np.floor(np.abs(values) * scale + 0.5) / scale
+
+
+def _bar_reference(data: pd.DataFrame, digits: int, fee_rate: float) -> pd.DataFrame:
+    ref = data.sort_values(["symbol", "dt"], kind="stable").copy()
+    ref["dt"] = pd.to_datetime(ref["dt"])
+    ref["weight"] = _round_half_away_from_zero(ref["weight"], digits)
+    grouped = ref.groupby("symbol", sort=False)
+    ref["prev_weight"] = grouped["weight"].shift()
+    ref["prev_price"] = grouped["price"].shift()
+    ref = ref.loc[ref["prev_weight"].notna()].copy()
+    ref["n1b"] = np.where(ref["prev_price"].eq(0), 0.0, ref["price"] / ref["prev_price"] - 1.0)
+    ref["edge"] = ref["prev_weight"] * ref["n1b"]
+    ref["turnover"] = (ref["weight"] - ref["prev_weight"]).abs()
+    ref["cost"] = ref["turnover"] * fee_rate
+    ref["return"] = ref["edge"] - ref["cost"]
+    ref["long_weight"] = ref["weight"].clip(lower=0)
+    ref["short_weight"] = ref["weight"].clip(upper=0)
+    ref["prev_long_weight"] = ref["prev_weight"].clip(lower=0)
+    ref["prev_short_weight"] = ref["prev_weight"].clip(upper=0)
+    ref["long_edge"] = ref["prev_long_weight"] * ref["n1b"]
+    ref["short_edge"] = ref["prev_short_weight"] * ref["n1b"]
+    ref["long_turnover"] = (ref["long_weight"] - ref["prev_long_weight"]).abs()
+    ref["short_turnover"] = (ref["short_weight"] - ref["prev_short_weight"]).abs()
+    ref["long_cost"] = ref["long_turnover"] * fee_rate
+    ref["short_cost"] = ref["short_turnover"] * fee_rate
+    ref["long_return"] = ref["long_edge"] - ref["long_cost"]
+    ref["short_return"] = ref["short_edge"] - ref["short_cost"]
+    ref["date"] = ref["dt"].dt.normalize()
+    columns = [
+        "n1b",
+        "edge",
+        "return",
+        "cost",
+        "turnover",
+        "long_edge",
+        "short_edge",
+        "long_cost",
+        "short_cost",
+        "long_turnover",
+        "short_turnover",
+        "long_return",
+        "short_return",
+    ]
+    return ref.groupby(["symbol", "date"], as_index=False, sort=True)[columns].sum()
+
+
+@pytest.mark.parametrize("weight_type, aggregate", [("ts", "mean"), ("cs", "sum")])
+def test_bar_returns_match_sorted_half_away_reference(weight_type: str, aggregate: str) -> None:
+    """Current-bar returns use Rust's normalized weights after stable symbol/time ordering."""
+    digits = 2
+    fee_rate = 0.001
+    data = pd.DataFrame(
+        [
+            {"dt": "2024-01-03 09:00:00", "symbol": "B", "weight": -0.245, "price": 202.0},
+            {"dt": "2024-01-02 10:00:00", "symbol": "A", "weight": -0.125, "price": 101.0},
+            {"dt": "2024-01-02 09:00:00", "symbol": "B", "weight": 0.245, "price": 200.0},
+            {"dt": "2024-01-03 09:00:00", "symbol": "A", "weight": 0.0, "price": 99.0},
+            {"dt": "2024-01-02 09:00:00", "symbol": "A", "weight": 0.125, "price": 100.0},
+            {"dt": "2024-01-02 10:00:00", "symbol": "B", "weight": 0.245, "price": 204.0},
+        ]
+    )
+    expected = _bar_reference(data, digits, fee_rate)
+    backtest = WeightBacktest(data, digits=digits, fee_rate=fee_rate, n_jobs=1, weight_type=weight_type)
+    actual = backtest.dailys.copy()
+    actual["date"] = pd.to_datetime(actual["date"])
+    actual = actual.sort_values(["symbol", "date"], kind="stable").reset_index(drop=True)
+    expected = expected.sort_values(["symbol", "date"], kind="stable").reset_index(drop=True)
+
+    assert list(actual[["symbol", "date"]].itertuples(index=False, name=None)) == list(
+        expected[["symbol", "date"]].itertuples(index=False, name=None)
+    )
+    for column in expected.columns[2:]:
+        np.testing.assert_allclose(actual[column], expected[column], atol=1e-12, err_msg=column)
+
+    expected_total = expected.groupby("date", sort=True)["return"].agg(aggregate)
+    actual_total = backtest.daily_return.set_index("date")["total"]
+    actual_total.index = pd.to_datetime(actual_total.index)
+    assert list(actual_total.index) == list(expected_total.index)
+    np.testing.assert_allclose(actual_total, expected_total, atol=1e-12)
 
 
 class TestAlpha:

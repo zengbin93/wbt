@@ -115,7 +115,7 @@ Required columns:
 Notes:
 
 - Null values are not allowed.
-- weight is rounded by digits before backtest.
+- Weight normalization is performed once by the Rust engine using `digits` and half-away-from-zero rounding. The first BAR of each symbol is excluded from return rows and fees; later price returns and same-BAR position-change costs belong to that BAR's date.
 
 ## Main API Surface
 
