@@ -210,11 +210,6 @@ def verdict_section_html(result: BacktestResult) -> str:
     )
 
 
-def verdict_card_html(result: BacktestResult) -> str:
-    """向后兼容：单独的 history 判定卡。"""
-    return history_verdict_card_html(result.verdict)
-
-
 def stats_kv_html(result: BacktestResult) -> str:
     """完整绩效指标：紧凑的 label/value 键值网格（取代高瘦的彩色表）。"""
     skip = {"开始日期", "结束日期"}

@@ -71,7 +71,7 @@ wb = WeightBacktest(
     digits=2,
     fee_rate=0.0002,
     n_jobs=4,
-    weight_type="ts",   # "ts" 时序策略 / "cs" 截面策略
+    weight_type="ts",  # "ts" 时序策略 / "cs" 截面策略
     yearly_days=252,
 )
 
@@ -124,7 +124,8 @@ data 参数支持：
 ```python
 from wbt import (
     # 回测引擎
-    WeightBacktest, backtest,
+    WeightBacktest,
+    backtest,
     # 绩效指标（Rust 实现）
     daily_performance,
     top_drawdowns,
@@ -137,7 +138,8 @@ from wbt import (
     # 报告生成
     generate_backtest_report,
     # 测试数据
-    mock_symbol_kline, mock_weights,
+    mock_symbol_kline,
+    mock_weights,
 )
 ```
 
@@ -177,21 +179,21 @@ HTML 报告改为把单图组合进 CSS 网格布局。
 
 ```python
 from wbt.plotting import (
-    plot_colored_table,        # stats 彩色表格
-    plot_cumulative_returns,   # 累计收益曲线（voladj=True 为波动率归一）
-    plot_daily_return_dist,    # 日收益分布直方图
-    plot_drawdown,             # 回撤 + 累计收益（双轴单图）
-    plot_drawdowns_table,      # top 回撤明细表
-    plot_key_trades,           # 每年最赚/最亏关键交易
-    plot_monthly_heatmap,      # 月度收益热力图
-    plot_pairs_hold_dist,      # 持仓K线数分布（按方向）
-    plot_pairs_pnl_dist,       # 盈亏比例分布（按方向）
-    plot_rolling_metrics,      # 滚动夏普/年化/波动率（252日窗口）
-    plot_segment_comparison,   # 近1年 vs 全样本 指标对比表
-    plot_stats_comparison,     # 多空/多头/空头/基准/超额 指标对比表
-    plot_symbol_returns,       # 品种累计收益
-    plot_verdict,              # is_good_strategy 判定 + 年度指标
-    plot_yearly_returns,       # 年度绝对/超额收益（分组柱状图）
+    plot_colored_table,  # stats 彩色表格
+    plot_cumulative_returns,  # 累计收益曲线（voladj=True 为波动率归一）
+    plot_daily_return_dist,  # 日收益分布直方图
+    plot_drawdown,  # 回撤 + 累计收益（双轴单图）
+    plot_drawdowns_table,  # top 回撤明细表
+    plot_key_trades,  # 每年最赚/最亏关键交易
+    plot_monthly_heatmap,  # 月度收益热力图
+    plot_pairs_hold_dist,  # 持仓K线数分布（按方向）
+    plot_pairs_pnl_dist,  # 盈亏比例分布（按方向）
+    plot_rolling_metrics,  # 滚动夏普/年化/波动率（252日窗口）
+    plot_segment_comparison,  # 近1年 vs 全样本 指标对比表
+    plot_stats_comparison,  # 多空/多头/空头/基准/超额 指标对比表
+    plot_symbol_returns,  # 品种累计收益
+    plot_verdict,  # is_good_strategy 判定 + 年度指标
+    plot_yearly_returns,  # 年度绝对/超额收益（分组柱状图）
 )
 ```
 

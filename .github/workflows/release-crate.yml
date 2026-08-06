@@ -14,8 +14,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
       - run: cargo test --lib
       - run: cargo publish -p wbt --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
