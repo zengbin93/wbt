@@ -216,6 +216,16 @@ mod tests {
         assert_eq!(result.year, 0.0);
     }
 
+    #[test]
+    fn invalid_date_falls_back_to_epoch_for_period_aggregation() {
+        let result = period_win_rates(&[20241301, 19700102, 19710101], &[0.01, -0.02, 0.03], 2);
+
+        assert_eq!(result.week, 0.5);
+        assert_eq!(result.month, 0.5);
+        assert_eq!(result.quarter, 0.5);
+        assert_eq!(result.year, 0.5);
+    }
+
     // --- two weeks with opposite returns → week = 0.5 ---
     #[test]
     fn two_weeks_opposite_returns() {

@@ -71,7 +71,7 @@ wb = WeightBacktest(
     digits=2,
     fee_rate=0.0002,
     n_jobs=4,
-    weight_type="ts",   # "ts" or "cs"
+    weight_type="ts",  # "ts" or "cs"
     yearly_days=252,
 )
 
@@ -124,7 +124,8 @@ Top-level imports (all reachable from `import wbt`):
 ```python
 from wbt import (
     # Backtest engine
-    WeightBacktest, backtest,
+    WeightBacktest,
+    backtest,
     # Performance metrics (Rust-backed)
     daily_performance,
     top_drawdowns,
@@ -137,7 +138,8 @@ from wbt import (
     # Reporting
     generate_backtest_report,
     # Test data
-    mock_symbol_kline, mock_weights,
+    mock_symbol_kline,
+    mock_weights,
 )
 ```
 
@@ -178,21 +180,21 @@ the HTML report composes single figures into a CSS grid instead.
 
 ```python
 from wbt.plotting import (
-    plot_colored_table,        # stats as a colored table
-    plot_cumulative_returns,   # cumulative curves (voladj=True for vol-normalized)
-    plot_daily_return_dist,    # daily-return histogram
-    plot_drawdown,             # drawdown + cumulative (dual-axis single figure)
-    plot_drawdowns_table,      # top-drawdowns detail table
-    plot_key_trades,           # yearly best/worst key trades
-    plot_monthly_heatmap,      # monthly-return heatmap
-    plot_pairs_hold_dist,      # holding-bars distribution by direction
-    plot_pairs_pnl_dist,       # pnl-ratio distribution by direction
-    plot_rolling_metrics,      # rolling sharpe/return/vol over time (252d window)
-    plot_segment_comparison,   # recent-1y vs full-sample metric table
-    plot_stats_comparison,     # 多空/多头/空头/基准/超额 metric comparison table
-    plot_symbol_returns,       # per-symbol cumulative returns
-    plot_verdict,              # is_good_strategy verdict + yearly metrics
-    plot_yearly_returns,       # yearly absolute vs excess returns (grouped bars)
+    plot_colored_table,  # stats as a colored table
+    plot_cumulative_returns,  # cumulative curves (voladj=True for vol-normalized)
+    plot_daily_return_dist,  # daily-return histogram
+    plot_drawdown,  # drawdown + cumulative (dual-axis single figure)
+    plot_drawdowns_table,  # top-drawdowns detail table
+    plot_key_trades,  # yearly best/worst key trades
+    plot_monthly_heatmap,  # monthly-return heatmap
+    plot_pairs_hold_dist,  # holding-bars distribution by direction
+    plot_pairs_pnl_dist,  # pnl-ratio distribution by direction
+    plot_rolling_metrics,  # rolling sharpe/return/vol over time (252d window)
+    plot_segment_comparison,  # recent-1y vs full-sample metric table
+    plot_stats_comparison,  # 多空/多头/空头/基准/超额 metric comparison table
+    plot_symbol_returns,  # per-symbol cumulative returns
+    plot_verdict,  # is_good_strategy verdict + yearly metrics
+    plot_yearly_returns,  # yearly absolute vs excess returns (grouped bars)
 )
 ```
 

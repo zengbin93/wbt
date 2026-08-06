@@ -22,7 +22,7 @@ python = ["dep:numpy", "dep:pyo3", "dep:pyo3-log"]
 [dependencies]
 pyo3 = { version = "0.28", optional = true, features = ["extension-module", "abi3-py310", "generate-import-lib"] }
 numpy = { version = "0.28", optional = true }
-polars = { version = "0.53", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "round_series", "cov", "abs", "serde", "strings", "parquet", "csv"] }
+polars = { version = "0.53", default-features = false, features = ["ipc", "lazy", "dtype-datetime", "dtype-date", "serde", "strings", "parquet", "csv"] }
 rayon = "1.12"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
