@@ -455,7 +455,7 @@ impl WeightBacktest {
             (0.0, 0.0)
         };
 
-        build_stats_dict(
+        let mut stats = build_stats_dict(
             &filtered_date_keys,
             &filtered_returns,
             &filtered_pairs,
@@ -464,7 +464,16 @@ impl WeightBacktest {
             long_rate,
             short_rate,
             self.symbols.len(),
-        )
+        )?;
+        stats.insert(
+            "开始日期".into(),
+            json!(date_key_to_naive_date(actual_sdt).to_string()),
+        );
+        stats.insert(
+            "结束日期".into(),
+            json!(date_key_to_naive_date(actual_edt).to_string()),
+        );
+        Ok(stats)
     }
 
     // -----------------------------------------------------------------------
@@ -1140,5 +1149,42 @@ mod tests {
             .expect("daily_return contains a first date");
         assert_eq!(report.stats.start_date, first_daily_date);
         assert_eq!(first_daily_date.to_string(), "2024-01-03");
+    }
+
+    #[test]
+    fn stats_and_default_segment_dates_match_daily_returns_without_trailing_single_bar() {
+        let df = df! {
+            "dt" => &[
+                "2024-01-02 09:30:00",
+                "2024-01-03 09:30:00",
+                "2024-01-04 09:30:00",
+            ],
+            "symbol" => &["A", "A", "B"],
+            "weight" => &[0.5_f64, 0.5_f64, 0.5_f64],
+            "price" => &[100.0_f64, 101.0_f64, 200.0_f64]
+        }
+        .unwrap();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let report = wb.report.as_ref().unwrap();
+        let daily_dates: Vec<_> = report
+            .daily_return
+            .column("date")
+            .unwrap()
+            .as_materialized_series()
+            .date()
+            .unwrap()
+            .as_date_iter()
+            .flatten()
+            .collect();
+        assert_eq!(daily_dates.len(), 1);
+        assert_eq!(daily_dates[0].to_string(), "2024-01-03");
+        assert_eq!(report.stats.start_date, daily_dates[0]);
+        assert_eq!(report.stats.end_date, daily_dates[0]);
+
+        let segment = wb.segment_stats(None, None, "多空").unwrap();
+        assert_eq!(segment["开始日期"].as_str(), Some("2024-01-03"));
+        assert_eq!(segment["结束日期"].as_str(), Some("2024-01-03"));
     }
 }

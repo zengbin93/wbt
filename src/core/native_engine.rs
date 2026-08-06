@@ -678,9 +678,9 @@ impl NativeEngine {
                 .or(wt_dates.first())
                 .copied()
                 .unwrap_or(19700101),
-            end_date_key: wt_dates
+            end_date_key: out_date_keys
                 .last()
-                .or(out_date_keys.last())
+                .or(wt_dates.last())
                 .copied()
                 .unwrap_or(19700101),
             date_keys: out_date_keys,
