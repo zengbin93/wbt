@@ -1095,4 +1095,22 @@ mod tests {
             "invalid kind should produce same result as 多空: {default_ret} vs {invalid_ret}"
         );
     }
+
+    #[test]
+    fn all_single_bar_symbols_keep_input_date_with_empty_returns() {
+        let df = df! {
+            "dt" => &["2024-01-02 09:30:00", "2024-01-02 09:30:00"],
+            "symbol" => &["A", "B"],
+            "weight" => &[0.5_f64, -0.5_f64],
+            "price" => &[100.0_f64, 200.0_f64]
+        }
+        .unwrap();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let report = wb.report.as_ref().unwrap();
+        assert_eq!(report.daily_return.height(), 0);
+        assert_eq!(report.stats.start_date.to_string(), "2024-01-02");
+        assert_eq!(report.stats.end_date.to_string(), "2024-01-02");
+    }
 }

@@ -673,8 +673,16 @@ impl NativeEngine {
         }
 
         let daily_totals = DailyTotals {
-            start_date_key: out_date_keys.first().copied().unwrap_or(0),
-            end_date_key: out_date_keys.last().copied().unwrap_or(0),
+            start_date_key: wt_dates
+                .first()
+                .or(out_date_keys.first())
+                .copied()
+                .unwrap_or(19700101),
+            end_date_key: wt_dates
+                .last()
+                .or(out_date_keys.last())
+                .copied()
+                .unwrap_or(19700101),
             date_keys: out_date_keys,
             totals: out_totals,
             n1b_totals: out_n1b,
@@ -740,14 +748,13 @@ impl NativeEngine {
         let n = dt_slice.len();
         let mut d = SymbolDailysSoA::new(n / 2);
         let mut p = SymbolPairsSoA::new(n / 10);
-        if n == 0 {
+        if n <= 1 {
             return (d, p);
         }
 
         let mut lots = LotsSoA::default();
 
-        let mut pending_dt_ticks = dt_slice[0];
-        let mut pending_weight = (w_slice[0] * 10000.0).round() / 10000.0;
+        let mut pending_weight = w_slice[0];
         let mut pending_long_weight = if pending_weight > 0.0 {
             pending_weight
         } else {
@@ -759,21 +766,13 @@ impl NativeEngine {
             0.0
         };
         let mut pending_price = p_slice[0];
-        let mut pending_date_key = dt_to_days_since_epoch(pending_dt_ticks, tu);
-
-        let mut pending_turnover = 0.0;
-        let mut pending_cost = 0.0;
-        let mut pending_long_turnover = 0.0;
-        let mut pending_long_cost = 0.0;
-        let mut pending_short_turnover = 0.0;
-        let mut pending_short_cost = 0.0;
 
         let mut prev_weight = pending_weight;
         let mut prev_long_weight = pending_long_weight;
         let mut prev_short_weight = pending_short_weight;
 
-        let mut active_date_key = pending_date_key;
-        let mut active_dt_ticks = pending_dt_ticks;
+        let mut active_date_key = None;
+        let mut active_dt_ticks = 0;
 
         let mut d_n1b = 0.0;
         let mut d_edge = 0.0;
@@ -814,8 +813,7 @@ impl NativeEngine {
         for i in 1..n {
             let dt = dt_slice[i];
             let price = p_slice[i];
-            let raw_w = w_slice[i];
-            let weight = (raw_w * 10000.0).round() / 10000.0;
+            let weight = w_slice[i];
             let long_weight = if weight > 0.0 { weight } else { 0.0 };
             let short_weight = if weight < 0.0 { weight } else { 0.0 };
 
@@ -832,29 +830,31 @@ impl NativeEngine {
                 price / pending_price - 1.0
             };
             let edge = pending_weight * n1b;
-            let ret = edge - pending_cost;
+            let ret = edge - curr_cost;
             let long_edge = pending_long_weight * n1b;
             let short_edge = pending_short_weight * n1b;
-            let long_ret = long_edge - pending_long_cost;
-            let short_ret = short_edge - pending_short_cost;
+            let long_ret = long_edge - curr_long_cost;
+            let short_ret = short_edge - curr_short_cost;
 
             let curr_date_key = dt_to_days_since_epoch(dt, tu);
 
-            if pending_date_key != active_date_key {
-                d.date_ticks.push(active_dt_ticks);
-                d.n1b.push(d_n1b);
-                d.edge.push(d_edge);
-                d.ret.push(d_ret);
-                d.cost.push(d_cost);
-                d.turnover.push(d_turnover);
-                d.long_edge.push(d_long_edge);
-                d.short_edge.push(d_short_edge);
-                d.long_cost.push(d_long_cost);
-                d.short_cost.push(d_short_cost);
-                d.long_turnover.push(d_long_turnover);
-                d.short_turnover.push(d_short_turnover);
-                d.long_return.push(d_long_return);
-                d.short_return.push(d_short_return);
+            if active_date_key != Some(curr_date_key) {
+                if active_date_key.is_some() {
+                    d.date_ticks.push(active_dt_ticks);
+                    d.n1b.push(d_n1b);
+                    d.edge.push(d_edge);
+                    d.ret.push(d_ret);
+                    d.cost.push(d_cost);
+                    d.turnover.push(d_turnover);
+                    d.long_edge.push(d_long_edge);
+                    d.short_edge.push(d_short_edge);
+                    d.long_cost.push(d_long_cost);
+                    d.short_cost.push(d_short_cost);
+                    d.long_turnover.push(d_long_turnover);
+                    d.short_turnover.push(d_short_turnover);
+                    d.long_return.push(d_long_return);
+                    d.short_return.push(d_short_return);
+                }
 
                 d_n1b = 0.0;
                 d_edge = 0.0;
@@ -870,37 +870,28 @@ impl NativeEngine {
                 d_long_return = 0.0;
                 d_short_return = 0.0;
 
-                active_date_key = pending_date_key;
-                active_dt_ticks = pending_dt_ticks;
+                active_date_key = Some(curr_date_key);
+                active_dt_ticks = dt;
             }
 
             d_n1b += n1b;
             d_edge += edge;
             d_ret += ret;
-            d_cost += pending_cost;
-            d_turnover += pending_turnover;
+            d_cost += curr_cost;
+            d_turnover += curr_turnover;
             d_long_edge += long_edge;
             d_short_edge += short_edge;
-            d_long_cost += pending_long_cost;
-            d_short_cost += pending_short_cost;
-            d_long_turnover += pending_long_turnover;
-            d_short_turnover += pending_short_turnover;
+            d_long_cost += curr_long_cost;
+            d_short_cost += curr_short_cost;
+            d_long_turnover += curr_long_turnover;
+            d_short_turnover += curr_short_turnover;
             d_long_return += long_ret;
             d_short_return += short_ret;
 
-            pending_dt_ticks = dt;
             pending_price = price;
             pending_weight = weight;
             pending_long_weight = long_weight;
             pending_short_weight = short_weight;
-            pending_date_key = curr_date_key;
-
-            pending_turnover = curr_turnover;
-            pending_cost = curr_cost;
-            pending_long_turnover = curr_long_turnover;
-            pending_long_cost = curr_long_cost;
-            pending_short_turnover = curr_short_turnover;
-            pending_short_cost = curr_short_cost;
 
             prev_weight = weight;
             prev_long_weight = long_weight;
@@ -922,21 +913,22 @@ impl NativeEngine {
             }
         }
 
-        // Push final day piece
-        d.date_ticks.push(active_dt_ticks);
-        d.n1b.push(d_n1b);
-        d.edge.push(d_edge);
-        d.ret.push(d_ret);
-        d.cost.push(d_cost);
-        d.turnover.push(d_turnover);
-        d.long_edge.push(d_long_edge);
-        d.short_edge.push(d_short_edge);
-        d.long_cost.push(d_long_cost);
-        d.short_cost.push(d_short_cost);
-        d.long_turnover.push(d_long_turnover);
-        d.short_turnover.push(d_short_turnover);
-        d.long_return.push(d_long_return);
-        d.short_return.push(d_short_return);
+        if active_date_key.is_some() {
+            d.date_ticks.push(active_dt_ticks);
+            d.n1b.push(d_n1b);
+            d.edge.push(d_edge);
+            d.ret.push(d_ret);
+            d.cost.push(d_cost);
+            d.turnover.push(d_turnover);
+            d.long_edge.push(d_long_edge);
+            d.short_edge.push(d_short_edge);
+            d.long_cost.push(d_long_cost);
+            d.short_cost.push(d_short_cost);
+            d.long_turnover.push(d_long_turnover);
+            d.short_turnover.push(d_short_turnover);
+            d.long_return.push(d_long_return);
+            d.short_return.push(d_short_return);
+        }
 
         (d, p)
     }
@@ -1254,6 +1246,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn chunk_single_bar_has_no_return_row() {
+        let dt = [DAY1_BASE + 9 * HOUR_MS];
+        let weight = [0.5];
+        let price = [100.0];
+
+        let (d, _p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        assert!(d.date_ticks.is_empty());
+        assert!(d.ret.is_empty());
+    }
+
     // Test A: Single day, single bar transition (simplest case)
     #[test]
     fn chunk_single_day_single_transition() {
@@ -1280,16 +1291,14 @@ mod tests {
         let edge = 0.5 * n1b;
         assert_f64_eq(d.edge[0], edge, "edge");
 
-        // pending_cost at i=1 is still 0 (from init), so ret = edge - 0
-        assert_f64_eq(d.ret[0], edge, "ret");
-
-        // d_cost accumulates pending_cost=0 (from init)
-        assert_f64_eq(d.cost[0], 0.0, "cost");
+        // The close from 0.5 to 0.0 is charged on the current BAR.
+        assert_f64_eq(d.ret[0], edge - 0.5 * FEE_RATE, "ret");
+        assert_f64_eq(d.cost[0], 0.5 * FEE_RATE, "cost");
 
         // long_edge = 0.5 * 0.02 = 0.01
         assert_f64_eq(d.long_edge[0], edge, "long_edge");
         assert_f64_eq(d.short_edge[0], 0.0, "short_edge");
-        assert_f64_eq(d.long_return[0], edge, "long_return");
+        assert_f64_eq(d.long_return[0], edge - 0.5 * FEE_RATE, "long_return");
         assert_f64_eq(d.short_return[0], 0.0, "short_return");
     }
 
@@ -1330,29 +1339,11 @@ mod tests {
         assert_f64_eq(d.n1b[0], n1b_1 + n1b_2 + n1b_3, "n1b");
         assert_f64_eq(d.edge[0], edge_1 + edge_2 + edge_3, "edge");
 
-        // pending_cost at i=1: 0 (init)
-        // pending_cost at i=2: |0.5-0.5|*FEE = 0
-        // pending_cost at i=3: |0.5-0.3|*FEE = 0.2*FEE
-        // d_cost = 0 + 0 + 0.2*FEE
-        let cost_at_2 = 0.0; // |0.5-0.5|*FEE
-        let cost_at_3 = 0.2 * FEE_RATE; // |0.5-0.3|*FEE
-        assert_f64_eq(d.cost[0], 0.0 + cost_at_2 + cost_at_3, "cost");
+        // Each weight change is charged on the BAR where it occurs, including final close.
+        let total_cost = (0.2 + 0.3) * FEE_RATE;
+        assert_f64_eq(d.cost[0], total_cost, "cost");
 
-        // ret: sum of (edge_i - pending_cost_i)
-        // i=1: edge_1 - 0
-        // i=2: edge_2 - 0  (pending_cost from i=1 was |0.5-0.5|*FEE=0... wait)
-        // Actually pending_cost after i=1 = |0.5-0.5|*FEE = 0 (prev_weight at i=1 init is 0.5, weight[1]=0.5)
-        // Wait: prev_weight is initialized to pending_weight = weight[0] = 0.5
-        // At i=1: curr_cost = |prev_weight - weight| = |0.5 - 0.5| * FEE = 0
-        //         ret = edge_1 - pending_cost(=0) = edge_1
-        //         then pending_cost = 0
-        // At i=2: curr_cost = |0.5 - 0.3| * FEE = 0.2*FEE
-        //         ret = edge_2 - pending_cost(=0) = edge_2
-        //         then pending_cost = 0.2*FEE
-        // At i=3: curr_cost = |0.3 - 0.0| * FEE = 0.3*FEE
-        //         ret = edge_3 - pending_cost(=0.2*FEE) = edge_3 - 0.2*FEE
-        //         then pending_cost = 0.3*FEE
-        let ret_total = edge_1 + edge_2 + (edge_3 - 0.2 * FEE_RATE);
+        let ret_total = edge_1 + edge_2 + edge_3 - total_cost;
         assert_f64_eq(d.ret[0], ret_total, "ret");
     }
 
@@ -1379,29 +1370,29 @@ mod tests {
 
         assert_eq!(d.date_ticks.len(), 2, "should produce 2 daily rows");
 
-        // Day boundary flush is triggered when pending_date_key != active_date_key.
-        // The cross-day bar transition (bar1->bar2) is accumulated BEFORE the flush
-        // at bar i=2, so day1 contains transitions i=1 AND i=2.
-        //
-        // i=1: n1b = 102/100 - 1 = 0.02, edge = 0.5 * 0.02
-        // i=2: n1b = 104/102 - 1, edge = 0.3 * (104/102 - 1)
         let n1b_i1 = 102.0 / 100.0 - 1.0;
         let n1b_i2 = 104.0 / 102.0 - 1.0;
         let edge_i1 = 0.5 * n1b_i1;
         let edge_i2 = 0.3 * n1b_i2;
 
-        assert_f64_eq(d.n1b[0], n1b_i1 + n1b_i2, "day1 n1b");
-        assert_f64_eq(d.edge[0], edge_i1 + edge_i2, "day1 edge");
-
-        // Day 2: transition i=3 only
-        // i=3: n1b = 106/104 - 1, edge = 0.3 * (106/104 - 1)
         let n1b_i3 = 106.0 / 104.0 - 1.0;
-        let edge_d2 = 0.3 * n1b_i3;
-        assert_f64_eq(d.n1b[1], n1b_i3, "day2 n1b");
-        assert_f64_eq(d.edge[1], edge_d2, "day2 edge");
+        let edge_i3 = 0.3 * n1b_i3;
 
-        // Verify date_ticks: day1 uses the first bar's dt
-        assert_eq!(d.date_ticks[0], DAY1_BASE + 9 * HOUR_MS);
+        assert_eq!(
+            d.date_ticks,
+            vec![DAY1_BASE + 10 * HOUR_MS, DAY2_BASE + 9 * HOUR_MS]
+        );
+        assert_f64_eq(d.n1b[0], n1b_i1, "day1 n1b");
+        assert_f64_eq(d.edge[0], edge_i1, "day1 edge");
+        assert_f64_eq(d.turnover[0], 0.2, "day1 turnover");
+        assert_f64_eq(d.cost[0], 0.2 * FEE_RATE, "day1 cost");
+        assert_f64_eq(d.ret[0], edge_i1 - 0.2 * FEE_RATE, "day1 return");
+
+        assert_f64_eq(d.n1b[1], n1b_i2 + n1b_i3, "day2 n1b");
+        assert_f64_eq(d.edge[1], edge_i2 + edge_i3, "day2 edge");
+        assert_f64_eq(d.turnover[1], 0.3, "day2 turnover");
+        assert_f64_eq(d.cost[1], 0.3 * FEE_RATE, "day2 cost");
+        assert_f64_eq(d.ret[1], edge_i2 + edge_i3 - 0.3 * FEE_RATE, "day2 return");
     }
 
     // Test D: Short position basic
@@ -1476,6 +1467,81 @@ mod tests {
         assert_f64_eq(d.long_edge[0], 0.5 * n1b_1, "long_edge");
         assert_f64_eq(d.short_edge[0], short_edge_2, "short_edge");
         assert_f64_eq(d.edge[0], 0.5 * n1b_1 + edge_2, "total edge");
+    }
+
+    #[test]
+    fn chunk_initial_position_is_free_and_final_close_is_charged() {
+        let dt = [
+            DAY1_BASE + 9 * HOUR_MS,
+            DAY1_BASE + 10 * HOUR_MS,
+            DAY1_BASE + 11 * HOUR_MS,
+        ];
+        let weight = [0.5, 0.5, 0.0];
+        let price = [100.0, 101.0, 102.0];
+
+        let (d, _p) = NativeEngine::process_symbol_chunk(
+            &dt,
+            &weight,
+            &price,
+            DIGITS_POW10,
+            FEE_RATE,
+            TimeUnit::Milliseconds,
+        );
+
+        let edge = 0.5 * (101.0 / 100.0 - 1.0) + 0.5 * (102.0 / 101.0 - 1.0);
+        assert_f64_eq(d.turnover[0], 0.5, "only the final close turns over");
+        assert_f64_eq(d.cost[0], 0.5 * FEE_RATE, "only the final close is charged");
+        assert_f64_eq(
+            d.ret[0],
+            edge - 0.5 * FEE_RATE,
+            "final close cost is booked now",
+        );
+        assert_f64_eq(d.long_turnover[0], d.turnover[0], "long turnover");
+        assert_f64_eq(d.long_cost[0], d.cost[0], "long cost");
+    }
+
+    #[test]
+    fn chunk_direction_flips_split_turnover_cost_and_return() {
+        for (start, end, label) in [(0.5, -0.5, "long to short"), (-0.5, 0.5, "short to long")] {
+            let dt = [DAY1_BASE + 9 * HOUR_MS, DAY1_BASE + 10 * HOUR_MS];
+            let weight = [start, end];
+            let price = [100.0, 102.0];
+            let (d, _p) = NativeEngine::process_symbol_chunk(
+                &dt,
+                &weight,
+                &price,
+                DIGITS_POW10,
+                FEE_RATE,
+                TimeUnit::Milliseconds,
+            );
+
+            assert_f64_eq(d.turnover[0], 1.0, label);
+            assert_f64_eq(d.long_turnover[0], 0.5, "long turnover");
+            assert_f64_eq(d.short_turnover[0], 0.5, "short turnover");
+            assert_f64_eq(d.cost[0], FEE_RATE, "total cost");
+            assert_f64_eq(d.long_cost[0], 0.5 * FEE_RATE, "long cost");
+            assert_f64_eq(d.short_cost[0], 0.5 * FEE_RATE, "short cost");
+            assert_f64_eq(
+                d.long_edge[0] + d.short_edge[0],
+                d.edge[0],
+                "edge conservation",
+            );
+            assert_f64_eq(
+                d.long_turnover[0] + d.short_turnover[0],
+                d.turnover[0],
+                "turnover conservation",
+            );
+            assert_f64_eq(
+                d.long_cost[0] + d.short_cost[0],
+                d.cost[0],
+                "cost conservation",
+            );
+            assert_f64_eq(
+                d.long_return[0] + d.short_return[0],
+                d.ret[0],
+                "return conservation",
+            );
+        }
     }
 
     // ===================================================================

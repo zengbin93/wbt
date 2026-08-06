@@ -535,8 +535,9 @@ class TestSegmentStats:
         pairs = bt.pairs.copy()
         dailys["date_int"] = pd.to_datetime(dailys["date"]).dt.strftime("%Y%m%d").astype(int)
 
-        actual_sdt = sdt if sdt is not None else int(dailys["date_int"].min())
-        actual_edt = edt if edt is not None else int(dailys["date_int"].max())
+        stats = bt.stats
+        actual_sdt = sdt if sdt is not None else int(pd.Timestamp(stats["开始日期"]).strftime("%Y%m%d"))
+        actual_edt = edt if edt is not None else int(pd.Timestamp(stats["结束日期"]).strftime("%Y%m%d"))
 
         # Filter dailys by date
         mask = (dailys["date_int"] >= actual_sdt) & (dailys["date_int"] <= actual_edt)

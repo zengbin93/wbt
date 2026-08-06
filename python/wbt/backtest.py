@@ -156,7 +156,6 @@ class WeightBacktest:
                 raise ValueError(f"data 中存在空值，请先处理; 具体数据：\n{dfw[dfw.isnull().T.any().T]}")
 
             dfw = dfw[["dt", "symbol", "weight", "price"]].copy()
-            dfw["weight"] = dfw["weight"].astype("float").round(digits)
 
             self.dfw = dfw.copy()
             self.symbols = list(dfw["symbol"].unique().tolist())
@@ -260,6 +259,9 @@ class WeightBacktest:
     @property
     def dailys(self) -> pd.DataFrame:
         """品种每日的交易信息
+
+        每个 symbol 按时间升序处理。首根 BAR 没有前一根可比较，因此不产生收益行或手续费；
+        后续 BAR 的价格收益和目标仓位变动产生的费用均归属该 BAR 所在交易日。
 
         columns = ['symbol', 'date', 'n1b', 'edge', 'return', 'cost', 'turnover',
                    'long_edge', 'short_edge', 'long_cost', 'short_cost',
