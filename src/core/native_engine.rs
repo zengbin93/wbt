@@ -673,9 +673,9 @@ impl NativeEngine {
         }
 
         let daily_totals = DailyTotals {
-            start_date_key: wt_dates
+            start_date_key: out_date_keys
                 .first()
-                .or(out_date_keys.first())
+                .or(wt_dates.first())
                 .copied()
                 .unwrap_or(19700101),
             end_date_key: wt_dates

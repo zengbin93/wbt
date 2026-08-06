@@ -1113,4 +1113,32 @@ mod tests {
         assert_eq!(report.stats.start_date.to_string(), "2024-01-02");
         assert_eq!(report.stats.end_date.to_string(), "2024-01-02");
     }
+
+    #[test]
+    fn stats_start_date_matches_first_daily_return_when_returns_exist() {
+        let df = df! {
+            "dt" => &["2024-01-02 09:30:00", "2024-01-03 09:30:00"],
+            "symbol" => &["A", "A"],
+            "weight" => &[0.5_f64, 0.5_f64],
+            "price" => &[100.0_f64, 101.0_f64]
+        }
+        .unwrap();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0002)).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+
+        let report = wb.report.as_ref().unwrap();
+        let first_daily_date = report
+            .daily_return
+            .column("date")
+            .unwrap()
+            .as_materialized_series()
+            .date()
+            .unwrap()
+            .as_date_iter()
+            .next()
+            .flatten()
+            .expect("daily_return contains a first date");
+        assert_eq!(report.stats.start_date, first_daily_date);
+        assert_eq!(first_daily_date.to_string(), "2024-01-03");
+    }
 }
