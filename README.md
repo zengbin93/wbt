@@ -1,3 +1,5 @@
+
+
 # wbt
 
 **面向量化策略的持仓权重回测引擎** —— Rust 提供高性能、可复现的核心计算，Python 提供研究友好的接入接口。
@@ -101,7 +103,7 @@ print(wb.short_stats)
 
 ```toml
 [dependencies]
-wbt = "0.4"
+wbt = "0.7.1"
 ```
 
 ```rust
@@ -153,7 +155,7 @@ cargo test
 
 ```toml
 [dependencies]
-wbt = "0.1"
+wbt = "0.7.1"
 ```
 
 ## 输入数据契约
