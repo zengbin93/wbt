@@ -28,11 +28,13 @@ features = ["python"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["tests/manual"]
 
 [tool.ruff]
 target-version = "py310"
 line-length = 120
 fix = true
+exclude = ["tests/manual"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RET", "N"]
@@ -57,6 +59,7 @@ reportCallIssue = false
 reportIndexIssue = false
 reportOperatorIssue = false
 include = ["wbt", "tests"]
+exclude = ["tests/manual"]
 
 [dependency-groups]
 dev = [
