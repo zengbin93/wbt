@@ -32,8 +32,8 @@ jobs:
             target: aarch64
             interpreter: ""
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - uses: PyO3/maturin-action@v1
@@ -43,7 +43,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           manylinux: ${{ matrix.platform.os == 'ubuntu-latest' && '2_28' || 'auto' }}
           working-directory: python
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.platform.os }}-${{ matrix.platform.target }}
           path: python/dist/*.whl
@@ -52,8 +52,8 @@ jobs:
     name: Build sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install maturin
@@ -62,7 +62,7 @@ jobs:
       - name: Build sdist
         working-directory: python
         run: python -m maturin sdist --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: python/dist/*.tar.gz
@@ -75,12 +75,12 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: wheels-*
           merge-multiple: true
           path: dist/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: sdist
           path: dist/
