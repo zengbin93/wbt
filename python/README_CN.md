@@ -192,7 +192,7 @@ from wbt.plotting import (
     plot_segment_comparison,  # 近1年 vs 全样本 指标对比表
     plot_stats_comparison,  # 多空/多头/空头/基准/超额 指标对比表
     plot_symbol_returns,  # 品种累计收益
-    plot_verdict,  # is_good_strategy 判定 + 年度指标
+    plot_verdict,  # history（逐年）+ recent（近期窗口）判定
     plot_yearly_returns,  # 年度绝对/超额收益（分组柱状图）
 )
 ```

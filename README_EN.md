@@ -215,7 +215,7 @@ plot_key_trades(result, to_html=True)
 result.to_dict(full=True)          # JSON-safe, for serving the review page over HTTP
 ```
 
-- `BacktestResult` fields: `dates` / `year_starts` / `curves` (raw curves keyed 多空/多头/空头/基准/超额) / `curves_voladj` (volatility-normalized and lazy, additionally including `多头超额 = norm(多头) - norm(基准)` and `空头超额 = norm(空头) + norm(基准)`) / `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`, plus review fields `drawdowns` / `key_trades` / `verdict` (all lazy `cached_property`).
+- `BacktestResult` fields: `dates` / `year_starts` / `curves` (raw curves keyed 多空/多头/空头/基准/超额) / `curves_voladj` (volatility-normalized and lazy, additionally including `多头超额 = norm(多头) - norm(基准)` and `空头超额 = norm(空头) + norm(基准)`) / `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`, plus review fields `drawdowns` / `key_trades` / `verdict` (history, yearly) / `verdict_recent` (recent, trailing `recent_days`, default 252 trading days; actual window and metrics are `recent_start_date`, `recent_end_date`, `recent_actual_days`, `recent_abs_return`, `recent_alpha_return`, and `recent_alpha_max_drawdown`; all lazy `cached_property`).
 - `wbt.plotting` (all single-purpose figures, no subplots): `plot_cumulative_returns` (`voladj=True` for vol-normalized), `plot_drawdown`, `plot_daily_return_dist`, `plot_monthly_heatmap`, `plot_symbol_returns`, `plot_yearly_returns`, `plot_rolling_metrics`, `plot_pairs_pnl_dist`, `plot_pairs_hold_dist`, `plot_colored_table`, `plot_stats_comparison`, `plot_segment_comparison`, `plot_key_trades`, `plot_drawdowns_table`, `plot_verdict`.
 - `wbt.report`: `generate_backtest_report`, `HtmlReportBuilder`, `get_performance_metrics_cards`.
 
@@ -234,6 +234,7 @@ wbt.assert_payload_equal(json_payload, msgpack_payload)  # values and types matc
 ```
 
 - JSON has no extra dependency; MessagePack requires `msgpack`: `pip install wbt[msgpack]`.
+- With `full=True`, payloads include both `verdict` (history, yearly) and `verdict_recent` (recent, trailing `recent_days`, default 252 trading days); its actual window, returns, and drawdown are `recent_start_date`, `recent_end_date`, `recent_actual_days`, `recent_abs_return`, `recent_alpha_return`, and `recent_alpha_max_drawdown`.
 - Non-finite floats are converted to `null` by the shared normalizer; invalid formats, versions, or JSON-value domains are rejected.
 - On the Rust side, `wbt::core::backtest_result_wire::decode_wire` reads MessagePack bytes and returns the payload.
 - **Scope**: both formats exchange the full nested result object; they do **not** replace Arrow IPC / Parquet for columnar hot tables such as return curves, rolling, drawdowns, or key_trades.

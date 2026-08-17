@@ -28,6 +28,16 @@ _YEARLY_COLS: list[tuple[str, str]] = [
     ("is_complete_year", "完整年"),
     ("year_passed", "达标"),
 ]
+_RECENT_KEYS: list[tuple[str, str]] = [
+    ("recent_start_date", "窗口开始"),
+    ("recent_end_date", "窗口结束"),
+    ("recent_actual_days", "实际交易日"),
+    ("recent_abs_return", "近期绝对收益"),
+    ("recent_alpha_return", "近期超额收益"),
+    ("recent_alpha_max_drawdown", "近期超额回撤"),
+    ("history_alpha_max_drawdown_excl_recent", "历史超额回撤(剔除近期)"),
+    ("history_window_empty", "历史窗口不足"),
+]
 
 
 def _lookup_metric(side_stats: dict, metric: str) -> object:
@@ -258,11 +268,17 @@ def plot_verdict(
     title: str | None = "策略判定",
     to_html: bool = False,
 ) -> go.Figure | str:
-    """is_good_strategy 判定 + 年度指标表（审核页面）。"""
-    v = result.verdict
+    """绘制 history（逐年）与 recent（尾部 ``recent_days``）策略判定。
+
+    history 表逐年展示收益、超额收益和回撤；recent 卡展示实际窗口、收益、回撤，
+    以及剔除该窗口后的历史超额回撤。recent 采用 ``is_good_strategy`` 默认的
+    ``recent_days=252``，实际天数见卡内 ``实际交易日``。
+    """
+    history = result.verdict
+    recent = result.verdict_recent
     fig = go.Figure()
 
-    yearly = v.get("yearly_metrics") or []
+    yearly = history.get("yearly_metrics") or []
     if yearly and isinstance(yearly, list) and isinstance(yearly[0], dict):
         present = [(ek, zh) for ek, zh in _YEARLY_COLS if ek in yearly[0]]
         header_zh = [zh for _, zh in present]
@@ -274,13 +290,17 @@ def plot_verdict(
             )
         )
 
-    is_good = bool(v.get("is_good", False))
-    reason = str(v.get("reason", "") or "")
-    badge = "✅ 可用" if is_good else "❌ 不可用"
-    verdict_text = f"<b>{badge}</b>"
-    if reason:
-        verdict_text += "<br>" + _wrap_text(reason, 90)
-    # 左上对齐、向上生长，避开右上角的 plotly 工具栏；顶部留够边距容纳折行
+    recent_details = "<br>".join(
+        f"{label}：{fmt_value(key, recent.get(key))}" for key, label in _RECENT_KEYS if key in recent
+    )
+    verdict_lines = [
+        f"<b>history（逐年）：{'✅ 可用' if history.get('is_good', False) else '❌ 不可用'}</b>",
+        _wrap_text(str(history.get("reason", "") or ""), 90) if history.get("reason") else "",
+        f"<b>recent（近期窗口）：{'✅ 可用' if recent.get('is_good', False) else '❌ 不可用'}</b>",
+        recent_details,
+        _wrap_text(str(recent.get("reason", "") or ""), 90) if recent.get("reason") else "",
+    ]
+    verdict_text = "<br>".join(line for line in verdict_lines if line)
     reason_lines = verdict_text.count("<br>") + 1
     fig.add_annotation(
         text=verdict_text,
@@ -292,9 +312,9 @@ def plot_verdict(
         yanchor="bottom",
         align="left",
         showarrow=False,
-        font={"size": 13, "color": "#2ecc71" if is_good else "#e74c3c"},
+        font={"size": 13},
     )
 
-    apply_default_layout(fig, title=title, height=max(320, 28 * (len(yearly) + 2) + 120))
+    apply_default_layout(fig, title=title, height=max(380, 28 * (len(yearly) + reason_lines) + 120))
     fig.update_layout(margin={"l": 40, "r": 40, "t": 40 + 18 * reason_lines, "b": 40})
     return figure_to_html(fig) if to_html else fig

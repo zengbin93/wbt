@@ -259,3 +259,10 @@ class TestPlotVerdict:
             header = list(tables[0].header.values)
             assert header[0] == "年份"
             assert "abs_return" not in header and "绝对收益" in header
+
+    def test_displays_recent_verdict_details(self, result):
+        fig = plot_verdict(result)
+        text = " ".join(str(annotation.text or "") for annotation in fig.layout.annotations)
+        assert "history（逐年）" in text
+        assert "recent（近期窗口）" in text
+        assert "实际交易日" in text
