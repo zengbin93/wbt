@@ -200,7 +200,8 @@ def test_to_dict_json_safe(result: BacktestResult) -> None:
     d_full = result.to_dict(full=True)
     s = json.dumps(d_full)  # 全字段也必须 JSON 安全
     assert "key_trades" in d_full
-    assert "verdict" in d_full
+    assert d_full["verdict"] == result.verdict
+    assert d_full["verdict_recent"] == result.verdict_recent
     assert "drawdowns" in d_full
     assert "curves_voladj" in d_full
     assert isinstance(s, str)

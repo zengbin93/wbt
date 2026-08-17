@@ -452,6 +452,15 @@ class BacktestResult:
 
     # ---------------------------------------------------------------- to_dict
     def to_dict(self, *, full: bool = False) -> dict:
+        """返回 JSON 安全字典。
+
+        ``full=True`` 时会包含审核字段：``verdict`` 是 history（逐年）判定，
+        ``verdict_recent`` 是 recent（尾部 ``recent_days``，默认 252 个交易日）判定；
+        recent 的实际窗口、收益和回撤字段以 ``verdict_recent`` 内的
+        ``recent_start_date``、``recent_end_date``、``recent_actual_days``、
+        ``recent_abs_return``、``recent_alpha_return`` 和
+        ``recent_alpha_max_drawdown`` 为准。``full=False`` 不计算也不输出这两项。
+        """
         out: dict[str, Any] = {
             "start_date": self.start_date,
             "end_date": self.end_date,
@@ -493,6 +502,7 @@ class BacktestResult:
                 "worst": {str(y): _json_safe(rows) for y, rows in self.key_trades.worst.items()},
             }
             out["verdict"] = _json_safe(self.verdict)
+            out["verdict_recent"] = _json_safe(self.verdict_recent)
             out["yearly_returns"] = {
                 "years": self.yearly_returns.years,
                 "abs_returns": _json_safe(self.yearly_returns.abs_returns),
@@ -513,7 +523,8 @@ class BacktestResult:
         """序列化为 MessagePack 字节（完整嵌套结果对象的二进制交换格式）。
 
         封装格式见 ``wbt.serialization``：外层带 ``format`` / ``format_version``，
-        payload 为 ``to_dict(full=full)``。需要 ``msgpack`` 依赖（``pip install wbt[msgpack]``）。
+        payload 为 ``to_dict(full=full)``；``full=True`` 同时保留 history 的 ``verdict``
+        与 recent 的 ``verdict_recent``。需要 ``msgpack`` 依赖（``pip install wbt[msgpack]``）。
         """
         from wbt.serialization import to_msgpack
 

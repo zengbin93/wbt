@@ -193,7 +193,7 @@ from wbt.plotting import (
     plot_segment_comparison,  # recent-1y vs full-sample metric table
     plot_stats_comparison,  # 多空/多头/空头/基准/超额 metric comparison table
     plot_symbol_returns,  # per-symbol cumulative returns
-    plot_verdict,  # is_good_strategy verdict + yearly metrics
+    plot_verdict,  # history (yearly) + recent-window verdict
     plot_yearly_returns,  # yearly absolute vs excess returns (grouped bars)
 )
 ```

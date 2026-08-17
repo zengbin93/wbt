@@ -215,7 +215,7 @@ plot_key_trades(result, to_html=True)
 result.to_dict(full=True)          # JSON 安全，供审核页面走 HTTP
 ```
 
-- `BacktestResult` 字段：`dates` / `year_starts` / `curves`（原始曲线，键 多空/多头/空头/基准/超额）/ `curves_voladj`（波动率归一，按需；额外包含 `多头超额 = norm(多头) - norm(基准)`、`空头超额 = norm(空头) + norm(基准)`）/ `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`，以及审核字段 `drawdowns` / `key_trades` / `verdict`（均为按需 `cached_property`）。
+- `BacktestResult` 字段：`dates` / `year_starts` / `curves`（原始曲线，键 多空/多头/空头/基准/超额）/ `curves_voladj`（波动率归一，按需；额外包含 `多头超额 = norm(多头) - norm(基准)`、`空头超额 = norm(空头) + norm(基准)`）/ `return_dist` / `monthly` / `symbol_returns` / `pairs_dist` / `stats` / `stats_by_side`，以及审核字段 `drawdowns` / `key_trades` / `verdict`（history，逐年）/ `verdict_recent`（recent，尾部 `recent_days`，默认 252 个交易日；实际窗口与指标见 `recent_start_date`、`recent_end_date`、`recent_actual_days`、`recent_abs_return`、`recent_alpha_return`、`recent_alpha_max_drawdown`，均为按需 `cached_property`）。
 - `wbt.plotting`（均为单一职责单图，无组合图）：`plot_cumulative_returns`（`voladj=True` 为波动率归一）/ `plot_drawdown` / `plot_daily_return_dist` / `plot_monthly_heatmap` / `plot_symbol_returns` / `plot_yearly_returns` / `plot_rolling_metrics` / `plot_pairs_pnl_dist` / `plot_pairs_hold_dist` / `plot_colored_table` / `plot_stats_comparison` / `plot_segment_comparison` / `plot_key_trades` / `plot_drawdowns_table` / `plot_verdict`。
 - `wbt.report`：`generate_backtest_report` / `HtmlReportBuilder` / `get_performance_metrics_cards`。
 
@@ -234,6 +234,7 @@ wbt.assert_payload_equal(json_payload, msgpack_payload)  # 值与类型递归一
 ```
 
 - JSON 不需要额外依赖；MessagePack 需要 `msgpack`：`pip install wbt[msgpack]`。
+- `full=True` 的 payload 同时含 `verdict`（history，逐年）和 `verdict_recent`（recent，尾部 `recent_days`，默认 252 个交易日）；recent 的实际窗口、收益和回撤字段分别为 `recent_start_date`、`recent_end_date`、`recent_actual_days`、`recent_abs_return`、`recent_alpha_return`、`recent_alpha_max_drawdown`。
 - 非有限浮点会在共享规范化入口转为 `null`；格式、版本或 JSON 值域不符会被拒绝。
 - Rust 侧 `wbt::core::backtest_result_wire::decode_wire` 可读取 MessagePack 字节并返回 payload。
 - **定位**：两种格式都用于完整嵌套结果对象的交换，**不替代** Arrow IPC / Parquet 处理收益曲线、rolling、drawdowns、key_trades 等列式表格热数据。

@@ -99,7 +99,9 @@ def test_full_flag_controls_payload(result: BacktestResult) -> None:
     compact = msgpack.unpackb(result.to_msgpack(full=False), raw=False)["payload"]
     full = msgpack.unpackb(result.to_msgpack(full=True), raw=False)["payload"]
     assert "drawdowns" not in compact
+    assert "verdict_recent" not in compact
     assert "drawdowns" in full
+    assert full["verdict_recent"] == result.verdict_recent
 
 
 def test_top_level_helpers_exposed(result: BacktestResult) -> None:
