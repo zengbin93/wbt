@@ -37,6 +37,12 @@ def test_to_result_returns_dto(result: BacktestResult) -> None:
     assert result.yearly_days == 252
 
 
+@pytest.mark.parametrize("target_vol", [0.0, -0.20, float("nan"), float("inf"), float("-inf")])
+def test_to_result_rejects_invalid_target_vol(wb: WeightBacktest, target_vol: float) -> None:
+    with pytest.raises(ValueError, match="target_vol must be positive and finite"):
+        wb.to_result(target_vol=target_vol)
+
+
 # ---------------------------------------------------------------------------
 # B2 字段形状一致
 # ---------------------------------------------------------------------------
