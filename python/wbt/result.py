@@ -218,6 +218,9 @@ class BacktestResult:
     # ------------------------------------------------------------------ build
     @classmethod
     def from_backtest(cls, wb: WeightBacktest, target_vol: float = 0.20) -> BacktestResult:
+        if not math.isfinite(target_vol) or target_vol <= 0:
+            raise ValueError(f"target_vol must be positive and finite, got {target_vol}")
+
         dr = wb.daily_return.copy()
         dr["date"] = pd.to_datetime(dr["date"])
         dr = dr.sort_values("date").reset_index(drop=True)
