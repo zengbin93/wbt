@@ -133,7 +133,8 @@ def test_generate_backtest_report_writes_valid_html(sample_dfw: pd.DataFrame, tm
     assert "策略审核" in html
     assert "稳健性分析" in html
     assert "多空对比" in html
-    assert json.dumps("空头超额") in html
+    # plotly 序列化图内中文时，orjson 环境输出原字符、stdlib json 输出 \u 转义，两种形式都接受
+    assert "空头超额" in html or json.dumps("空头超额") in html
     assert "交易分析" in html
     assert "wbt 权重回测引擎" in html
 
