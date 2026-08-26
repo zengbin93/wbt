@@ -72,6 +72,7 @@ fn build_stats_dict(
     date_keys: &[i32],
     returns: &[f64],
     pairs_soa: &PairsSoA,
+    digits: i64,
     trade_dir: TradeDir,
     yearly_days: usize,
     long_rate: f64,
@@ -79,12 +80,12 @@ fn build_stats_dict(
     symbols_count: usize,
 ) -> Result<HashMap<String, Value>, WbtError> {
     let dp = daily_performance(returns, Some(yearly_days))?;
-    let ep = evaluate_pairs_soa(pairs_soa, trade_dir)?;
+    let ep = evaluate_pairs_soa(pairs_soa, trade_dir, digits)?;
     let pwr = period_win_rates(date_keys, returns, yearly_days as i64);
 
     let n_dates = date_keys.len();
     let annual_trade_count = if n_dates > 0 {
-        (ep.trade_count as f64 / (n_dates as f64 / yearly_days as f64)).round_to_2_digit()
+        (ep.trade_count / (n_dates as f64 / yearly_days as f64)).round_to_2_digit()
     } else {
         0.0
     };
@@ -236,7 +237,7 @@ impl WeightBacktest {
 
         let dp = daily_performance(&daily_totals.totals, Some(yearly_days))?;
 
-        let ep = evaluate_pairs_soa(&pairs_soa, TradeDir::LongShort)?;
+        let ep = evaluate_pairs_soa(&pairs_soa, TradeDir::LongShort, self.digits)?;
 
         let pwr = period_win_rates(
             &daily_totals.date_keys,
@@ -256,7 +257,7 @@ impl WeightBacktest {
 
         let n_dates = daily_totals.date_keys.len();
         let annual_trade_count = if n_dates > 0 {
-            (ep.trade_count as f64 / (n_dates as f64 / yearly_days as f64)).round_to_2_digit()
+            (ep.trade_count / (n_dates as f64 / yearly_days as f64)).round_to_2_digit()
         } else {
             0.0
         };
@@ -285,6 +286,7 @@ impl WeightBacktest {
             &daily_totals.date_keys,
             &long_returns,
             &pairs_soa,
+            self.digits,
             TradeDir::Long,
             yearly_days,
             long_rate,
@@ -295,6 +297,7 @@ impl WeightBacktest {
             &daily_totals.date_keys,
             &short_returns,
             &pairs_soa,
+            self.digits,
             TradeDir::Short,
             yearly_days,
             0.0,
@@ -459,6 +462,7 @@ impl WeightBacktest {
             &filtered_date_keys,
             &filtered_returns,
             &filtered_pairs,
+            self.digits,
             trade_dir,
             self.yearly_days,
             long_rate,

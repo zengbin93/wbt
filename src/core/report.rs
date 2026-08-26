@@ -48,7 +48,7 @@ pub struct StatsReport {
     /// 品种数量
     pub symbols_count: usize,
     /// 交易次数
-    pub trade_count: usize,
+    pub trade_count: f64,
     /// 年化交易次数
     pub annual_trade_count: f64,
 }
@@ -139,7 +139,7 @@ mod tests {
             long_rate: 0.5,
             short_rate: 0.5,
             symbols_count: 3,
-            trade_count: 10,
+            trade_count: 10.0,
             annual_trade_count: 120.0,
         }
     }
@@ -154,7 +154,7 @@ mod tests {
         assert_eq!(obj["结束日期"], "2024-12-31");
         assert_eq!(obj["品种数量"], 3);
         assert_eq!(obj["多头占比"], 0.5);
-        assert_eq!(obj["交易次数"], 10);
+        assert_eq!(obj["交易次数"], 10.0);
         assert_eq!(obj["年化交易次数"], 120.0);
         assert_eq!(obj["周胜率"], 0.0);
     }
