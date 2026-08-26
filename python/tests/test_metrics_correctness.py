@@ -144,6 +144,13 @@ def bt(dfw: pd.DataFrame) -> WeightBacktest:
     return WeightBacktest(dfw, digits=DIGITS, fee_rate=FEE_RATE, n_jobs=1, weight_type="ts", yearly_days=YEARLY_DAYS)
 
 
+def _trade_count_from_pairs(bt: WeightBacktest, pairs: pd.DataFrame) -> float:
+    """按权重精度还原 pairs 的最小单位成交量。"""
+    if "持仓数量" in pairs.columns:
+        return float(pairs["持仓数量"].sum() / 10**bt.digits)
+    return float(len(pairs))
+
+
 # ============================================================================
 # Helper: Python reference implementation of daily_performance metrics
 # ============================================================================
@@ -321,16 +328,8 @@ class TestTradeMetrics:
     """Validate trade-related metrics against pairs data."""
 
     def test_trade_count(self, bt: WeightBacktest) -> None:
-        """交易次数 should equal the total number of trade units in pairs."""
-        stats = bt.stats
-        pairs = bt.pairs
-        if len(pairs) > 0 and "持仓数量" in pairs.columns:
-            expected = int(pairs["持仓数量"].sum())
-        elif len(pairs) > 0:
-            expected = len(pairs)
-        else:
-            expected = 0
-        assert stats["交易次数"] == expected
+        """交易次数应按 digits 将 pairs 的最小权重单位还原。"""
+        assert bt.stats["交易次数"] == _trade_count_from_pairs(bt, bt.pairs)
 
     def test_annual_trade_count(self, bt: WeightBacktest) -> None:
         """年化交易次数 = 交易次数 / (trading_days / yearly_days)."""
@@ -455,6 +454,28 @@ class TestLongShortRates:
 class TestLongShortStats:
     """Verify long_stats and short_stats use correct return columns."""
 
+    def test_trade_count_restores_digits_for_all_stat_paths(self, dfw: pd.DataFrame) -> None:
+        """同一权重路径在不同 digits 下应给出相同的交易次数与胜率。"""
+        low_precision = WeightBacktest(
+            dfw, digits=2, fee_rate=FEE_RATE, n_jobs=1, weight_type="ts", yearly_days=YEARLY_DAYS
+        )
+        high_precision = WeightBacktest(
+            dfw, digits=4, fee_rate=FEE_RATE, n_jobs=1, weight_type="ts", yearly_days=YEARLY_DAYS
+        )
+
+        for kind, stats_name in (("多空", "stats"), ("多头", "long_stats"), ("空头", "short_stats")):
+            low_stats = getattr(low_precision, stats_name)
+            high_stats = getattr(high_precision, stats_name)
+            assert low_stats["交易次数"] == high_stats["交易次数"]
+            assert low_stats["年化交易次数"] == high_stats["年化交易次数"]
+            assert low_stats["交易胜率"] == high_stats["交易胜率"]
+
+            low_segment = low_precision.segment_stats(kind=kind)
+            high_segment = high_precision.segment_stats(kind=kind)
+            assert low_segment["交易次数"] == high_segment["交易次数"]
+            assert low_segment["年化交易次数"] == high_segment["年化交易次数"]
+            assert low_segment["交易胜率"] == high_segment["交易胜率"]
+
     def test_long_stats_absolute_return(self, bt: WeightBacktest) -> None:
         """long_stats.绝对收益 should equal cumsum of long daily returns."""
         long_stats = bt.long_stats
@@ -564,12 +585,8 @@ class TestSegmentStats:
             elif kind == "空头":
                 p_mask &= pairs["交易方向"] == "空头"
             fp = pairs[p_mask]
-            if "持仓数量" in fp.columns:
-                trade_count = int(fp["持仓数量"].sum())
-                win_count = int(fp.loc[fp["盈亏比例"] >= 0, "持仓数量"].sum())
-            else:
-                trade_count = len(fp)
-                win_count = int((fp["盈亏比例"] >= 0).sum())
+            trade_count = _trade_count_from_pairs(bt, fp)
+            win_count = _trade_count_from_pairs(bt, fp[fp["盈亏比例"] >= 0])
         else:
             trade_count = 0
             win_count = 0

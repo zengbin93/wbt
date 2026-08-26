@@ -9,19 +9,19 @@ pub struct EvaluatePairs {
     /// 交易方向
     pub trade_direction: TradeDir,
     /// 交易次数
-    pub trade_count: usize,
+    pub trade_count: f64,
     /// 累计收益
     pub total_profit: f64,
     /// 单笔收益
     pub single_trade_profit: f64,
     /// 盈利次数
-    pub win_trade_count: usize,
+    pub win_trade_count: f64,
     /// 累计盈利
     pub sum_win: f64,
     /// 单笔盈利
     pub win_one: f64,
     /// 亏损次数
-    pub loss_trade_count: usize,
+    pub loss_trade_count: f64,
     /// 累计亏损
     pub sum_loss: f64,
     /// 单笔亏损
@@ -42,13 +42,13 @@ impl Default for EvaluatePairs {
     fn default() -> EvaluatePairs {
         EvaluatePairs {
             trade_direction: TradeDir::LongShort,
-            trade_count: 0,
+            trade_count: 0.0,
             total_profit: 0.0,
             single_trade_profit: 0.0,
-            win_trade_count: 0,
+            win_trade_count: 0.0,
             sum_win: 0.0,
             win_one: 0.0,
-            loss_trade_count: 0,
+            loss_trade_count: 0.0,
             sum_loss: 0.0,
             loss_one: 0.0,
             win_rate: 0.0,
@@ -115,8 +115,10 @@ fn compute_break_even_point(profit_count_pairs: &mut [(f64, f64)], trade_count: 
 pub fn evaluate_pairs_soa(
     pairs: &PairsSoA,
     trade_dir: TradeDir,
+    digits: i64,
 ) -> Result<EvaluatePairs, WbtError> {
     let n = pairs.profit_bps.len();
+    let volume_scale = 10_f64.powi(digits as i32);
     if n == 0 {
         return Ok(EvaluatePairs::default());
     }
@@ -132,6 +134,9 @@ pub fn evaluate_pairs_soa(
     let mut sum_win = 0.0f64;
     let mut loss_trade_count = 0.0f64;
     let mut sum_loss = 0.0f64;
+    let mut raw_trade_count = 0.0f64;
+    let mut raw_win_trade_count = 0.0f64;
+    let mut raw_loss_trade_count = 0.0f64;
     let mut sum_hold_bars = 0.0f64;
     let mut profit_count_pairs: Vec<(f64, f64)> = Vec::with_capacity(n);
 
@@ -144,43 +149,47 @@ pub fn evaluate_pairs_soa(
         }
 
         let p = pairs.profit_bps[i];
-        let c = pairs.counts[i] as f64;
-        if c <= 0.0 {
+        let raw_count = pairs.counts[i] as f64;
+        if raw_count <= 0.0 {
             continue;
         }
+        let count = raw_count / volume_scale;
 
-        trade_count += c;
+        trade_count += count;
+        raw_trade_count += raw_count;
 
         if p >= 0.0 {
-            win_trade_count += c;
-            sum_win += p * c;
+            win_trade_count += count;
+            raw_win_trade_count += raw_count;
+            sum_win += p * raw_count;
         } else {
-            loss_trade_count += c;
-            sum_loss += p * c;
+            loss_trade_count += count;
+            raw_loss_trade_count += raw_count;
+            sum_loss += p * raw_count;
         }
 
-        sum_hold_bars += (pairs.hold_bars[i] as f64) * c;
-        profit_count_pairs.push((p, c));
+        sum_hold_bars += (pairs.hold_bars[i] as f64) * raw_count;
+        profit_count_pairs.push((p, raw_count));
     }
 
     if trade_count <= 0.0 {
         return Ok(EvaluatePairs::default());
     }
 
-    let position_k_days = sum_hold_bars / trade_count;
-    let win_one = if win_trade_count > 0.0 {
-        sum_win / win_trade_count
+    let position_k_days = sum_hold_bars / raw_trade_count;
+    let win_one = if raw_win_trade_count > 0.0 {
+        sum_win / raw_win_trade_count
     } else {
         0.0
     };
-    let loss_one = if loss_trade_count > 0.0 {
-        sum_loss / loss_trade_count
+    let loss_one = if raw_loss_trade_count > 0.0 {
+        sum_loss / raw_loss_trade_count
     } else {
         0.0
     };
     let win_rate = win_trade_count / trade_count;
 
-    let break_even_point = compute_break_even_point(&mut profit_count_pairs, trade_count);
+    let break_even_point = compute_break_even_point(&mut profit_count_pairs, raw_trade_count);
 
     let total_profit_loss_ratio = if sum_loss == 0.0 {
         0.0
@@ -195,13 +204,13 @@ pub fn evaluate_pairs_soa(
 
     Ok(EvaluatePairs {
         trade_direction: trade_dir,
-        trade_count: trade_count as usize,
+        trade_count: trade_count.round_to_2_digit(),
         total_profit: (sum_win + sum_loss).round_to_2_digit(),
-        single_trade_profit: ((sum_win + sum_loss) / trade_count).round_to_2_digit(),
-        win_trade_count: win_trade_count as usize,
+        single_trade_profit: ((sum_win + sum_loss) / raw_trade_count).round_to_2_digit(),
+        win_trade_count: win_trade_count.round_to_2_digit(),
         sum_win: sum_win.round_to_2_digit(),
         win_one: win_one.round_to_4_digit(),
-        loss_trade_count: loss_trade_count as usize,
+        loss_trade_count: loss_trade_count.round_to_2_digit(),
         sum_loss: sum_loss.round_to_2_digit(),
         loss_one: loss_one.round_to_4_digit(),
         win_rate: win_rate.round_to_4_digit(),
@@ -243,8 +252,8 @@ mod tests {
     #[test]
     fn evaluate_empty_pairs() {
         let pairs = make_pairs(&[], &[], &[], &[]);
-        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
-        assert_eq!(ep.trade_count, 0);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort, 0).unwrap();
+        assert_eq!(ep.trade_count, 0.0);
     }
 
     #[test]
@@ -255,10 +264,10 @@ mod tests {
         // total_profit = 150, single_trade_profit = 75
         // position_k_days = (10*1 + 5*1) / 2 = 7.5
         let pairs = make_pairs(&[100.0, 50.0], &[1, 1], &[10, 5], &["多头", "多头"]);
-        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
-        assert_eq!(ep.trade_count, 2);
-        assert_eq!(ep.win_trade_count, 2);
-        assert_eq!(ep.loss_trade_count, 0);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort, 0).unwrap();
+        assert_eq!(ep.trade_count, 2.0);
+        assert_eq!(ep.win_trade_count, 2.0);
+        assert_eq!(ep.loss_trade_count, 0.0);
         assert_eq!(ep.win_rate, 1.0);
         assert_eq!(ep.total_profit, 150.0);
         assert_eq!(ep.single_trade_profit, 75.0);
@@ -276,9 +285,9 @@ mod tests {
         // loss_count=2, sum_loss = -100 + -50 = -150
         // loss_one = -150/2 = -75
         let pairs = make_pairs(&[-100.0, -50.0], &[1, 1], &[10, 5], &["空头", "空头"]);
-        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
-        assert_eq!(ep.trade_count, 2);
-        assert_eq!(ep.loss_trade_count, 2);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort, 0).unwrap();
+        assert_eq!(ep.trade_count, 2.0);
+        assert_eq!(ep.loss_trade_count, 2.0);
         assert_eq!(ep.win_rate, 0.0);
         assert_eq!(ep.sum_loss, -150.0);
         assert_eq!(ep.loss_one, -75.0);
@@ -306,10 +315,10 @@ mod tests {
             &[10, 5, 20],
             &["多头", "空头", "多头"],
         );
-        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort).unwrap();
-        assert_eq!(ep.trade_count, 6);
-        assert_eq!(ep.win_trade_count, 5);
-        assert_eq!(ep.loss_trade_count, 1);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::LongShort, 0).unwrap();
+        assert_eq!(ep.trade_count, 6.0);
+        assert_eq!(ep.win_trade_count, 5.0);
+        assert_eq!(ep.loss_trade_count, 1.0);
         assert_eq!(ep.win_rate, 0.8333);
         assert_eq!(ep.total_profit, 750.0);
         assert_eq!(ep.single_trade_profit, 125.0);
@@ -325,17 +334,32 @@ mod tests {
     #[test]
     fn evaluate_direction_filter_long() {
         let pairs = make_pairs(&[100.0, -50.0], &[1, 1], &[10, 5], &["多头", "空头"]);
-        let ep = evaluate_pairs_soa(&pairs, TradeDir::Long).unwrap();
-        assert_eq!(ep.trade_count, 1);
-        assert_eq!(ep.win_trade_count, 1);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::Long, 0).unwrap();
+        assert_eq!(ep.trade_count, 1.0);
+        assert_eq!(ep.win_trade_count, 1.0);
     }
 
     #[test]
     fn evaluate_direction_filter_short() {
         let pairs = make_pairs(&[100.0, -50.0], &[1, 1], &[10, 5], &["多头", "空头"]);
-        let ep = evaluate_pairs_soa(&pairs, TradeDir::Short).unwrap();
-        assert_eq!(ep.trade_count, 1);
-        assert_eq!(ep.loss_trade_count, 1);
+        let ep = evaluate_pairs_soa(&pairs, TradeDir::Short, 0).unwrap();
+        assert_eq!(ep.trade_count, 1.0);
+        assert_eq!(ep.loss_trade_count, 1.0);
+    }
+
+    #[test]
+    fn evaluate_restores_counts_by_digits_without_changing_weighted_metrics() {
+        let pairs = make_pairs(&[100.0, -50.0], &[50, 25], &[10, 5], &["多头", "空头"]);
+        let base = evaluate_pairs_soa(&pairs, TradeDir::LongShort, 0).unwrap();
+        let scaled = evaluate_pairs_soa(&pairs, TradeDir::LongShort, 2).unwrap();
+
+        assert_eq!(scaled.trade_count, 0.75);
+        assert_eq!(scaled.win_trade_count, 0.5);
+        assert_eq!(scaled.loss_trade_count, 0.25);
+        assert_eq!(scaled.win_rate, base.win_rate);
+        assert_eq!(scaled.single_trade_profit, base.single_trade_profit);
+        assert_eq!(scaled.position_k_days, base.position_k_days);
+        assert_eq!(scaled.break_even_point, base.break_even_point);
     }
 
     #[test]
