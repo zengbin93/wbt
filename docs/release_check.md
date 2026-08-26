@@ -50,7 +50,7 @@
 
 - [ ] **破坏性变更的标注**：0.x 阶段允许在 MINOR 引入 break，但必须在 Release notes 顶部用 `**BREAKING CHANGE**` 显式标注，并提供旧→新用法对照。
 - [ ] **公共 API 表面已审阅**：`python/wbt/__init__.py` 的 `__all__`、`python/wbt/_wbt.pyi` 的导出符号，与上个版本逐项 diff，每一处差异都已映射到决策表的某一行。
-- [ ] `Cargo.lock` 已随 `cargo build` 同步刷新并提交；`python/pyproject.toml` 的 `requires-python`、依赖最低版本未被意外修改。
+- [ ] `Cargo.lock` 已随 `cargo build` 同步刷新（本仓库作为库 crate 不跟踪 Cargo.lock，见 `.gitignore`，无需提交）；`python/pyproject.toml` 的 `requires-python`、依赖最低版本未被意外修改。
 
 ## 2. 代码静态检查（与 CI 等价的本地跑一遍）
 

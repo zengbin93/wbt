@@ -709,7 +709,7 @@ mod tests {
             assert!(report.stats.long_rate >= 0.0 && report.stats.long_rate <= 1.0);
             assert!(report.stats.short_rate >= 0.0 && report.stats.short_rate <= 1.0);
 
-            // New fields exist (trade_count is usize, always >= 0)
+            // New fields exist (trade_count is f64, restored by weight digits)
             let _ = report.stats.trade_count;
             assert!(report.stats.annual_trade_count >= 0.0);
 
