@@ -726,9 +726,15 @@ class HtmlReportBuilder:
             }});
             window.addEventListener('resize', function () {{ resizePane(document.querySelector('.tab-pane.active')); }});
 
+            // 首个标签页不会触发 shown.bs.tab，载入后也需按可见容器重算图表尺寸。
+            resizePane(document.querySelector('.tab-pane.active'));
+
             // 初次着色图表以匹配当前主题（plotly 渲染稍晚，window.load 再补一次）
             wbtApplyPlotlyTheme(theme);
-            window.addEventListener('load', function () {{ wbtApplyPlotlyTheme(theme); }});
+            window.addEventListener('load', function () {{
+                resizePane(document.querySelector('.tab-pane.active'));
+                wbtApplyPlotlyTheme(theme);
+            }});
         }});
 
         // 用户自定义脚本

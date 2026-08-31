@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -107,6 +108,12 @@ def test_html_builder_save_writes_file(tmp_path: Path) -> None:
     assert returned == str(out)
     assert out.exists()
     assert out.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
+
+
+def test_html_builder_resizes_initial_active_tab() -> None:
+    """首个可见标签页也必须在页面载入后触发 Plotly resize。"""
+    html = HtmlReportBuilder().add_chart_tab("图表", "<div class='plotly-graph-div'></div>", active=True).render()
+    assert len(re.findall(r"resizePane\(document\.querySelector\('\.tab-pane\.active'\)\);", html)) == 3
 
 
 # ============================================================
