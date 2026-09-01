@@ -716,23 +716,26 @@ class HtmlReportBuilder:
             }});
 
             function resizePane(pane) {{
-                if (!pane) return;
+                if (!pane || typeof Plotly === 'undefined') return;
                 pane.querySelectorAll('.plotly-graph-div').forEach(function (d) {{ Plotly.Plots.resize(d); }});
+            }}
+            function resizeActivePanes() {{
+                document.querySelectorAll('.tab-pane.active').forEach(resizePane);
             }}
             document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(function (el) {{
                 el.addEventListener('shown.bs.tab', function (ev) {{
                     resizePane(document.querySelector(ev.target.getAttribute('data-bs-target')));
                 }});
             }});
-            window.addEventListener('resize', function () {{ resizePane(document.querySelector('.tab-pane.active')); }});
+            window.addEventListener('resize', resizeActivePanes);
 
-            // 首个标签页不会触发 shown.bs.tab，载入后也需按可见容器重算图表尺寸。
-            resizePane(document.querySelector('.tab-pane.active'));
+            // 每个图表区的首个标签页均不会触发 shown.bs.tab，载入后重算所有可见容器。
+            resizeActivePanes();
 
             // 初次着色图表以匹配当前主题（plotly 渲染稍晚，window.load 再补一次）
             wbtApplyPlotlyTheme(theme);
             window.addEventListener('load', function () {{
-                resizePane(document.querySelector('.tab-pane.active'));
+                resizeActivePanes();
                 wbtApplyPlotlyTheme(theme);
             }});
         }});

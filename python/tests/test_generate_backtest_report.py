@@ -110,10 +110,16 @@ def test_html_builder_save_writes_file(tmp_path: Path) -> None:
     assert out.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
 
 
-def test_html_builder_resizes_initial_active_tab() -> None:
-    """首个可见标签页也必须在页面载入后触发 Plotly resize。"""
-    html = HtmlReportBuilder().add_chart_tab("图表", "<div class='plotly-graph-div'></div>", active=True).render()
-    assert len(re.findall(r"resizePane\(document\.querySelector\('\.tab-pane\.active'\)\);", html)) == 3
+def test_html_builder_resizes_all_initial_active_tabs() -> None:
+    """页面载入后必须 resize 每个可见图表区的首个标签页。"""
+    builder = HtmlReportBuilder()
+    builder.add_chart_tab("图表一", "<div class='plotly-graph-div'></div>", active=True).add_charts_section("区域一")
+    builder.add_chart_tab("图表二", "<div class='plotly-graph-div'></div>", active=True).add_charts_section("区域二")
+    html = builder.render()
+    assert "function resizeActivePanes()" in html
+    assert "document.querySelectorAll('.tab-pane.active').forEach(resizePane);" in html
+    assert len(re.findall(r"resizeActivePanes\(\);", html)) == 2
+    assert "if (!pane || typeof Plotly === 'undefined') return;" in html
 
 
 # ============================================================
