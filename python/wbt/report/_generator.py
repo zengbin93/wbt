@@ -193,6 +193,26 @@ def _generate_chart_tabs(result: BacktestResult) -> list[tuple[str, list[tuple[s
     return tabs
 
 
+def _render_backtest_report(result: BacktestResult, config: dict[str, Any], output_path: str, title: str) -> str:
+    """将已有回测结果组装并保存为 HTML 报告。"""
+    metrics = get_performance_metrics_cards(result.stats)
+    tabs = _generate_chart_tabs(result)
+    icons = ["bi-grid-1x2", "bi-clipboard-check", "bi-activity", "bi-arrows-collapse", "bi-star"]
+
+    builder = HtmlReportBuilder(title=title)
+    builder.add_header(_build_report_params(result, config), subtitle="基于权重策略的回测分析与绩效评估")
+    builder.add_metrics(metrics)
+    for i, (tab_name, items) in enumerate(tabs):
+        builder.add_chart_grid_tab(
+            tab_name, items, cols=2, icon=icons[i] if i < len(icons) else "bi-graph-up", active=(i == 0)
+        )
+    builder.add_charts_section()
+    builder.add_footer()
+    builder.save(output_path)
+
+    return output_path
+
+
 def generate_backtest_report(
     df: pd.DataFrame, output_path: str | None = None, title: str = "权重回测报告", **kwargs
 ) -> str:
@@ -220,19 +240,4 @@ def generate_backtest_report(
     )
     result = wb.to_result(target_vol=config.get("target_vol", 0.20))
 
-    metrics = get_performance_metrics_cards(result.stats)
-    tabs = _generate_chart_tabs(result)
-    icons = ["bi-grid-1x2", "bi-clipboard-check", "bi-activity", "bi-arrows-collapse", "bi-star"]
-
-    builder = HtmlReportBuilder(title=title)
-    builder.add_header(_build_report_params(result, config), subtitle="基于权重策略的回测分析与绩效评估")
-    builder.add_metrics(metrics)
-    for i, (tab_name, items) in enumerate(tabs):
-        builder.add_chart_grid_tab(
-            tab_name, items, cols=2, icon=icons[i] if i < len(icons) else "bi-graph-up", active=(i == 0)
-        )
-    builder.add_charts_section()
-    builder.add_footer()
-    builder.save(output_path)
-
-    return output_path
+    return _render_backtest_report(result, config, output_path, title)

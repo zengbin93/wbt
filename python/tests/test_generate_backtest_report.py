@@ -127,6 +127,30 @@ def test_html_builder_resizes_all_initial_active_tabs() -> None:
 # ============================================================
 
 
+def test_weight_backtest_generates_html_report(wb: WeightBacktest, tmp_path: Path) -> None:
+    out_path = tmp_path / "instance_report.html"
+
+    returned = wb.generate_html_report(output_path=str(out_path), title="实例报告", target_vol=0.15)
+
+    assert returned == str(out_path)
+    assert out_path.exists()
+    assert "<title>实例报告</title>" in out_path.read_text(encoding="utf-8")
+
+
+def test_weight_backtest_report_does_not_create_another_backtest(
+    wb: WeightBacktest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_if_called(*args: object, **kwargs: object) -> None:
+        pytest.fail("report generation must not construct another WeightBacktest")
+
+    monkeypatch.setattr("wbt.report._generator.WeightBacktest", fail_if_called)
+
+    out_path = tmp_path / "reused_backtest_report.html"
+    wb.generate_html_report(output_path=str(out_path))
+
+    assert out_path.exists()
+
+
 def test_generate_backtest_report_writes_valid_html(sample_dfw: pd.DataFrame, tmp_path: Path) -> None:
     out_path = tmp_path / "backtest_report.html"
     returned = generate_backtest_report(sample_dfw, output_path=str(out_path), title="测试报告", n_jobs=1)
