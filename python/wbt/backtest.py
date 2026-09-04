@@ -517,6 +517,27 @@ class WeightBacktest:
 
         return BacktestResult.from_backtest(self, target_vol=target_vol)
 
+    def generate_html_report(
+        self,
+        output_path: str | None = None,
+        title: str = "权重回测报告",
+        target_vol: float = 0.20,
+    ) -> str:
+        """基于当前回测实例生成 HTML 报告。"""
+        import os
+
+        from wbt.report._generator import _render_backtest_report
+
+        if output_path is None:
+            output_path = os.path.join(os.getcwd(), "backtest_report.html")
+        result = self.to_result(target_vol=target_vol)
+        config = {
+            "fee_rate": self.fee_rate,
+            "digits": self.digits,
+            "yearly_days": self.yearly_days,
+        }
+        return _render_backtest_report(result, config, output_path, title)
+
     def get_symbol_daily(self, symbol: str) -> pd.DataFrame:
         """获取某个合约的每日收益率
 
