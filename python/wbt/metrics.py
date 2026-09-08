@@ -2,6 +2,9 @@
 
 from collections.abc import Mapping
 
+COMPARE_METRICS = ["年化收益", "夏普比率", "卡玛比率", "最大回撤", "年化波动率", "日胜率"]
+COMPARE_SIDES = ["多空", "多头", "空头", "基准", "超额"]
+
 METRIC_FIELDS = {
     "absolute_return": ("绝对收益",),
     "annual_returns": ("年化收益", "年化"),

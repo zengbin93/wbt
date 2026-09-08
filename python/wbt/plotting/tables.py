@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 
+from wbt.metrics import COMPARE_METRICS as _COMPARE_METRICS
+from wbt.metrics import COMPARE_SIDES as _COMPARE_SIDES
 from wbt.metrics import RECENT_KEYS as _RECENT_KEYS
 from wbt.metrics import YEARLY_COLS as _YEARLY_COLS
 from wbt.metrics import lookup_metric as _lookup_metric
@@ -12,10 +14,6 @@ from ._common import COLOR_LONG, COLOR_SHORT, apply_default_layout, figure_to_ht
 
 if TYPE_CHECKING:
     from wbt.result import BacktestResult
-
-_COMPARE_METRICS = ["年化收益", "夏普比率", "卡玛比率", "最大回撤", "年化波动率", "日胜率"]
-_COMPARE_SIDES = ["多空", "多头", "空头", "基准", "超额"]
-# plot_verdict 年度指标表的中文列名与顺序（年份首列）
 
 
 def plot_key_trades(
