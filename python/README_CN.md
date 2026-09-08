@@ -6,6 +6,10 @@ wbt Rust 回测引擎的 Python 接口项目。
 
 ## 开发目标
 
+独立持仓风险度接口：`from wbt import calculate_position_risk`，输入包含
+`dt`、`symbol`、`weight` 的 DataFrame，按时间升序前向填充并输出七项敞口指标。
+详见[接口语义、示例与可复现 Rust/Python 性能测试](../docs/position_risk.md)。
+
 这个子项目的定位是：让研究侧可以用熟悉的 Python 数据结构快速接入回测，同时把核心计算留在 Rust 里保证性能。
 
 主要目标：

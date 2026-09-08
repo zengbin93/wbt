@@ -570,6 +570,21 @@ pub fn rolling_daily_performance<'py>(
 // Module registration
 // ---------------------------------------------------------------------------
 
+#[pyfunction]
+pub fn calculate_position_risk<'py>(
+    py: Python<'py>,
+    data: Bound<'py, PyBytes>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let input = data.as_bytes();
+    let bytes = py.detach(|| {
+        let frame = pyarrow_to_df(input)?;
+        let mut result = crate::core::position_risk::calculate_position_risk(&frame)
+            .map_err(|error| pyo3::exceptions::PyValueError::new_err(error.to_string()))?;
+        df_to_pyarrow(&mut result)
+    })?;
+    Ok(PyBytes::new(py, &bytes))
+}
+
 #[pymodule]
 fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Bridge Rust log::warn! → Python logging (loguru 用户可一行接管)
@@ -577,8 +592,32 @@ fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<PyWeightBacktest>()?;
     m.add_function(wrap_pyfunction!(daily_performance, m)?)?;
+    m.add_function(wrap_pyfunction!(calculate_position_risk, m)?)?;
+    m.add_function(wrap_pyfunction!(_profile_position_risk, m)?)?;
     m.add_function(wrap_pyfunction!(top_drawdowns, m)?)?;
     m.add_function(wrap_pyfunction!(cal_yearly_days, m)?)?;
     m.add_function(wrap_pyfunction!(rolling_daily_performance, m)?)?;
     Ok(())
+}
+
+#[pyfunction]
+fn _profile_position_risk<'py>(
+    py: Python<'py>,
+    data: Bound<'py, PyBytes>,
+) -> PyResult<(Bound<'py, PyBytes>, Vec<f64>, bool)> {
+    let input = data.as_bytes();
+    let (bytes, phases) = py.detach(|| -> PyResult<_> {
+        let start = std::time::Instant::now();
+        let frame = pyarrow_to_df(input)?;
+        let decode = start.elapsed().as_secs_f64();
+        let start = std::time::Instant::now();
+        let mut result = crate::core::position_risk::calculate_position_risk(&frame)
+            .map_err(|error| pyo3::exceptions::PyValueError::new_err(error.to_string()))?;
+        let core = start.elapsed().as_secs_f64();
+        let start = std::time::Instant::now();
+        let bytes = df_to_pyarrow(&mut result)?;
+        let encode = start.elapsed().as_secs_f64();
+        Ok((bytes, vec![decode, core, encode]))
+    })?;
+    Ok((PyBytes::new(py, &bytes), phases, cfg!(debug_assertions)))
 }

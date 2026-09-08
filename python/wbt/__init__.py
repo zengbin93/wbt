@@ -1,6 +1,7 @@
 from wbt._wbt import daily_performance
 from wbt.backtest import WeightBacktest, backtest
 from wbt.mock import mock_symbol_kline, mock_weights
+from wbt.position_risk import calculate_position_risk
 from wbt.report import generate_backtest_report
 from wbt.result import (
     BacktestResult,
@@ -44,6 +45,7 @@ __all__ = [
     "assert_payload_equal",
     "cal_trade_price",
     "cal_yearly_days",
+    "calculate_position_risk",
     "daily_performance",
     "dump_json",
     "dump_msgpack",

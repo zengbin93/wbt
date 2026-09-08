@@ -14,6 +14,7 @@ pub mod is_good_strategy;
 pub mod key_trades;
 pub mod native_engine;
 pub mod period_win_rates;
+pub mod position_risk;
 mod report;
 pub mod rolling_daily_performance;
 pub mod top_drawdowns;
