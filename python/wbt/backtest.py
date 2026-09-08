@@ -118,6 +118,7 @@ class WeightBacktest:
         :param n_jobs: int, default 1，并行计算的线程数
         :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
         :param yearly_days: int, default 252，年化交易日数量
+        :raises ValueError: weight_type 不是严格小写的 'ts' 或 'cs'（不自动去除空白或回退）
         """
 
         # Type dispatch
@@ -594,6 +595,7 @@ def backtest(
     :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
     :param yearly_days: int, default 252, 年化交易日数量
     :return: WeightBacktest 对象
+    :raises ValueError: weight_type 不是严格小写的 'ts' 或 'cs'（不自动去除空白或回退）
     """
     return WeightBacktest(
         data, digits=digits, fee_rate=fee_rate, n_jobs=n_jobs, weight_type=weight_type, yearly_days=yearly_days

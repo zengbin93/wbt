@@ -667,6 +667,48 @@ mod tests {
     }
 
     #[test]
+    fn weight_type_ts_cs_aggregate_returns() {
+        for short in [false, true] {
+            for (mode, divisor) in [("ts", 2.0), ("cs", 1.0)] {
+                let b_weight = if short { -0.25 } else { 0.5 };
+                let df = df! {
+                    "dt" => &[
+                        "2024-01-01 09:00:00", "2024-01-02 09:00:00",
+                        "2024-01-03 09:00:00", "2024-01-04 09:00:00",
+                        "2024-01-01 09:00:00", "2024-01-02 09:00:00",
+                        "2024-01-03 09:00:00", "2024-01-04 09:00:00",
+                    ],
+                    "symbol" => &["A", "A", "A", "A", "B", "B", "B", "B"],
+                    "weight" => &[0.5, 0.5, 0.5, 0.5, b_weight, b_weight, b_weight, b_weight],
+                    "price" => &[100.0, 110.0, 99.0, 108.9, 200.0, 240.0, 216.0, 237.6],
+                }
+                .unwrap();
+                let mut wb = WeightBacktest::new(df, 2, Some(0.0)).unwrap();
+                wb.backtest(Some(1), mode.parse().unwrap(), 252).unwrap();
+                let totals = wb
+                    .daily_return_df()
+                    .unwrap()
+                    .column("total")
+                    .unwrap()
+                    .f64()
+                    .unwrap();
+                let expected = if short {
+                    [0.0, -0.025, 0.025]
+                } else {
+                    [0.15, -0.10, 0.10]
+                };
+                assert_eq!(totals.len(), expected.len());
+                for (actual, expected) in totals.into_no_null_iter().zip(expected) {
+                    assert!(
+                        (actual - expected / divisor).abs() < 1e-12,
+                        "{mode}: {actual}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn new_custom_fee_rate() {
         let df = raw_example_data();
         let wb = WeightBacktest::new(df, 2, Some(0.001)).unwrap();
