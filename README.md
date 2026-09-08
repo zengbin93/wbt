@@ -190,6 +190,8 @@ Python 侧支持输入：
 
 ## 独立工具函数
 
+`daily_performance` 在盈亏抵消或收益恒定时保留可计算的收益、胜率、波动和回撤；仅对退化比率使用约定值。空输入和全零输入保留默认值。完整口径及手算示例见[日收益指标的退化行为](docs/daily_performance_degenerate.md)。
+
 除了 `WeightBacktest` 类，wbt 顶层还导出一组独立工具：
 
 - `daily_performance(returns, yearly_days=252)`：基于日收益序列的完整绩效指标（Rust 核心）。
