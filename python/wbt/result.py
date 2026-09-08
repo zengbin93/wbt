@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from wbt._wbt import _normalize_returns, _vol_adjusted_alpha
 from wbt.top_drawdowns import top_drawdowns
 
 if TYPE_CHECKING:
@@ -339,23 +340,33 @@ class BacktestResult:
     # -------------------------------------------------------- cached (按需)
     @cached_property
     def curves_voladj(self) -> dict[str, Curve]:
-        """波动率归一后的同名曲线；scale = target_vol / (daily.std · √yearly_days)。
+        """波动率归一后的同名曲线；scale = target_vol / (daily.std(ddof=0) · √yearly_days)。
 
         「多头超额」定义为 ``norm(多头) − norm(基准)``，「空头超额」定义为
         ``norm(空头) + norm(基准)``。二者均由各自归一后的曲线派生，年化波动率
-        不一定等于 target_vol。
+        不一定等于 target_vol。无法归一化（非有限值或年化波动率 < 1e-12）时
+        曲线为 NaN，导出为 null；与判定的 alpha_degenerate 口径一致。
         """
         out: dict[str, Curve] = {}
-        sqrt_yd = float(np.sqrt(self.yearly_days))
         for key, c in self.curves.items():
             if key == "超额":
                 continue  # 由 norm(多头) − norm(基准) 派生，循环结束后单独构造
-            std = float(np.std(c.daily, ddof=1)) if c.daily.size > 1 else 0.0
-            annual_vol = std * sqrt_yd
-            scale = (self._target_vol / annual_vol) if annual_vol > 0 else 1.0
-            out[key] = _build_curve(c.daily * scale)
+            normalized = _normalize_returns(c.daily.tolist(), self.yearly_days, self._target_vol)
+            out[key] = _build_curve(
+                np.asarray(normalized, dtype=float) if normalized is not None else np.full(c.daily.shape, np.nan)
+            )
         if "多头" in out and "基准" in out:
-            out["多头超额"] = _build_curve(out["多头"].daily - out["基准"].daily)
+            alpha = _vol_adjusted_alpha(
+                self.curves["多头"].daily.tolist(),
+                self.curves["基准"].daily.tolist(),
+                self.yearly_days,
+                self._target_vol,
+            )
+            out["多头超额"] = _build_curve(
+                np.asarray(alpha, dtype=float)
+                if alpha is not None
+                else np.full(self.curves["多头"].daily.shape, np.nan)
+            )
         if "空头" in out and "基准" in out:
             out["空头超额"] = _build_curve(out["空头"].daily + out["基准"].daily)
         return out
@@ -395,12 +406,12 @@ class BacktestResult:
     @cached_property
     def verdict(self) -> dict:
         """history 模式判定（逐年）。yearly_returns 复用其 yearly_metrics。"""
-        return self._wb.is_good_strategy(mode="history")
+        return self._wb.is_good_strategy(mode="history", target_vol=self._target_vol)
 
     @cached_property
     def verdict_recent(self) -> dict:
         """recent 模式判定（尾部 recent_days 天）。"""
-        return self._wb.is_good_strategy(mode="recent")
+        return self._wb.is_good_strategy(mode="recent", target_vol=self._target_vol)
 
     @cached_property
     def yearly_returns(self) -> YearlyReturns:
@@ -409,7 +420,7 @@ class BacktestResult:
         return YearlyReturns(
             years=[int(m["year"]) for m in ym],
             abs_returns=np.array([float(m["abs_return"]) for m in ym], dtype=float),
-            alpha_returns=np.array([float(m["alpha_return"]) for m in ym], dtype=float),
+            alpha_returns=np.array([m["alpha_return"] for m in ym], dtype=float),
         )
 
     @cached_property

@@ -237,7 +237,7 @@ def test_curves_voladj_hits_target_vol(result: BacktestResult) -> None:
     for key, c in result.curves_voladj.items():
         if key in {"多头超额", "空头超额"} or c.daily.size <= 1:
             continue
-        annual_vol = float(np.std(c.daily, ddof=1)) * sqrt_yd
+        annual_vol = float(np.std(c.daily, ddof=0)) * sqrt_yd
         if annual_vol == 0:
             continue
         assert annual_vol == pytest.approx(target, rel=1e-6), key

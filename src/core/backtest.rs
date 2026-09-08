@@ -1,8 +1,9 @@
+use crate::core::alpha::compute_vol_adjusted_alpha;
 use crate::core::daily_performance::daily_performance;
 use crate::core::native_engine::{DailyTotals, DailysSoA, PairsSoA, dt_to_date_key_fast};
 use crate::core::period_win_rates::period_win_rates;
 use crate::core::trade_dir::TradeDir;
-use crate::core::utils::{RoundToNthDigit, date_key_to_naive_date, std_inline};
+use crate::core::utils::{RoundToNthDigit, date_key_to_naive_date};
 use crate::core::{
     WeightBacktest,
     errors::WbtError,
@@ -485,26 +486,14 @@ impl WeightBacktest {
         let (long_returns, _) = aggregate_long_short_returns(dailys_soa, daily_totals, weight_type);
         let bench_returns = &daily_totals.benchmark_means;
 
-        let yd_sqrt = (yearly_days as f64).sqrt();
-        let long_vol = std_inline(&long_returns) * yd_sqrt;
-        let bench_vol = std_inline(bench_returns) * yd_sqrt;
-
-        // If either vol is near zero, return default zeros
-        if long_vol < 1e-12 || bench_vol < 1e-12 {
+        // Keep the legacy zero-stat presentation when the shared operator is undefined.
+        let Some(alpha_daily) =
+            compute_vol_adjusted_alpha(&long_returns, bench_returns, yearly_days, 0.20)
+        else {
             let dp = daily_performance(&[], None)?;
             let pwr = period_win_rates(&[], &[], yearly_days as i64);
             return Ok(StatsFields::daily(&dp, &pwr).to_map());
-        }
-
-        let target_vol = 0.20;
-        let long_scale = target_vol / long_vol;
-        let bench_scale = target_vol / bench_vol;
-
-        let alpha_daily: Vec<f64> = long_returns
-            .iter()
-            .zip(bench_returns.iter())
-            .map(|(&lr, &br)| lr * long_scale - br * bench_scale)
-            .collect();
+        };
 
         let dp = daily_performance(&alpha_daily, Some(yearly_days))?;
         let pwr = period_win_rates(&daily_totals.date_keys, &alpha_daily, yearly_days as i64);
