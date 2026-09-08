@@ -285,14 +285,14 @@ impl WeightBacktest {
         yearly_return::compute_yearly_returns(wide, min_days)
     }
 
-    /// 按需构建 alpha DataFrame（从 DailyTotals 直接计算）
+    /// 按需构建 alpha DataFrame：策略腿复用组合日收益，基准保留每日有效品种等权均值。
     pub fn alpha_df(&self) -> Result<DataFrame, WbtError> {
         let report = self
             .report
             .as_ref()
             .ok_or_else(|| WbtError::NoneValue("report not computed yet".into()))?;
         let dt = &report.daily_totals;
-        let n = dt.strategy_means.len();
+        let n = dt.totals.len();
 
         let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
         let dr_dates: Vec<i32> = dt
@@ -305,7 +305,7 @@ impl WeightBacktest {
             .collect();
 
         let excess: Vec<f64> = (0..n)
-            .map(|i| dt.strategy_means[i] - dt.benchmark_means[i])
+            .map(|i| dt.totals[i] - dt.benchmark_means[i])
             .collect();
 
         DataFrame::new_infer_height(vec![
@@ -314,7 +314,7 @@ impl WeightBacktest {
                 .map_err(WbtError::Polars)?
                 .into_column(),
             Series::new("超额".into(), excess).into_column(),
-            Series::new("策略".into(), &dt.strategy_means).into_column(),
+            Series::new("策略".into(), &dt.totals).into_column(),
             Series::new("基准".into(), &dt.benchmark_means).into_column(),
         ])
         .map_err(WbtError::Polars)

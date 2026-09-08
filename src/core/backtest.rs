@@ -612,7 +612,7 @@ impl WeightBacktest {
         judge(
             parsed_mode,
             &daily_totals.date_keys,
-            &daily_totals.strategy_means,
+            &daily_totals.totals,
             &daily_totals.benchmark_means,
             &long_returns,
             self.yearly_days,
@@ -689,6 +689,103 @@ mod tests {
             "price" => prices
         }
         .unwrap()
+    }
+
+    #[test]
+    fn alpha_uses_portfolio_total_ts_cs() {
+        for sparse in [false, true] {
+            for mode in [WeightType::TS, WeightType::CS] {
+                let (mut wb, expected) = aggregation_example(mode, sparse);
+                let totals = wb
+                    .daily_return_df()
+                    .unwrap()
+                    .column("total")
+                    .unwrap()
+                    .f64()
+                    .unwrap();
+                for (actual, expected) in totals.into_no_null_iter().zip(&expected) {
+                    assert!((actual - expected).abs() < 1e-12);
+                }
+                let alpha = wb.alpha_df().unwrap();
+                let strategy = alpha.column("策略").unwrap().f64().unwrap();
+                let benchmark = alpha.column("基准").unwrap().f64().unwrap();
+                let excess = alpha.column("超额").unwrap().f64().unwrap();
+                let bench_expected = [-0.15, 0.1, 0.1, if sparse { -0.1 } else { -0.15 }, 0.1, 0.1];
+                for i in 0..6 {
+                    assert!(
+                        (strategy.get(i).unwrap() - expected[i]).abs() < 1e-12,
+                        "{mode}: day {i}"
+                    );
+                    assert!((benchmark.get(i).unwrap() - bench_expected[i]).abs() < 1e-12);
+                    assert!(
+                        (excess.get(i).unwrap() - (expected[i] - bench_expected[i])).abs() < 1e-12
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn review_uses_portfolio_total_ts_cs() {
+        for sparse in [false, true] {
+            for mode in [WeightType::TS, WeightType::CS] {
+                let (wb, expected) = aggregation_example(mode, sparse);
+                let history = wb
+                    .is_good_strategy("history", 0.2, 0.3, 0.3, 0.5, 1, 4, 0)
+                    .unwrap();
+                let years = history["yearly_metrics"].as_array().unwrap();
+                assert_eq!(years.len(), 2);
+                for (i, year) in years.iter().enumerate() {
+                    let expected: f64 = expected[i * 3..(i + 1) * 3].iter().sum();
+                    assert!(
+                        (year["abs_return"].as_f64().unwrap() - expected).abs() < 1e-12,
+                        "{mode}: year {i}"
+                    );
+                }
+                let recent = wb
+                    .is_good_strategy("recent", 0.2, 0.3, 0.3, 0.5, 1, 4, 0)
+                    .unwrap();
+                assert!(
+                    (recent["recent_abs_return"].as_f64().unwrap()
+                        - expected[2..].iter().sum::<f64>())
+                    .abs()
+                        < 1e-12
+                );
+            }
+        }
+    }
+
+    fn aggregation_example(mode: WeightType, sparse: bool) -> (WeightBacktest, Vec<f64>) {
+        let dates = [
+            "2023-12-28 09:00:00",
+            "2023-12-29 09:00:00",
+            "2023-12-30 09:00:00",
+            "2023-12-31 09:00:00",
+            "2024-01-01 09:00:00",
+            "2024-01-02 09:00:00",
+            "2024-01-03 09:00:00",
+        ];
+        let b_len = if sparse { 2 } else { 7 };
+        let df = df! {
+            "dt" => dates.iter().chain(dates[..b_len].iter()).copied().collect::<Vec<_>>(),
+            "symbol" => [vec!["A"; 7], vec!["B"; b_len]].concat(),
+            "weight" => vec![0.5; 7 + b_len],
+            "price" => [&[100.0, 90.0, 99.0, 108.9, 98.01, 107.811, 118.5921][..], &[100.0, 80.0, 88.0, 96.8, 77.44, 85.184, 93.7024][..b_len]].concat(),
+        }.unwrap();
+        let mut wb = WeightBacktest::new(df, 2, Some(0.0)).unwrap();
+        wb.backtest(Some(1), mode, 252).unwrap();
+        let expected = if sparse {
+            if mode == WeightType::TS {
+                vec![-0.075, 0.05, 0.05, -0.05, 0.05, 0.05]
+            } else {
+                vec![-0.15, 0.05, 0.05, -0.05, 0.05, 0.05]
+            }
+        } else if mode == WeightType::TS {
+            vec![-0.075, 0.05, 0.05, -0.075, 0.05, 0.05]
+        } else {
+            vec![-0.15, 0.1, 0.1, -0.15, 0.1, 0.1]
+        };
+        (wb, expected)
     }
 
     #[test]
