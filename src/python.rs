@@ -3,12 +3,20 @@ use std::io::Cursor;
 use std::str::FromStr;
 
 use polars::prelude::*;
-use pyo3::exceptions::PyException;
+use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyBytesMethods, PyDict, PyList};
 use serde_json::Value;
 
+use crate::core::errors::WbtError;
 use crate::core::{WeightBacktest, WeightType};
+
+fn input_error_to_py(error: WbtError) -> PyErr {
+    match error {
+        WbtError::InvalidInput(_) => PyValueError::new_err(error.to_string()),
+        _ => PyException::new_err(error.to_string()),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Arrow IPC <-> Polars DataFrame helpers
@@ -121,8 +129,7 @@ impl PyWeightBacktest {
         let df = pyarrow_to_df(data)?;
         let weight_type = WeightType::from_str(weight_type).unwrap_or(WeightType::TS);
 
-        let mut inner = WeightBacktest::new(df, digits, fee_rate)
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let mut inner = WeightBacktest::new(df, digits, fee_rate).map_err(input_error_to_py)?;
         py.detach(|| {
             inner
                 .backtest(n_jobs, weight_type, yearly_days)
@@ -279,8 +286,8 @@ impl PyWeightBacktest {
         yearly_days: usize,
     ) -> PyResult<Self> {
         let weight_type_enum = WeightType::from_str(weight_type).unwrap_or(WeightType::TS);
-        let mut inner = WeightBacktest::from_file(path, digits, fee_rate)
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let mut inner =
+            WeightBacktest::from_file(path, digits, fee_rate).map_err(input_error_to_py)?;
         py.detach(|| {
             inner
                 .backtest(n_jobs, weight_type_enum, yearly_days)
