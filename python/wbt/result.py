@@ -124,7 +124,7 @@ class RollingMetrics:
 
 def _build_curve(daily: np.ndarray) -> Curve:
     cum = np.cumsum(daily)
-    drawdown = cum - np.maximum.accumulate(cum)
+    drawdown = cum - np.maximum(0.0, np.maximum.accumulate(cum))
     return Curve(daily=daily, cum=cum, drawdown=drawdown)
 
 

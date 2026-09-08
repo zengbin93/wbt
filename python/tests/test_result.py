@@ -80,7 +80,7 @@ def test_year_starts_subset_and_first(result: BacktestResult) -> None:
 def test_cum_and_drawdown_definition(result: BacktestResult) -> None:
     for key, c in result.curves.items():
         np.testing.assert_allclose(c.cum, np.cumsum(c.daily), atol=1e-12, err_msg=key)
-        expected_dd = c.cum - np.maximum.accumulate(c.cum)
+        expected_dd = c.cum - np.maximum(0.0, np.maximum.accumulate(c.cum))
         np.testing.assert_allclose(c.drawdown, expected_dd, atol=1e-12, err_msg=key)
         assert np.all(c.drawdown <= 1e-12), key
 
