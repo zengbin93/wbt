@@ -716,13 +716,12 @@ class TestSegmentStats:
         assert seg["交易次数"] == 0
 
     def test_single_day(self, bt: WeightBacktest) -> None:
-        """Single day: daily_performance returns default (zero) when std=0.
-
-        With only 1 day of data, std of returns = 0, so daily_performance
-        returns all-zero metrics (by design — Sharpe etc. are undefined).
-        """
+        """A single-day segment retains that day's published return with zero Sharpe."""
         seg = bt.segment_stats(sdt=20240105, edt=20240105)
-        assert seg["绝对收益"] == 0.0  # daily_performance zeros out when std=0
+        daily = bt.daily_return
+        expected = daily.loc[pd.to_datetime(daily["date"]) == pd.Timestamp("2024-01-05"), "total"].iloc[0]
+        assert expected != 0.0
+        assert seg["绝对收益"] == pytest.approx(expected, abs=5e-5)
 
     def test_inverted_range(self, bt: WeightBacktest) -> None:
         """sdt > edt should return zero (empty set)."""

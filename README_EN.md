@@ -190,6 +190,8 @@ Invalid input raises a Python `ValueError` naming the column (including missing 
 
 ## Standalone Utility Functions
 
+`daily_performance` preserves calculable returns, win rates, volatility and drawdown for cancelling or constant returns. Empty and all-zero inputs retain default metrics. Undefined volatility ratios use 0; zero-drawdown Calmar uses +10/-10/0 according to annual return; a single sample has no regression slope. Drawdowns start at the first cumulative-return point. See the [full conventions and worked examples](docs/daily_performance_degenerate.md).
+
 Beyond the `WeightBacktest` class, wbt exposes several stand-alone helpers at the top level:
 
 - `daily_performance(returns, yearly_days=252)`: full performance metrics on a daily return series (Rust core).
