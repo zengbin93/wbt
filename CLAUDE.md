@@ -66,7 +66,7 @@ uv run --no-sync basedpyright                                         # 类型�
 ### Python 适配层（`python/wbt/`）
 
 - `__init__.py` 收口公共 API；改动公共面要同步 `_wbt.pyi`、根目录 `README.md`（中文，GitHub 主页默认）/ `README_EN.md`（英文镜像）、`python/scripts/quick_start.ipynb`（发版清单第 5 节明确要求四方一致）。
-- `backtest.py::WeightBacktest`：调度 pandas / polars / 文件路径三条输入路径；维护 `STATS_FIELD_ORDER` 强制按发版约定的中文字段顺序输出（**修改 stats 字段时必须同步这个列表**）。
+- `backtest.py::WeightBacktest`：调度 pandas / polars / 文件路径三条输入路径；使用 Rust 字段描述表导出的 `STATS_FIELD_ORDER`，按发版约定的中文字段顺序输出。
 - `utils/`：每个迁移自 czsc 的函数独占一个文件；Rust 核心 + Python adapter 的拆分（`cal_yearly_days`、`rolling_daily_performance`）vs. 纯 Python（`weights_simple_ensemble`、`cal_trade_price`、`log_strategy_info`）。
 - `plotting/` 是单图（plotly），`report/` 是组合图 + `HtmlReportBuilder` + `generate_backtest_report`。
 
@@ -76,10 +76,10 @@ Rust 端用 `log::warn!`（例如 `cal_yearly_days` 跨度不足时回退 252 �
 
 ## 字段顺序与中文命名（**硬约束**）
 
-所有 `stats` 类输出（`stats`、`long_stats`、`short_stats`、`segment_stats`、`long_alpha_stats`）的**字段名是中文、顺序固定**（见 `docs/desgin.md` 20260403 节与 `backtest.py::STATS_FIELD_ORDER`）。`src/lib.rs::PyWeightBacktest::stats` 里逐项 `set_item` 的顺序也要与之一致。增删字段：
+所有 `stats` 类输出（`stats`、`long_stats`、`short_stats`、`segment_stats`、`long_alpha_stats`）的**字段名是中文、顺序固定**（见 `docs/desgin.md` 20260403 节与 `backtest.py::STATS_FIELD_ORDER`）。`src/core/report.rs::stats_schema!` 是中文字段、来源与顺序的唯一描述表；JSON、PyO3 和 Python 排序共用它。增删字段：
 
-1. 改 Rust 端 `src/lib.rs` 与对应 `report.rs` / 指标实现；
-2. 改 Python 端 `STATS_FIELD_ORDER` 与 `_wbt.pyi`；
+1. 改 Rust 端 `report.rs::stats_schema!` 与对应指标实现；
+2. 重编译扩展以更新 Python 端 `STATS_FIELD_ORDER`，公共接口有变化时同步 `_wbt.pyi`；
 3. 更新 README 与 docstring 示例；
 4. 在 0.x 阶段属于 BREAKING，需 MINOR 升版并在 release notes 显式标注。
 

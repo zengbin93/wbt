@@ -77,48 +77,130 @@ impl From<Report> for Value {
     }
 }
 
+/// Typed values preserve Python floats (including non-finite values); JSON uses null for them.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub(crate) enum StatsValue {
+    Float(f64),
+    Count(usize),
+    Text(String),
+}
+
+impl From<f64> for StatsValue {
+    fn from(value: f64) -> Self {
+        Self::Float(value)
+    }
+}
+impl From<usize> for StatsValue {
+    fn from(value: usize) -> Self {
+        Self::Count(value)
+    }
+}
+impl From<String> for StatsValue {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+/// The same sources serve full, side, segment and alpha reports; absent groups stay absent.
+pub(crate) struct StatsFields<'a> {
+    pub dp: &'a DailyPerformance,
+    pub pwr: &'a PeriodWinRates,
+    pub ep: Option<&'a EvaluatePairs>,
+    pub trade_count: Option<f64>,
+    pub annual_trade_count: Option<f64>,
+    pub long_rate: Option<f64>,
+    pub short_rate: Option<f64>,
+    pub symbols_count: Option<usize>,
+    pub dates: Option<(NaiveDate, NaiveDate)>,
+}
+
+macro_rules! stats_schema {
+    ($($name:literal => |$s:ident| $value:expr),* $(,)?) => {
+        pub(crate) const STATS_FIELD_ORDER: &[&str] = &[$($name),*];
+        impl StatsFields<'_> {
+            pub(crate) fn values(&self) -> Vec<(&'static str, StatsValue)> {
+                let mut values = Vec::with_capacity(STATS_FIELD_ORDER.len());
+                $(if let Some(value) = (|$s: &StatsFields<'_>| -> Option<StatsValue> { $value })(self) {
+                    values.push(($name, value));
+                })*
+                values
+            }
+        }
+    };
+}
+
+// Canonical Chinese labels, source fields and order — shared by JSON and PyO3.
+stats_schema! {
+    "绝对收益" => |s| Some((s.dp.absolute_return).into()),
+    "年化收益" => |s| Some((s.dp.annual_returns).into()),
+    "夏普比率" => |s| Some((s.dp.sharpe_ratio).into()),
+    "卡玛比率" => |s| Some((s.dp.calmar_ratio).into()),
+    "新高占比" => |s| Some((s.dp.new_high_ratio).into()),
+    "单笔盈亏比" => |s| Some((s.ep?.single_profit_loss_ratio).into()),
+    "单笔收益" => |s| Some((s.ep?.single_trade_profit).into()),
+    "日胜率" => |s| Some((s.dp.daily_win_rate).into()),
+    "周胜率" => |s| Some((s.pwr.week).into()),
+    "月胜率" => |s| Some((s.pwr.month).into()),
+    "季胜率" => |s| Some((s.pwr.quarter).into()),
+    "年胜率" => |s| Some((s.pwr.year).into()),
+    "最大回撤" => |s| Some((s.dp.max_drawdown).into()),
+    "年化波动率" => |s| Some((s.dp.annual_volatility).into()),
+    "下行波动率" => |s| Some((s.dp.downside_volatility).into()),
+    "新高间隔" => |s| Some((s.dp.new_high_interval).into()),
+    "交易次数" => |s| Some((s.trade_count?).into()),
+    "年化交易次数" => |s| Some((s.annual_trade_count?).into()),
+    "持仓K线数" => |s| Some((s.ep?.position_k_days).into()),
+    "交易胜率" => |s| Some((s.ep?.win_rate).into()),
+    "多头占比" => |s| Some((s.long_rate?).into()),
+    "空头占比" => |s| Some((s.short_rate?).into()),
+    "品种数量" => |s| Some((s.symbols_count?).into()),
+    "开始日期" => |s| Some((s.dates?.0.to_string()).into()),
+    "结束日期" => |s| Some((s.dates?.1.to_string()).into()),
+}
+
+impl<'a> StatsFields<'a> {
+    pub(crate) fn daily(dp: &'a DailyPerformance, pwr: &'a PeriodWinRates) -> Self {
+        Self {
+            dp,
+            pwr,
+            ep: None,
+            trade_count: None,
+            annual_trade_count: None,
+            long_rate: None,
+            short_rate: None,
+            symbols_count: None,
+            dates: None,
+        }
+    }
+
+    pub(crate) fn to_map(&self) -> HashMap<String, Value> {
+        self.values()
+            .into_iter()
+            .map(|(name, value)| (name.into(), json!(value)))
+            .collect()
+    }
+}
+
+impl StatsReport {
+    pub(crate) fn fields(&self) -> StatsFields<'_> {
+        StatsFields {
+            dp: &self.daily_performance,
+            pwr: &self.period_win_rates,
+            ep: Some(&self.evaluate_pairs),
+            trade_count: Some(self.trade_count),
+            annual_trade_count: Some(self.annual_trade_count),
+            long_rate: Some(self.long_rate),
+            short_rate: Some(self.short_rate),
+            symbols_count: Some(self.symbols_count),
+            dates: Some((self.start_date, self.end_date)),
+        }
+    }
+}
+
 impl From<StatsReport> for Value {
     fn from(val: StatsReport) -> Self {
-        let dp = val.daily_performance;
-        let ep = val.evaluate_pairs;
-        let pwr = val.period_win_rates;
-
-        let mut result = serde_json::Map::new();
-
-        // 收益
-        result.insert("绝对收益".into(), json!(dp.absolute_return));
-        result.insert("年化收益".into(), json!(dp.annual_returns));
-        result.insert("夏普比率".into(), json!(dp.sharpe_ratio));
-        result.insert("卡玛比率".into(), json!(dp.calmar_ratio));
-        result.insert("新高占比".into(), json!(dp.new_high_ratio));
-        result.insert("单笔盈亏比".into(), json!(ep.single_profit_loss_ratio));
-        result.insert("单笔收益".into(), json!(ep.single_trade_profit));
-        result.insert("日胜率".into(), json!(dp.daily_win_rate));
-        result.insert("周胜率".into(), json!(pwr.week));
-        result.insert("月胜率".into(), json!(pwr.month));
-        result.insert("季胜率".into(), json!(pwr.quarter));
-        result.insert("年胜率".into(), json!(pwr.year));
-
-        // 风险
-        result.insert("最大回撤".into(), json!(dp.max_drawdown));
-        result.insert("年化波动率".into(), json!(dp.annual_volatility));
-        result.insert("下行波动率".into(), json!(dp.downside_volatility));
-        result.insert("新高间隔".into(), json!(dp.new_high_interval));
-
-        // 特质
-        result.insert("交易次数".into(), json!(val.trade_count));
-        result.insert("年化交易次数".into(), json!(val.annual_trade_count));
-        result.insert("持仓K线数".into(), json!(ep.position_k_days));
-        result.insert("交易胜率".into(), json!(ep.win_rate));
-        result.insert("多头占比".into(), json!(val.long_rate));
-        result.insert("空头占比".into(), json!(val.short_rate));
-        result.insert("品种数量".into(), json!(val.symbols_count));
-
-        // 元数据
-        result.insert("开始日期".into(), json!(val.start_date.to_string()));
-        result.insert("结束日期".into(), json!(val.end_date.to_string()));
-
-        Value::Object(result)
+        Value::Object(val.fields().to_map().into_iter().collect())
     }
 }
 
@@ -142,6 +224,29 @@ mod tests {
             trade_count: 10.0,
             annual_trade_count: 120.0,
         }
+    }
+
+    #[test]
+    fn stats_schema_preserves_sources_and_nonfinite_boundary() {
+        let mut stats = make_stats_report();
+        stats.daily_performance.absolute_return = 0.12;
+        stats.daily_performance.annual_returns = 0.34;
+        stats.daily_performance.new_high_interval = 8.0;
+        stats.evaluate_pairs.single_trade_profit = 17.0;
+        stats.evaluate_pairs.trade_count = 999.0; // Report count is authoritative.
+        stats.period_win_rates.week = 0.75;
+        let json: Value = stats.clone().into();
+        assert_eq!(json["绝对收益"], 0.12);
+        assert_eq!(json["年化收益"], 0.34);
+        assert_eq!(json["新高间隔"], 8.0);
+        assert_eq!(json["单笔收益"], 17.0);
+        assert_eq!(json["交易次数"], 10.0);
+        assert_eq!(json["周胜率"], 0.75);
+        stats.daily_performance.annual_returns = f64::NAN;
+        let fields = stats.fields().values();
+        assert!(matches!(fields[1].1, StatsValue::Float(v) if v.is_nan()));
+        let json: Value = stats.into();
+        assert!(json["年化收益"].is_null());
     }
 
     #[test]

@@ -6,36 +6,8 @@ import pandas as pd
 import polars as pl
 
 from wbt._df_convert import arrow_bytes_to_pd_df, pandas_to_arrow_bytes, polars_to_arrow_bytes
+from wbt._wbt import STATS_FIELD_ORDER as STATS_FIELD_ORDER
 from wbt._wbt import PyWeightBacktest, daily_performance
-
-# Canonical field order for all stats output (from design doc)
-STATS_FIELD_ORDER = [
-    "绝对收益",
-    "年化收益",
-    "夏普比率",
-    "卡玛比率",
-    "新高占比",
-    "单笔盈亏比",
-    "单笔收益",
-    "日胜率",
-    "周胜率",
-    "月胜率",
-    "季胜率",
-    "年胜率",
-    "最大回撤",
-    "年化波动率",
-    "下行波动率",
-    "新高间隔",
-    "交易次数",
-    "年化交易次数",
-    "持仓K线数",
-    "交易胜率",
-    "多头占比",
-    "空头占比",
-    "品种数量",
-    "开始日期",
-    "结束日期",
-]
 
 
 def _reorder_stats(d: dict[str, object]) -> dict[str, object]:

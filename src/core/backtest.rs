@@ -7,12 +7,12 @@ use crate::core::{
     WeightBacktest,
     errors::WbtError,
     evaluate_pairs::evaluate_pairs_soa,
-    report::{Report, StatsReport, SymbolsReport},
+    report::{Report, StatsFields, StatsReport, SymbolsReport},
     utils::WeightType,
 };
 use anyhow::Context;
 use polars::prelude::*;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -78,6 +78,7 @@ fn build_stats_dict(
     long_rate: f64,
     short_rate: f64,
     symbols_count: usize,
+    dates: Option<(chrono::NaiveDate, chrono::NaiveDate)>,
 ) -> Result<HashMap<String, Value>, WbtError> {
     let dp = daily_performance(returns, Some(yearly_days))?;
     let ep = evaluate_pairs_soa(pairs_soa, trade_dir, digits)?;
@@ -90,34 +91,17 @@ fn build_stats_dict(
         0.0
     };
 
-    let mut m = HashMap::new();
-    // 收益
-    m.insert("绝对收益".into(), json!(dp.absolute_return));
-    m.insert("年化收益".into(), json!(dp.annual_returns));
-    m.insert("夏普比率".into(), json!(dp.sharpe_ratio));
-    m.insert("卡玛比率".into(), json!(dp.calmar_ratio));
-    m.insert("新高占比".into(), json!(dp.new_high_ratio));
-    m.insert("单笔盈亏比".into(), json!(ep.single_profit_loss_ratio));
-    m.insert("单笔收益".into(), json!(ep.single_trade_profit));
-    m.insert("日胜率".into(), json!(dp.daily_win_rate));
-    m.insert("周胜率".into(), json!(pwr.week));
-    m.insert("月胜率".into(), json!(pwr.month));
-    m.insert("季胜率".into(), json!(pwr.quarter));
-    m.insert("年胜率".into(), json!(pwr.year));
-    // 风险
-    m.insert("最大回撤".into(), json!(dp.max_drawdown));
-    m.insert("年化波动率".into(), json!(dp.annual_volatility));
-    m.insert("下行波动率".into(), json!(dp.downside_volatility));
-    m.insert("新高间隔".into(), json!(dp.new_high_interval));
-    // 特质
-    m.insert("交易次数".into(), json!(ep.trade_count));
-    m.insert("年化交易次数".into(), json!(annual_trade_count));
-    m.insert("持仓K线数".into(), json!(ep.position_k_days));
-    m.insert("交易胜率".into(), json!(ep.win_rate));
-    m.insert("多头占比".into(), json!(long_rate));
-    m.insert("空头占比".into(), json!(short_rate));
-    m.insert("品种数量".into(), json!(symbols_count));
-    Ok(m)
+    Ok(StatsFields {
+        ep: Some(&ep),
+        trade_count: Some(ep.trade_count),
+        annual_trade_count: Some(annual_trade_count),
+        long_rate: Some(long_rate),
+        short_rate: Some(short_rate),
+        symbols_count: Some(symbols_count),
+        dates,
+        ..StatsFields::daily(&dp, &pwr)
+    }
+    .to_map())
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +276,7 @@ impl WeightBacktest {
             long_rate,
             0.0,
             symbols_count,
+            None,
         )?;
         let short_stats = build_stats_dict(
             &daily_totals.date_keys,
@@ -303,6 +288,7 @@ impl WeightBacktest {
             0.0,
             short_rate,
             symbols_count,
+            None,
         )?;
 
         let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
@@ -458,7 +444,7 @@ impl WeightBacktest {
             (0.0, 0.0)
         };
 
-        let mut stats = build_stats_dict(
+        build_stats_dict(
             &filtered_date_keys,
             &filtered_returns,
             &filtered_pairs,
@@ -468,16 +454,11 @@ impl WeightBacktest {
             long_rate,
             short_rate,
             self.symbols.len(),
-        )?;
-        stats.insert(
-            "开始日期".into(),
-            json!(date_key_to_naive_date(actual_sdt).to_string()),
-        );
-        stats.insert(
-            "结束日期".into(),
-            json!(date_key_to_naive_date(actual_edt).to_string()),
-        );
-        Ok(stats)
+            Some((
+                date_key_to_naive_date(actual_sdt),
+                date_key_to_naive_date(actual_edt),
+            )),
+        )
     }
 
     // -----------------------------------------------------------------------
@@ -512,22 +493,7 @@ impl WeightBacktest {
         if long_vol < 1e-12 || bench_vol < 1e-12 {
             let dp = daily_performance(&[], None)?;
             let pwr = period_win_rates(&[], &[], yearly_days as i64);
-            let mut m = HashMap::new();
-            m.insert("绝对收益".into(), json!(dp.absolute_return));
-            m.insert("年化收益".into(), json!(dp.annual_returns));
-            m.insert("夏普比率".into(), json!(dp.sharpe_ratio));
-            m.insert("卡玛比率".into(), json!(dp.calmar_ratio));
-            m.insert("新高占比".into(), json!(dp.new_high_ratio));
-            m.insert("日胜率".into(), json!(dp.daily_win_rate));
-            m.insert("周胜率".into(), json!(pwr.week));
-            m.insert("月胜率".into(), json!(pwr.month));
-            m.insert("季胜率".into(), json!(pwr.quarter));
-            m.insert("年胜率".into(), json!(pwr.year));
-            m.insert("最大回撤".into(), json!(dp.max_drawdown));
-            m.insert("年化波动率".into(), json!(dp.annual_volatility));
-            m.insert("下行波动率".into(), json!(dp.downside_volatility));
-            m.insert("新高间隔".into(), json!(dp.new_high_interval));
-            return Ok(m);
+            return Ok(StatsFields::daily(&dp, &pwr).to_map());
         }
 
         let target_vol = 0.20;
@@ -543,22 +509,7 @@ impl WeightBacktest {
         let dp = daily_performance(&alpha_daily, Some(yearly_days))?;
         let pwr = period_win_rates(&daily_totals.date_keys, &alpha_daily, yearly_days as i64);
 
-        let mut m = HashMap::new();
-        m.insert("绝对收益".into(), json!(dp.absolute_return));
-        m.insert("年化收益".into(), json!(dp.annual_returns));
-        m.insert("夏普比率".into(), json!(dp.sharpe_ratio));
-        m.insert("卡玛比率".into(), json!(dp.calmar_ratio));
-        m.insert("新高占比".into(), json!(dp.new_high_ratio));
-        m.insert("日胜率".into(), json!(dp.daily_win_rate));
-        m.insert("周胜率".into(), json!(pwr.week));
-        m.insert("月胜率".into(), json!(pwr.month));
-        m.insert("季胜率".into(), json!(pwr.quarter));
-        m.insert("年胜率".into(), json!(pwr.year));
-        m.insert("最大回撤".into(), json!(dp.max_drawdown));
-        m.insert("年化波动率".into(), json!(dp.annual_volatility));
-        m.insert("下行波动率".into(), json!(dp.downside_volatility));
-        m.insert("新高间隔".into(), json!(dp.new_high_interval));
-        Ok(m)
+        Ok(StatsFields::daily(&dp, &pwr).to_map())
     }
 
     // -----------------------------------------------------------------------

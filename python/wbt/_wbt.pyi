@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+STATS_FIELD_ORDER: list[str]
+
 class PyWeightBacktest:
     @classmethod
     def from_arrow(

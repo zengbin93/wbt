@@ -9,6 +9,7 @@ use pyo3::types::{PyBytes, PyBytesMethods, PyDict, PyList};
 use serde_json::Value;
 
 use crate::core::errors::WbtError;
+use crate::core::report::{STATS_FIELD_ORDER, StatsValue};
 use crate::core::{WeightBacktest, WeightType};
 
 fn input_error_to_py(error: WbtError) -> PyErr {
@@ -142,44 +143,13 @@ impl PyWeightBacktest {
         let py_dict = PyDict::new(py);
 
         if let Some(ref report) = self.inner.report {
-            let stats = &report.stats;
-
-            let dp = &stats.daily_performance;
-            let ep = &stats.evaluate_pairs;
-            let pwr = &stats.period_win_rates;
-
-            // 收益
-            py_dict.set_item("绝对收益", dp.absolute_return)?;
-            py_dict.set_item("年化收益", dp.annual_returns)?;
-            py_dict.set_item("夏普比率", dp.sharpe_ratio)?;
-            py_dict.set_item("卡玛比率", dp.calmar_ratio)?;
-            py_dict.set_item("新高占比", dp.new_high_ratio)?;
-            py_dict.set_item("单笔盈亏比", ep.single_profit_loss_ratio)?;
-            py_dict.set_item("单笔收益", ep.single_trade_profit)?;
-            py_dict.set_item("日胜率", dp.daily_win_rate)?;
-            py_dict.set_item("周胜率", pwr.week)?;
-            py_dict.set_item("月胜率", pwr.month)?;
-            py_dict.set_item("季胜率", pwr.quarter)?;
-            py_dict.set_item("年胜率", pwr.year)?;
-
-            // 风险
-            py_dict.set_item("最大回撤", dp.max_drawdown)?;
-            py_dict.set_item("年化波动率", dp.annual_volatility)?;
-            py_dict.set_item("下行波动率", dp.downside_volatility)?;
-            py_dict.set_item("新高间隔", dp.new_high_interval)?;
-
-            // 特质
-            py_dict.set_item("交易次数", stats.trade_count)?;
-            py_dict.set_item("年化交易次数", stats.annual_trade_count)?;
-            py_dict.set_item("持仓K线数", ep.position_k_days)?;
-            py_dict.set_item("交易胜率", ep.win_rate)?;
-            py_dict.set_item("多头占比", stats.long_rate)?;
-            py_dict.set_item("空头占比", stats.short_rate)?;
-            py_dict.set_item("品种数量", stats.symbols_count)?;
-
-            // 元数据
-            py_dict.set_item("开始日期", stats.start_date.to_string())?;
-            py_dict.set_item("结束日期", stats.end_date.to_string())?;
+            for (name, value) in report.stats.fields().values() {
+                match value {
+                    StatsValue::Float(v) => py_dict.set_item(name, v)?,
+                    StatsValue::Count(v) => py_dict.set_item(name, v)?,
+                    StatsValue::Text(v) => py_dict.set_item(name, v)?,
+                }
+            }
         }
 
         Ok(py_dict)
@@ -582,6 +552,7 @@ fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Bridge Rust log::warn! → Python logging (loguru 用户可一行接管)
     let _ = pyo3_log::try_init();
 
+    m.add("STATS_FIELD_ORDER", STATS_FIELD_ORDER.to_vec())?;
     m.add_class::<PyWeightBacktest>()?;
     m.add_function(wrap_pyfunction!(daily_performance, m)?)?;
     m.add_function(wrap_pyfunction!(top_drawdowns, m)?)?;

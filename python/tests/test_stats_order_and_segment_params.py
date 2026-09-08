@@ -147,3 +147,47 @@ class TestSegmentStatsLongShortRate:
         # long_stats / short_stats 同样遵循单边语义
         assert wb.long_stats["空头占比"] == 0.0
         assert wb.short_stats["多头占比"] == 0.0
+
+
+class TestStatsEntryConsistency:
+    def test_native_order_and_types(self, wb: WeightBacktest) -> None:
+        from wbt.backtest import STATS_FIELD_ORDER
+
+        assert STATS_FIELD_ORDER == CANONICAL_ORDER
+        native = wb._inner.stats()
+        assert list(native) == CANONICAL_ORDER
+        assert native == wb.stats
+        assert type(native["品种数量"]) is int
+        assert type(native["新高间隔"]) is float
+        assert type(native["交易次数"]) is float
+        assert type(native["开始日期"]) is str
+
+    def test_side_and_full_segment_values(self, wb: WeightBacktest) -> None:
+        for kind, stats in (("多头", wb.long_stats), ("空头", wb.short_stats)):
+            segment = wb.segment_stats(kind=kind)
+            assert list(stats) == CANONICAL_ORDER[:-2]
+            assert list(segment) == CANONICAL_ORDER
+            assert stats == {k: v for k, v in segment.items() if k in stats}
+
+    def test_alpha_field_subset_is_stable_when_degenerate(self, sample_dfw) -> None:
+        expected = [
+            "绝对收益",
+            "年化收益",
+            "夏普比率",
+            "卡玛比率",
+            "新高占比",
+            "日胜率",
+            "周胜率",
+            "月胜率",
+            "季胜率",
+            "年胜率",
+            "最大回撤",
+            "年化波动率",
+            "下行波动率",
+            "新高间隔",
+        ]
+        regular = WeightBacktest(sample_dfw, n_jobs=1).long_alpha_stats
+        sample_dfw["weight"] = 0.0
+        degenerate = WeightBacktest(sample_dfw, n_jobs=1).long_alpha_stats
+        assert list(regular) == list(degenerate) == expected
+        assert all(value == 0 for value in degenerate.values())
