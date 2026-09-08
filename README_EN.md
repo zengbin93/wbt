@@ -33,6 +33,7 @@ The goals:
 ## What wbt Is Good At
 
 - Time-series **and** cross-sectional weight backtests (`weight_type="ts" | "cs"`).
+  `weight_type` defaults to `"ts"` and accepts only exact lowercase `"ts"` (mean of symbol returns) or `"cs"` (sum of symbol returns). Other strings, including uppercase, empty strings and surrounding whitespace, raise `ValueError` across all Python input paths instead of silently falling back. Rust `WeightType` string parsing also rejects invalid values.
 - Multi-symbol daily performance attribution.
 - Long/short decomposition and segment-level metrics.
 - Strategy-vs-benchmark excess (alpha) analysis.

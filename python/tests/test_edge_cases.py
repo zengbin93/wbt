@@ -381,14 +381,12 @@ class TestCSMode:
 
 
 class TestInvalidWeightType:
-    """Invalid weight_type should silently default to 'ts'."""
+    """Invalid weight_type must not silently change aggregation semantics."""
 
-    def test_invalid_weight_type_defaults_to_ts(self) -> None:
-        """Invalid weight_type should produce same result as explicit 'ts'."""
+    def test_invalid_weight_type_raises(self) -> None:
         dfw = _make_dfw(10, ["A", "B"], lambda d, s: 0.3, lambda d, s: 100.0 + d)
-        bt_ts = WeightBacktest(dfw.copy(), weight_type="ts")
-        bt_inv = WeightBacktest(dfw.copy(), weight_type="INVALID")
-        assert bt_ts.stats["绝对收益"] == bt_inv.stats["绝对收益"]
+        with pytest.raises(ValueError, match="weight_type"):
+            WeightBacktest(dfw, weight_type="INVALID")
 
 
 class TestManySymbols:
