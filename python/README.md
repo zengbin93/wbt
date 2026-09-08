@@ -48,6 +48,12 @@ uv run maturin develop --release
 
 ## Quick Start
 
+For standalone chronological position exposure, use
+`from wbt import calculate_position_risk` and pass a DataFrame containing
+`dt`, `symbol`, `weight`. It returns seven exposure metrics on the sorted time
+axis with forward-filled positions. See [contract, examples and reproducible
+Rust/Python benchmark](../docs/position_risk.md).
+
 ```python
 import pandas as pd
 from wbt import WeightBacktest
