@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -22,6 +24,17 @@ def _prepare_frame(frame: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("symbol must not contain nulls")
     if pd.api.types.infer_dtype(result["symbol"].to_numpy()) not in ("string", "empty"):
         raise TypeError("symbol values must be strings")
+    weights = result["weight"]
+    # to_numeric accepts temporal dtypes and casting complex values drops their
+    # imaginary parts. Check object/mixed values too, before either conversion.
+    if weights.dtype.kind in "mMc" or (
+        not pd.api.types.is_numeric_dtype(weights.dtype)
+        and any(
+            isinstance(value, (date, timedelta, np.datetime64, np.timedelta64, complex, np.complexfloating))
+            for value in weights
+        )
+    ):
+        raise TypeError("weight values must be real numbers, not datetime, timedelta or complex")
     result["weight"] = pd.to_numeric(result["weight"], errors="raise").to_numpy(dtype="float64", na_value=np.nan)
     if np.isinf(result["weight"].to_numpy()).any():
         raise ValueError("weight must not contain infinity")

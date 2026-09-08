@@ -1,3 +1,6 @@
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -113,6 +116,73 @@ def test_invalid_input_is_rejected(calculator, column, value):
     row[column] = value
     with pytest.raises((ValueError, TypeError)):
         calculator(pd.DataFrame([row]))
+
+
+@pytest.mark.parametrize(
+    "weights",
+    [
+        pd.Series(pd.date_range("2026-09-08", periods=2)),
+        pd.Series(pd.date_range("2026-09-08", periods=2, tz="Asia/Shanghai")),
+        pd.Series(pd.to_timedelta([1, 2], unit="D")),
+        pd.Series([1 + 2j, 3 + 0j], dtype="complex64"),
+        pd.Series([1 + 2j, 3 + 0j], dtype="complex128"),
+    ],
+    ids=["datetime", "datetime-tz", "timedelta", "complex64", "complex128"],
+)
+def test_nonreal_weight_dtypes_are_rejected(calculator, weights):
+    frame = pd.DataFrame({"dt": pd.date_range("2026-09-08", periods=2), "symbol": ["A"] * 2, "weight": weights})
+    before = frame.copy(deep=True)
+    with pytest.raises((TypeError, ValueError), match="weight"):
+        calculator(frame)
+    pd.testing.assert_frame_equal(frame, before)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        date(2026, 9, 8),
+        datetime(2026, 9, 8),
+        pd.Timestamp("2026-09-08", tz="UTC"),
+        np.datetime64("2026-09-08"),
+        timedelta(days=1),
+        pd.Timedelta(days=1),
+        np.timedelta64(1, "D"),
+        1 + 2j,
+        1 + 0j,
+        np.complex64(1 + 2j),
+        np.complex128(1 + 2j),
+    ],
+)
+def test_nonreal_values_in_mixed_object_weights_are_rejected(calculator, invalid):
+    frame = pd.DataFrame(
+        {
+            "dt": pd.date_range("2026-09-08", periods=4),
+            "symbol": ["A"] * 4,
+            "weight": pd.Series([0.5, None, invalid, "0.25"], dtype=object),
+        }
+    )
+    before = frame.copy(deep=True)
+    with pytest.raises((TypeError, ValueError), match="weight"):
+        calculator(frame)
+    pd.testing.assert_frame_equal(frame, before)
+
+
+@pytest.mark.parametrize(
+    "weights",
+    [
+        pd.Series([None, 2, np.nan, -3, pd.NA, 0], dtype=object),
+        pd.Series([None, "2", np.nan, Decimal("-3"), pd.NA, np.int64(0)], dtype=object),
+        pd.Series([None, 2, None, -3, None, 0], dtype="Float64"),
+        pd.Series([None, 2, None, -3, None, 0], dtype="Int64"),
+    ],
+    ids=["object-numbers", "object-convertible", "nullable-float", "nullable-int"],
+)
+def test_valid_weights_preserve_initial_missing_carry_and_close(calculator, weights):
+    frame = pd.DataFrame({"dt": pd.date_range("2026-09-08", periods=6), "symbol": ["A"] * 6, "weight": weights})
+    before = frame.copy(deep=True)
+    expected_frame = frame.assign(weight=[np.nan, 2.0, np.nan, -3.0, np.nan, 0.0])
+    pd.testing.assert_frame_equal(calculator(frame), dense_oracle(expected_frame), check_dtype=False)
+    pd.testing.assert_frame_equal(frame, before)
 
 
 def test_native_profile_has_identical_output():

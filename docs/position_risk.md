@@ -15,6 +15,8 @@
 - No leverage clipping. A zero short exposure produces a NaN long/short ratio.
 - Null time/symbol keys and infinite weights are rejected. Invalid datetime or
   nonnumeric weight values raise errors rather than silently disappearing.
+  Date/time, timedelta and complex weights are rejected, including values in
+  mixed object columns. Real numbers and numeric strings remain accepted.
 - Empty input returns the same eight-column schema with zero rows.
 - Input is not mutated. Timestamp precision/timezone survives the IPC boundary;
   no milliseconds-only normalization is applied.
