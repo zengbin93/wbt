@@ -31,19 +31,23 @@ KEYS = [
 # Rows are fixed mathematical expectations, not another implementation of the kernel.
 CASES = [
     pytest.param([0.1, -0.1], [0, 0, 0, 0.1, 0, 0.5, 1, 0, 1.5875, 0, 1, 1, 1, 0.5, 0.063, -25.2, 0.0008], id="cancel"),
-    pytest.param([-0.1, 0.1], [0, 0, 0, 0, 0, 0.5, 1, 0, 1.5875, 0, 1, 1, 0, 1, 0, 25.2, 0], id="cancel_no_drawdown"),
+    pytest.param(
+        [-0.1, 0.1],
+        [0, 0, 0, 0.1, 0, 0.5, 1, 0, 1.5875, 0, 1, 1, 1, 0.5, 0.063, 25.2, 0],
+        id="cancel_after_initial_loss",
+    ),
     pytest.param(
         [0.01] * 3, [0.03, 2.52, 0, 0, 10, 1, 5, 5, 0, 0, 1, 0.3333, 0, 1, 0, 2.52, 0], id="constant_positive"
     ),
     pytest.param(
         [-0.01] * 3,
-        [-0.03, -2.52, 0, 0.02, -10, 0, 0, -1, 0, 0, 1, 1, 2, 0.3333, 0, -2.52, 0.0016],
+        [-0.03, -2.52, 0, 0.03, -10, 0, 0, -1, 0, 0, 1, 1, 3, 0, 0, -2.52, 0.0016],
         id="constant_negative",
     ),
     pytest.param([0.0] * 3, [0] * 15 + [None, 0], id="zero"),
     pytest.param([], [0] * 15 + [None, 0], id="empty"),
     pytest.param([0.01], [0.01, 2.52, 0, 0, 10, 1, 5, 5, 0, 0, 1, 1, 0, 1, 0, None, 0], id="single_positive"),
-    pytest.param([-0.01], [-0.01, -2.52, 0, 0, -10, 0, 0, -1, 0, 0, 1, 1, 0, 1, 0, None, 0], id="single_negative"),
+    pytest.param([-0.01], [-0.01, -2.52, 0, 0.01, -10, 0, 0, -1, 0, 0, 1, 1, 1, 0, 0, None, 0], id="single_negative"),
 ]
 
 
@@ -76,7 +80,7 @@ def test_rolling_metrics_preserve_degenerate_windows(returns, expected):
 
 @pytest.mark.parametrize(
     "returns,absolute,drawdown",
-    [([0.1, -0.1], 0, 0.1), ([0.01] * 3, 0.03, 0), ([-0.01] * 3, -0.03, 0.02), ([0.0] * 3, 0, 0)],
+    [([0.1, -0.1], 0, 0.1), ([0.01] * 3, 0.03, 0), ([-0.01] * 3, -0.03, 0.03), ([0.0] * 3, 0, 0)],
 )
 @pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
 def test_backtest_stats_curves_and_drawdowns_agree(returns, absolute, drawdown, side):
