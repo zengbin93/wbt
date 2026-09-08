@@ -434,7 +434,7 @@ mod tests {
             let dp = daily_performance(&[sign * 0.01; 3], Some(252)).unwrap();
             assert_eq!(dp.absolute_return, sign * 0.03);
             assert_eq!(dp.annual_returns, sign * 2.52);
-            assert_eq!(dp.max_drawdown, if sign > 0.0 { 0.0 } else { 0.02 });
+            assert_eq!(dp.max_drawdown, if sign > 0.0 { 0.0 } else { 0.03 });
             assert_eq!(dp.sharpe_ratio, 0.0);
             assert_eq!(dp.drawdown_risk, 0.0);
             assert_eq!(dp.annual_lin_reg_cumsum_return, Some(sign * 2.52));
@@ -447,7 +447,7 @@ mod tests {
             let dp = daily_performance(&[sign * 0.01], Some(252)).unwrap();
             assert_eq!(dp.absolute_return, sign * 0.01);
             assert_eq!(dp.annual_returns, sign * 2.52);
-            assert_eq!(dp.max_drawdown, 0.0);
+            assert_eq!(dp.max_drawdown, if sign > 0.0 { 0.0 } else { 0.01 });
             assert_eq!(dp.calmar_ratio, sign * 10.0);
             assert_eq!(dp.annual_lin_reg_cumsum_return, None);
         }
