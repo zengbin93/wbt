@@ -42,6 +42,23 @@ def test_input_and_table_mutation_do_not_change_snapshot(wb, sample_dfw):
     assert wb.to_result().to_dict(full=True) == before
 
 
+def test_snapshot_properties_keep_docstrings(wb):
+    """快照属性的 docstring 不因 cached_property 包装而丢失（help/IDE 可见）。"""
+    result = wb.to_result()
+    for name in [
+        "verdict",
+        "verdict_recent",
+        "drawdowns",
+        "key_trades",
+        "yearly_returns",
+        "rolling",
+        "segment_comparison",
+        "curves_voladj",
+    ]:
+        doc = getattr(type(result), name).__doc__
+        assert doc and doc.strip(), f"快照属性 {name} 的 docstring 丢失"
+
+
 def test_nested_snapshot_is_read_only_and_export_is_detached(wb):
     result = wb.to_result()
     before = result.to_dict(full=True)

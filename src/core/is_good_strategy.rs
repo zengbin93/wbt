@@ -77,8 +77,10 @@ fn parse_date_key_strict(dk: i32) -> Result<NaiveDate, WbtError> {
 /// 口径：**单利**，与 [`crate::core::daily_performance::calc_underwater`] 一致（SKZ-195
 /// 统一为单利）。累积收益 `cum = Σr`；峰值跟踪 `peak = max(cum)`；每步水下
 /// `underwater = cum - peak`，最大回撤 = `max(peak - cum)`（收益空间的绝对回撤，非比例）。
-/// 首个 bar 的 `peak` 即取 `cum`，故不在第 0 天记回撤，与 `calc_underwater` 同口径。
-/// （历史上曾用复利净值 `nav = ∏(1+r)`、`dd = (peak - nav) / peak`。）
+/// 峰值基线为初始本金 `0.0`（D01/SKZ-724：首日亏损即从初始本金开始的回撤，计入），
+/// 与 `calc_underwater` 的 `sum_max_so_far = 0.0` 同口径。
+/// （历史上曾用复利净值 `nav = ∏(1+r)`、`dd = (peak - nav) / peak`；D01 之前曾以
+/// 首个 bar 的 `cum` 为初始峰值，导致开局下跌不计入回撤、与 stats 口径分裂。）
 ///
 /// - 空输入返回 0。任一 r 不是有限值 → 返回 NaN（由调用方决策是否当作退化）。
 fn local_max_drawdown_abs(returns: &[f64]) -> f64 {
@@ -86,7 +88,8 @@ fn local_max_drawdown_abs(returns: &[f64]) -> f64 {
         return 0.0;
     }
     let mut cum = 0.0_f64;
-    let mut peak = f64::NEG_INFINITY;
+    // 初始本金是 t=0 的累计收益峰值，与 calc_underwater 的 D01 基线一致。
+    let mut peak = 0.0_f64;
     let mut max_dd = 0.0_f64;
     for &r in returns {
         if !r.is_finite() {
@@ -653,6 +656,38 @@ mod tests {
             (dd - expected).abs() < 1e-10,
             "expected {expected}, got {dd}"
         );
+    }
+
+    /// D01 基线对齐回归：开局即跌的初始亏损是从初始本金开始的回撤，必须计入。
+    /// （修复前 peak 以首个 bar 的 cum 起算，该序列只报 0.03，与 stats 侧 0.10 分裂。）
+    #[test]
+    fn local_max_drawdown_initial_loss_counts() {
+        let alpha = vec![-0.10_f64, 0.02, 0.01];
+        let dd = local_max_drawdown_abs(&alpha);
+        assert!((dd - 0.10).abs() < 1e-10, "expected 0.10, got {dd}");
+    }
+
+    /// 与 `daily_performance::calc_underwater` 的 D01 基线逐序列等值（含开局下跌）。
+    #[test]
+    fn local_max_drawdown_matches_calc_underwater() {
+        use crate::core::daily_performance::calc_underwater;
+        let cases: Vec<Vec<f64>> = vec![
+            vec![],
+            vec![0.05, -0.10, -0.05, 0.02, 0.03],
+            vec![-0.10, 0.02, 0.01],
+            vec![-0.2, -0.3, 0.1, 0.05],
+            vec![0.2, -0.5, 2.0 / 3.0, 0.0],
+            vec![0.0; 10],
+        ];
+        for returns in cases {
+            let underwater = calc_underwater(&returns);
+            let expected = underwater.iter().map(|&u| -u).fold(0.0_f64, f64::max);
+            let got = local_max_drawdown_abs(&returns);
+            assert!(
+                (got - expected).abs() < 1e-10,
+                "returns {returns:?}: calc_underwater 口径 {expected}, local 口径 {got}"
+            );
+        }
     }
 
     #[test]

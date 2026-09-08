@@ -73,6 +73,14 @@ impl WeightBacktest {
 
     /// 创建持仓权重回测对象
     pub fn new(dfw: DataFrame, digits: i64, fee_rate: Option<f64>) -> Result<Self, WbtError> {
+        // digits 直接决定 round_weight 的 scale = 10^digits：越界值会在
+        // validate_input（有限性检查）之后静默产生 NaN 权重（scale 溢出 inf）
+        // 或把全部权重归零（负 digits 下溢），必须在取整前拦下。
+        if !(0..=10).contains(&digits) {
+            return Err(WbtError::InvalidInput(format!(
+                "digits must be in 0..=10, got {digits}"
+            )));
+        }
         let dfw = Self::validate_input(dfw)?;
         // dt列格式转换
         let mut dfw = Self::convert_datetime(dfw)
@@ -553,6 +561,22 @@ mod tests {
         assert_eq!(wb.fee_rate, 0.0002);
         assert_eq!(wb.digits, 2);
         assert!(!wb.symbols.is_empty());
+    }
+
+    /// digits 越界必须在取整前被拒绝：>= 309 时 scale 溢出 inf 会静默产生 NaN 权重，
+    /// 负值下溢会把全部权重归零（均绕过 validate_input 的有限性检查）。
+    #[test]
+    fn new_rejects_out_of_range_digits() {
+        for digits in [-1, -50, 11, 400] {
+            let df = raw_example_data();
+            match WeightBacktest::new(df, digits, None) {
+                Ok(_) => panic!("digits={digits} must be rejected"),
+                Err(err) => assert!(
+                    err.to_string().contains("digits must be in 0..=10"),
+                    "unexpected error for digits={digits}: {err}"
+                ),
+            }
+        }
     }
 
     #[test]
