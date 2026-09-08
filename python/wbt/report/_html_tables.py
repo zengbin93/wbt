@@ -10,15 +10,14 @@ from __future__ import annotations
 import html
 from typing import TYPE_CHECKING
 
+from wbt.metrics import COMPARE_METRICS as _CMP_METRICS
+from wbt.metrics import COMPARE_SIDES
 from wbt.metrics import DETAIL_LABELS as _DETAIL_LABELS
 from wbt.metrics import lookup_metric as _mget
 from wbt.plotting._common import fmt_value
 
 if TYPE_CHECKING:
     from wbt.result import BacktestResult
-
-# 关键指标对比所用指标 + 基准/超额（来自 daily_performance）键名别名
-_CMP_METRICS = ["年化收益", "夏普比率", "卡玛比率", "最大回撤", "年化波动率", "日胜率"]
 
 
 def _is_signed(key: str) -> bool:
@@ -198,7 +197,7 @@ def stats_kv_html(result: BacktestResult) -> str:
 def stats_comparison_html(result: BacktestResult) -> str:
     """多空/多头/空头/基准/超额 关键指标对比表。"""
     sides = {"多空": result.stats, **result.stats_by_side}
-    order = [s for s in ("多空", "多头", "空头", "基准", "超额") if s in sides]
+    order = [s for s in COMPARE_SIDES if s in sides]
     rows = [[m, *[_cell(m, _mget(sides[s], m)) for s in order]] for m in _CMP_METRICS]
     return _fin_table(["指标", *order], rows)
 
