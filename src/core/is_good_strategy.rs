@@ -75,9 +75,11 @@ fn parse_date_key_strict(dk: i32) -> Result<NaiveDate, WbtError> {
 /// [`crate::core::daily_performance`] 的早返回与四舍五入。
 ///
 /// 口径：**单利**，与 [`crate::core::daily_performance::calc_underwater`] 一致（SKZ-195
-/// 统一为单利）。累积收益 `cum = Σr`；峰值跟踪 `peak = max(cum)`；每步水下
+/// 统一为单利；D01 将 t=0 初始本金纳入回撤基线）。累积收益 `cum = Σr`；峰值跟踪
+/// `peak = max(0, 历史累计)`，即从零本金基线起算；每步水下
 /// `underwater = cum - peak`，最大回撤 = `max(peak - cum)`（收益空间的绝对回撤，非比例）。
-/// 首个 bar 的 `peak` 即取 `cum`，故不在第 0 天记回撤，与 `calc_underwater` 同口径。
+/// 首日即亏或全程未回本的序列从第 0 天起记回撤，与 `calc_underwater`、结果曲线及
+/// `top_drawdowns` 同口径（见 `docs/d01-capital-baseline.md`）。
 /// （历史上曾用复利净值 `nav = ∏(1+r)`、`dd = (peak - nav) / peak`。）
 ///
 /// - 空输入返回 0。任一 r 不是有限值 → 返回 NaN（由调用方决策是否当作退化）。
@@ -86,7 +88,8 @@ fn local_max_drawdown_abs(returns: &[f64]) -> f64 {
         return 0.0;
     }
     let mut cum = 0.0_f64;
-    let mut peak = f64::NEG_INFINITY;
+    // D01：t=0 本金（零累计收益）是回撤峰值的下界，首日亏损即回撤。
+    let mut peak = 0.0_f64;
     let mut max_dd = 0.0_f64;
     for &r in returns {
         if !r.is_finite() {
@@ -653,6 +656,20 @@ mod tests {
             (dd - expected).abs() < 1e-10,
             "expected {expected}, got {dd}"
         );
+    }
+
+    /// D01 回归：峰值下界是 t=0 本金基线，首日亏损与未回本序列照记回撤，
+    /// 与 `daily_performance` 的 `initial_loss_is_capital_drawdown` 口径一致。
+    #[test]
+    fn local_max_drawdown_counts_initial_capital_baseline() {
+        // 首日即亏：cum = -0.10，peak = 0（本金）→ 回撤 0.10，而非旧口径的 0。
+        assert!((local_max_drawdown_abs(&[-0.10_f64]) - 0.10).abs() < 1e-10);
+        // 全程未回本：[-0.05, +0.02]，cum = -0.05, -0.03，peak 恒为 0 → 回撤 0.05。
+        assert!((local_max_drawdown_abs(&[-0.05_f64, 0.02]) - 0.05).abs() < 1e-10);
+        // 恒定亏损与 daily_performance_degenerate 验收表对齐：[-1%, -1%, -1%] → 0.03。
+        assert!((local_max_drawdown_abs(&[-0.01_f64; 3]) - 0.03).abs() < 1e-10);
+        // 先盈后亏不回归旧口径：peak 仍取历史累计高点。
+        assert!((local_max_drawdown_abs(&[0.20_f64, -0.50, 2.0 / 3.0, 0.0]) - 0.50).abs() < 1e-10);
     }
 
     #[test]
