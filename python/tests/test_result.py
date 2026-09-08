@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ from wbt.result import (
     PairsDist,
     ReturnDist,
     SymbolReturns,
+    _json_safe,
 )
 
 CURVE_KEYS = {"多空", "多头", "空头", "基准", "超额"}
@@ -97,7 +99,7 @@ def test_return_dist_units(result: BacktestResult) -> None:
 def test_monthly_shape_and_winrates(result: BacktestResult) -> None:
     m = result.monthly
     assert isinstance(m, MonthlyHeatmap)
-    assert m.months == list(range(1, 13))
+    assert tuple(m.months) == tuple(range(1, 13))
     assert m.z.shape == (len(m.years), 12)
     assert m.text.shape == m.z.shape
     assert 0.0 <= m.month_win_rate <= 1.0
@@ -146,16 +148,16 @@ def test_curves_voladj_cached_and_keys(result: BacktestResult) -> None:
 def test_drawdowns_records(result: BacktestResult) -> None:
     dd1 = result.drawdowns
     assert result.drawdowns is dd1
-    assert isinstance(dd1, list)
+    assert isinstance(dd1, tuple)
     if dd1:
-        assert isinstance(dd1[0], dict)
+        assert isinstance(dd1[0], Mapping)
 
 
 def test_key_trades_structure(result: BacktestResult) -> None:
     kt = result.key_trades
     assert isinstance(kt, KeyTrades)
-    assert isinstance(kt.best, dict)
-    assert isinstance(kt.worst, dict)
+    assert isinstance(kt.best, Mapping)
+    assert isinstance(kt.worst, Mapping)
     for year, rows in {**kt.best, **kt.worst}.items():
         assert isinstance(year, int)
         assert len(rows) <= 3
@@ -172,7 +174,7 @@ def test_yearly_returns_aligned(result: BacktestResult) -> None:
     yr = result.yearly_returns
     n = len(yr.years)
     assert yr.abs_returns.shape == yr.alpha_returns.shape == (n,)
-    assert yr.years == sorted(yr.years)
+    assert list(yr.years) == sorted(yr.years)
 
 
 def test_rolling_series_aligned(result: BacktestResult) -> None:
@@ -200,8 +202,8 @@ def test_to_dict_json_safe(result: BacktestResult) -> None:
     d_full = result.to_dict(full=True)
     s = json.dumps(d_full)  # 全字段也必须 JSON 安全
     assert "key_trades" in d_full
-    assert d_full["verdict"] == result.verdict
-    assert d_full["verdict_recent"] == result.verdict_recent
+    assert d_full["verdict"] == _json_safe(result.verdict)
+    assert d_full["verdict_recent"] == _json_safe(result.verdict_recent)
     assert "drawdowns" in d_full
     assert "curves_voladj" in d_full
     assert isinstance(s, str)

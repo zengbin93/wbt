@@ -27,10 +27,10 @@ pub use utils::WeightType;
 
 /// 持仓权重回测
 pub struct WeightBacktest {
-    pub dfw: DataFrame,
-    pub digits: i64,
-    pub fee_rate: f64,
-    pub symbols: Vec<Arc<str>>,
+    dfw: DataFrame,
+    digits: i64,
+    fee_rate: f64,
+    symbols: Vec<Arc<str>>,
     /// 原始 SoA 数据（延迟物化）
     dailys_soa: Option<DailysSoA>,
     pairs_soa: Option<PairsSoA>,
@@ -41,12 +41,35 @@ pub struct WeightBacktest {
     /// 聚合开平记录缓存（aggregated_pairs / key_trades 共用，避免重复聚合）
     agg_pairs_cache: Option<Vec<key_trades::AggRow>>,
     weight_type: Option<WeightType>,
-    pub report: Option<Report>,
+    report: Option<Report>,
     /// 年化交易天数
-    pub yearly_days: usize,
+    yearly_days: usize,
 }
 
 impl WeightBacktest {
+    /// Read-only input and effective configuration; create a new instance to change these.
+    pub fn dfw(&self) -> &DataFrame {
+        &self.dfw
+    }
+    pub fn digits(&self) -> i64 {
+        self.digits
+    }
+    pub fn fee_rate(&self) -> f64 {
+        self.fee_rate
+    }
+    pub fn symbols(&self) -> &[Arc<str>] {
+        &self.symbols
+    }
+    pub fn report(&self) -> Option<&Report> {
+        self.report.as_ref()
+    }
+    pub fn yearly_days(&self) -> usize {
+        self.yearly_days
+    }
+    pub fn weight_type(&self) -> Option<WeightType> {
+        self.weight_type
+    }
+
     /// 创建持仓权重回测对象
     pub fn new(dfw: DataFrame, digits: i64, fee_rate: Option<f64>) -> Result<Self, WbtError> {
         let dfw = Self::validate_input(dfw)?;
@@ -199,7 +222,7 @@ impl WeightBacktest {
     }
 
     /// 按需构建 daily_return DataFrame（延迟物化，结果缓存）
-    pub fn daily_return_df(&mut self) -> Result<&mut DataFrame, WbtError> {
+    pub fn daily_return_df(&mut self) -> Result<&DataFrame, WbtError> {
         if self.daily_return_cache.is_none() {
             let dailys_soa = self
                 .dailys_soa
@@ -215,11 +238,11 @@ impl WeightBacktest {
             let df = Self::build_daily_return_df(dailys_soa, &report.daily_totals, weight_type)?;
             self.daily_return_cache = Some(df);
         }
-        Ok(self.daily_return_cache.as_mut().unwrap())
+        Ok(self.daily_return_cache.as_ref().unwrap())
     }
 
     /// 按需构建 dailys DataFrame（延迟物化，结果缓存）
-    pub fn dailys_df(&mut self) -> Result<&mut DataFrame, WbtError> {
+    pub fn dailys_df(&mut self) -> Result<&DataFrame, WbtError> {
         if self.dailys_cache.is_none() {
             let df = self
                 .dailys_soa
@@ -228,11 +251,11 @@ impl WeightBacktest {
                 .to_dataframe()?;
             self.dailys_cache = Some(df);
         }
-        Ok(self.dailys_cache.as_mut().unwrap())
+        Ok(self.dailys_cache.as_ref().unwrap())
     }
 
     /// 按需构建 pairs DataFrame（延迟物化，结果缓存）
-    pub fn pairs_df(&mut self) -> Result<Option<&mut DataFrame>, WbtError> {
+    pub fn pairs_df(&mut self) -> Result<Option<&DataFrame>, WbtError> {
         if self.pairs_soa.is_none() {
             return Ok(None);
         }
@@ -240,7 +263,7 @@ impl WeightBacktest {
             let df = self.pairs_soa.as_ref().unwrap().to_dataframe()?;
             self.pairs_cache = Some(df);
         }
-        Ok(self.pairs_cache.as_mut())
+        Ok(self.pairs_cache.as_ref())
     }
 
     /// 确保聚合开平记录已计算并缓存（aggregated_pairs / key_trades 共用，聚合只跑一次）。
@@ -694,6 +717,35 @@ mod tests {
     }
 
     #[test]
+    fn explicit_recompute_invalidates_all_materialized_caches() {
+        let mut wb = WeightBacktest::new(raw_example_data(), 2, None).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+        let detached = wb.daily_return_df().unwrap().clone().clear();
+        assert_eq!(detached.height(), 0);
+        assert!(wb.daily_return_df().unwrap().height() > 0);
+        wb.dailys_df().unwrap();
+        wb.pairs_df().unwrap();
+        wb.aggregated_pairs_df().unwrap();
+        wb.backtest(Some(1), WeightType::CS, 365).unwrap();
+        assert!(wb.daily_return_cache.is_none());
+        assert!(wb.dailys_cache.is_none());
+        assert!(wb.pairs_cache.is_none());
+        assert!(wb.agg_pairs_cache.is_none());
+        assert_eq!(wb.yearly_days(), 365);
+        let mut fresh = WeightBacktest::new(raw_example_data(), 2, None).unwrap();
+        fresh.backtest(Some(1), WeightType::CS, 365).unwrap();
+        assert!(
+            wb.daily_return_df()
+                .unwrap()
+                .equals_missing(fresh.daily_return_df().unwrap())
+        );
+        assert_eq!(
+            wb.report().unwrap().stats.daily_performance,
+            fresh.report().unwrap().stats.daily_performance
+        );
+    }
+
+    #[test]
     fn daily_return_cache_is_lazy_and_reused() {
         let df = raw_example_data();
         let mut wb = WeightBacktest::new(df, 2, None).unwrap();
@@ -703,13 +755,13 @@ mod tests {
 
         let first_ptr = {
             let df = wb.daily_return_df().unwrap();
-            df as *mut DataFrame
+            df as *const DataFrame
         };
         assert!(wb.daily_return_cache.is_some());
 
         let second_ptr = {
             let df = wb.daily_return_df().unwrap();
-            df as *mut DataFrame
+            df as *const DataFrame
         };
 
         assert_eq!(first_ptr, second_ptr);

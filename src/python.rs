@@ -29,10 +29,10 @@ fn pyarrow_to_df(data: &[u8]) -> PyResult<DataFrame> {
         .map_err(|e| PyException::new_err(e.to_string()))
 }
 
-fn df_to_pyarrow(dataframe: &mut DataFrame) -> PyResult<Vec<u8>> {
+fn df_to_pyarrow(dataframe: &DataFrame) -> PyResult<Vec<u8>> {
     let mut buffer = Cursor::new(Vec::new());
     IpcWriter::new(&mut buffer)
-        .finish(dataframe)
+        .finish(&mut dataframe.clone())
         .map_err(|e| PyException::new_err(e.to_string()))?;
     Ok(buffer.into_inner())
 }
@@ -138,10 +138,23 @@ impl PyWeightBacktest {
         Ok(Self { inner })
     }
 
+    fn config(&self) -> (i64, f64, String, usize) {
+        let weight_type = match self.inner.weight_type() {
+            Some(WeightType::CS) => "cs",
+            _ => "ts",
+        };
+        (
+            self.inner.digits(),
+            self.inner.fee_rate(),
+            weight_type.into(),
+            self.inner.yearly_days(),
+        )
+    }
+
     fn stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let py_dict = PyDict::new(py);
 
-        if let Some(ref report) = self.inner.report {
+        if let Some(report) = self.inner.report() {
             let stats = &report.stats;
 
             let dp = &stats.daily_performance;
@@ -201,11 +214,11 @@ impl PyWeightBacktest {
         py: Python<'py>,
         min_days: usize,
     ) -> PyResult<Bound<'py, PyBytes>> {
-        let mut df = self
+        let df = self
             .inner
             .yearly_return_df(min_days)
             .map_err(|e| PyException::new_err(e.to_string()))?;
-        let df_bytes = df_to_pyarrow(&mut df)?;
+        let df_bytes = df_to_pyarrow(&df)?;
         Ok(PyBytes::new(py, &df_bytes))
     }
 
@@ -219,11 +232,11 @@ impl PyWeightBacktest {
     }
 
     fn alpha<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let mut df = self
+        let df = self
             .inner
             .alpha_df()
             .map_err(|e| PyException::new_err(e.to_string()))?;
-        let df_bytes = df_to_pyarrow(&mut df)?;
+        let df_bytes = df_to_pyarrow(&df)?;
         Ok(PyBytes::new(py, &df_bytes))
     }
 
@@ -250,8 +263,8 @@ impl PyWeightBacktest {
             .aggregated_pairs_df()
             .map_err(|e| PyException::new_err(e.to_string()))?
         {
-            Some(mut df) => {
-                let df_bytes = df_to_pyarrow(&mut df)?;
+            Some(df) => {
+                let df_bytes = df_to_pyarrow(&df)?;
                 Ok(PyBytes::new(py, &df_bytes))
             }
             None => Ok(PyBytes::new(py, b"".as_slice())),
@@ -266,8 +279,8 @@ impl PyWeightBacktest {
             .key_trades_df(top)
             .map_err(|e| PyException::new_err(e.to_string()))?
         {
-            Some(mut df) => {
-                let df_bytes = df_to_pyarrow(&mut df)?;
+            Some(df) => {
+                let df_bytes = df_to_pyarrow(&df)?;
                 Ok(PyBytes::new(py, &df_bytes))
             }
             None => Ok(PyBytes::new(py, b"".as_slice())),
@@ -298,7 +311,7 @@ impl PyWeightBacktest {
 
     #[pyo3(text_signature = "($self)")]
     fn symbol_dict(&self) -> PyResult<Vec<String>> {
-        if let Some(ref report) = self.inner.report {
+        if let Some(report) = self.inner.report() {
             Ok(report.symbol_dict.clone())
         } else {
             Err(PyException::new_err("Report not found"))
@@ -306,7 +319,7 @@ impl PyWeightBacktest {
     }
 
     fn long_stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        if let Some(ref report) = self.inner.report {
+        if let Some(report) = self.inner.report() {
             hashmap_to_pydict(py, &report.long_stats)
         } else {
             Err(PyException::new_err("Report not found"))
@@ -314,7 +327,7 @@ impl PyWeightBacktest {
     }
 
     fn short_stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        if let Some(ref report) = self.inner.report {
+        if let Some(report) = self.inner.report() {
             hashmap_to_pydict(py, &report.short_stats)
         } else {
             Err(PyException::new_err("Report not found"))
@@ -471,9 +484,9 @@ pub fn top_drawdowns<'py>(
         .into_no_null_iter()
         .collect();
 
-    let mut df_out = crate::core::top_drawdowns::top_drawdowns(&returns_vec, &dates, Some(top))
+    let df_out = crate::core::top_drawdowns::top_drawdowns(&returns_vec, &dates, Some(top))
         .map_err(|e| PyException::new_err(e.to_string()))?;
-    let bytes = df_to_pyarrow(&mut df_out)?;
+    let bytes = df_to_pyarrow(&df_out)?;
     Ok(PyBytes::new(py, &bytes))
 }
 
@@ -561,7 +574,7 @@ pub fn rolling_daily_performance<'py>(
         .map(|opt| opt.unwrap_or(f64::NAN))
         .collect();
 
-    let mut df_out = crate::core::rolling_daily_performance::rolling_daily_performance(
+    let df_out = crate::core::rolling_daily_performance::rolling_daily_performance(
         dates,
         returns,
         window,
@@ -569,7 +582,7 @@ pub fn rolling_daily_performance<'py>(
         yearly_days,
     )
     .map_err(|e| PyException::new_err(e.to_string()))?;
-    let bytes = df_to_pyarrow(&mut df_out)?;
+    let bytes = df_to_pyarrow(&df_out)?;
     Ok(PyBytes::new(py, &bytes))
 }
 
