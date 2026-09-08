@@ -466,22 +466,30 @@ impl NativeEngine {
         let dt_col = dfw.column("dt")?.as_materialized_series().datetime()?;
         let time_unit = dt_col.time_unit();
         let dt_ca = dt_col.phys.rechunk();
-        let dt_slice = dt_ca.cont_slice().unwrap();
+        let dt_slice = dt_ca
+            .cont_slice()
+            .map_err(|e| WbtError::InvalidInput(format!("column 'dt': {e}")))?;
 
         let weight_col = dfw.column("weight")?.as_materialized_series().f64()?;
         let weight_ca = weight_col.rechunk();
-        let weight_slice = weight_ca.cont_slice().unwrap();
+        let weight_slice = weight_ca
+            .cont_slice()
+            .map_err(|e| WbtError::InvalidInput(format!("column 'weight': {e}")))?;
 
         let price_col = dfw.column("price")?.as_materialized_series().f64()?;
         let price_ca = price_col.rechunk();
-        let price_slice = price_ca.cont_slice().unwrap();
+        let price_slice = price_ca
+            .cont_slice()
+            .map_err(|e| WbtError::InvalidInput(format!("column 'price': {e}")))?;
 
         let sym_id_col = dfw
             .column("sym_id")?
             .as_materialized_series()
             .u32()?
             .rechunk();
-        let sym_id_slice = sym_id_col.cont_slice().unwrap();
+        let sym_id_slice = sym_id_col
+            .cont_slice()
+            .map_err(|e| WbtError::InvalidInput(format!("column 'sym_id': {e}")))?;
 
         // O(N) 极速扫描切片分界点
         let mut block_bounds: Vec<(u32, usize, usize)> = Vec::with_capacity(symbols.len());

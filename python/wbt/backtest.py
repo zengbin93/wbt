@@ -149,19 +149,13 @@ class WeightBacktest:
                 pass
 
             # pd.DataFrame path
-            dfw = data
-            if dfw["weight"].dtype != "float":
-                dfw["weight"] = dfw["weight"].astype(float)
-            if dfw.isnull().sum().sum() > 0:
-                raise ValueError(f"data 中存在空值，请先处理; 具体数据：\n{dfw[dfw.isnull().T.any().T]}")
-
-            dfw = dfw[["dt", "symbol", "weight", "price"]].copy()
-
-            self.dfw = dfw.copy()
-            self.symbols = list(dfw["symbol"].unique().tolist())
-
+            # Required columns, numeric types and nulls are validated in Rust,
+            # just like the Polars and file paths.
+            dfw = data.loc[:, data.columns.isin(["dt", "symbol", "weight", "price"])].copy()
             arrow_data = pandas_to_arrow_bytes(dfw)
             self._inner = PyWeightBacktest.from_arrow(arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days)
+            self.dfw = dfw[["dt", "symbol", "weight", "price"]].astype({"weight": float, "price": float})
+            self.symbols = list(dfw["symbol"].unique().tolist())
 
     def get_top_symbols(self, n: int = 1, kind: str = "profit") -> list[str]:
         """获取回测赚钱/亏钱最多的前n个品种

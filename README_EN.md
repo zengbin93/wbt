@@ -171,6 +171,10 @@ Accepted Python inputs:
 - polars.DataFrame or polars.LazyFrame
 - file path (csv, parquet, feather, arrow)
 
+All paths share Rust validation: `dt`, `symbol`, `weight`, and `price` are required and must not contain nulls.
+`symbol` must contain non-empty strings; `weight` and `price` accept finite integers or floats and are converted to Float64. NaN and positive/negative infinity are rejected.
+Invalid input raises a Python `ValueError` naming the column (including missing pandas columns, previously `KeyError`). Numeric strings and booleans are not accepted as numeric columns.
+
 ## Outputs You Can Use Immediately
 
 - wb.stats: full long-short evaluation summary.

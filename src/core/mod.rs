@@ -49,8 +49,10 @@ pub struct WeightBacktest {
 impl WeightBacktest {
     /// 创建持仓权重回测对象
     pub fn new(dfw: DataFrame, digits: i64, fee_rate: Option<f64>) -> Result<Self, WbtError> {
+        let dfw = Self::validate_input(dfw)?;
         // dt列格式转换
-        let mut dfw = Self::convert_datetime(dfw).context("Failed to convert datetime")?;
+        let mut dfw = Self::convert_datetime(dfw)
+            .map_err(|e| WbtError::InvalidInput(format!("column 'dt': {e}")))?;
         // weight列格式处理
         Self::round_weight(&mut dfw, digits).context("Failed to round weight")?;
 
@@ -69,8 +71,14 @@ impl WeightBacktest {
             let sym_ca = dfw.column("symbol")?.as_materialized_series().str()?;
             let sym_ids: Vec<u32> = sym_ca
                 .into_iter()
-                .map(|opt_s| opt_s.and_then(|s| order_map.get(s).copied()).unwrap_or(0))
-                .collect();
+                .map(|opt_s| {
+                    opt_s
+                        .and_then(|s| order_map.get(s).copied())
+                        .ok_or_else(|| {
+                            WbtError::InvalidInput("column 'symbol': missing symbol mapping".into())
+                        })
+                })
+                .collect::<Result<_, _>>()?;
             drop(order_map);
 
             let mut bucket_counts = vec![0u32; n_syms];
@@ -168,17 +176,6 @@ impl WeightBacktest {
                 )));
             }
         };
-
-        // Validate required columns
-        let required = ["dt", "symbol", "weight", "price"];
-        for col in required {
-            if df.column(col).is_err() {
-                return Err(WbtError::Io(format!(
-                    "Missing required column '{}' in file '{}'",
-                    col, path
-                )));
-            }
-        }
 
         Self::new(df, digits, fee_rate)
     }
@@ -325,6 +322,50 @@ impl WeightBacktest {
 
 // --- Utility methods (from utils.rs source) ---
 impl WeightBacktest {
+    /// 所有输入路径共用的必需列校验；数值列统一为引擎使用的 Float64。
+    fn validate_input(mut df: DataFrame) -> Result<DataFrame, WbtError> {
+        for name in ["dt", "symbol", "weight", "price"] {
+            let column = df
+                .column(name)
+                .map_err(|_| WbtError::InvalidInput(format!("Missing required column '{name}'")))?;
+            if column.null_count() > 0 {
+                return Err(WbtError::InvalidInput(format!(
+                    "column '{name}' must not contain null values"
+                )));
+            }
+        }
+
+        let symbols = df.column("symbol")?.as_materialized_series();
+        let symbols = symbols
+            .str()
+            .map_err(|_| WbtError::InvalidInput("column 'symbol' must contain strings".into()))?;
+        if symbols.into_no_null_iter().any(|s| s.trim().is_empty()) {
+            return Err(WbtError::InvalidInput(
+                "column 'symbol' must not contain empty strings".into(),
+            ));
+        }
+
+        for name in ["weight", "price"] {
+            let column = df.column(name)?.as_materialized_series();
+            if !column.dtype().is_primitive_numeric() {
+                return Err(WbtError::InvalidInput(format!(
+                    "column '{name}' must be numeric, got {:?}",
+                    column.dtype()
+                )));
+            }
+            let values = column.strict_cast(&DataType::Float64).map_err(|e| {
+                WbtError::InvalidInput(format!("column '{name}' cannot convert to Float64: {e}"))
+            })?;
+            if values.f64()?.into_no_null_iter().any(|v| !v.is_finite()) {
+                return Err(WbtError::InvalidInput(format!(
+                    "column '{name}' must contain only finite values (no NaN or infinity)"
+                )));
+            }
+            df.replace(name, values.into())?;
+        }
+        Ok(df)
+    }
+
     /// 从 DataFrame 中的 `symbol` 列获取唯一品种集合
     pub(crate) fn unique_symbols(df: &DataFrame) -> Result<Vec<Arc<str>>, WbtError> {
         let symbols_series = df.column("symbol")?.as_materialized_series().str()?;
@@ -402,8 +443,7 @@ impl WeightBacktest {
         let scale = 10_f64.powi(digits as i32);
         let weight_s = df.column("weight")?.as_materialized_series().clone();
         let rounded = weight_s
-            .f64()
-            .unwrap()
+            .f64()?
             .into_iter()
             .map(|opt| opt.map(|val| (val * scale).round() / scale))
             .collect::<Float64Chunked>();
@@ -489,6 +529,118 @@ mod tests {
         assert_eq!(wb.fee_rate, 0.0002);
         assert_eq!(wb.digits, 2);
         assert!(!wb.symbols.is_empty());
+    }
+
+    #[test]
+    fn new_normalizes_integer_weights_and_prices() {
+        let mut df = raw_example_data();
+        df.replace(
+            "weight",
+            Series::new("weight".into(), [1_i64, 0, -1, 1, 0]).into(),
+        )
+        .unwrap();
+        df.replace(
+            "price",
+            Series::new("price".into(), [100_i32, 102, 99, 103, 101]).into(),
+        )
+        .unwrap();
+        let mut reference = df.clone();
+        for name in ["weight", "price"] {
+            let values = reference
+                .column(name)
+                .unwrap()
+                .as_materialized_series()
+                .cast(&DataType::Float64)
+                .unwrap();
+            reference.replace(name, values.into()).unwrap();
+        }
+        let mut wb = WeightBacktest::new(df, 2, None).unwrap();
+        let mut expected = WeightBacktest::new(reference, 2, None).unwrap();
+        wb.backtest(Some(1), WeightType::TS, 252).unwrap();
+        expected.backtest(Some(1), WeightType::TS, 252).unwrap();
+        assert!(
+            wb.daily_return_df()
+                .unwrap()
+                .equals_missing(expected.daily_return_df().unwrap())
+        );
+        for name in ["weight", "price"] {
+            assert_eq!(wb.dfw.column(name).unwrap().dtype(), &DataType::Float64);
+        }
+    }
+
+    #[test]
+    fn new_rejects_missing_and_null_required_columns() {
+        for name in ["dt", "symbol", "weight", "price"] {
+            let df = raw_example_data();
+            let mut null_df = df.clone();
+            null_df
+                .replace(
+                    name,
+                    Series::full_null(name.into(), df.height(), df.column(name).unwrap().dtype())
+                        .into(),
+                )
+                .unwrap();
+            for invalid in [df.drop(name).unwrap(), null_df] {
+                let err = WeightBacktest::new(invalid, 2, None)
+                    .err()
+                    .expect("must reject invalid input");
+                assert!(matches!(err, WbtError::InvalidInput(_)));
+                assert!(err.to_string().contains(name));
+            }
+        }
+    }
+
+    #[test]
+    fn new_rejects_partial_null_symbol_instead_of_mapping_to_first_symbol() {
+        let mut df = raw_example_data();
+        df.replace(
+            "symbol",
+            Series::new(
+                "symbol".into(),
+                [Some("A"), None, Some("B"), Some("B"), Some("A")],
+            )
+            .into(),
+        )
+        .unwrap();
+        assert!(matches!(
+            WeightBacktest::new(df, 2, None),
+            Err(WbtError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn new_rejects_non_numeric_weights_and_prices() {
+        for name in ["weight", "price"] {
+            let mut df = raw_example_data();
+            df.replace(name, Series::new(name.into(), ["1"; 5]).into())
+                .unwrap();
+            let err = WeightBacktest::new(df, 2, None)
+                .err()
+                .expect("must reject strings");
+            assert!(matches!(err, WbtError::InvalidInput(_)));
+            assert!(err.to_string().contains(name));
+        }
+    }
+
+    #[test]
+    fn new_rejects_non_finite_weights_and_prices() {
+        for name in ["weight", "price"] {
+            for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                for dtype in [DataType::Float32, DataType::Float64] {
+                    let mut df = raw_example_data();
+                    let values = Series::new(name.into(), [1.0, value, 1.0, 1.0, 1.0])
+                        .cast(&dtype)
+                        .unwrap();
+                    df.replace(name, values.into()).unwrap();
+                    let err = WeightBacktest::new(df, 2, None)
+                        .err()
+                        .expect("must reject non-finite input");
+                    assert!(matches!(err, WbtError::InvalidInput(_)));
+                    assert!(err.to_string().contains(name));
+                    assert!(err.to_string().contains("finite"));
+                }
+            }
+        }
     }
 
     #[test]

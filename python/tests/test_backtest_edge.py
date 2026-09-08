@@ -59,7 +59,7 @@ class TestMissingColumns:
                 "price": [100.0, 101.0, 102.0],
             }
         )
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError, match="weight"):
             WeightBacktest(df)
 
     def test_missing_price(self) -> None:
@@ -70,7 +70,7 @@ class TestMissingColumns:
                 "weight": [0.5, 0.5, 0.5],
             }
         )
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError, match="price"):
             WeightBacktest(df)
 
 
@@ -120,5 +120,5 @@ class TestNullValues:
                 "price": [100.0, 101.0, 102.0],
             }
         )
-        with pytest.raises(ValueError, match="空值"):
+        with pytest.raises(ValueError, match="weight.*null"):
             WeightBacktest(df)
