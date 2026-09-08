@@ -374,7 +374,7 @@ class WeightBacktest:
 
     @property
     def long_alpha_stats(self) -> dict:
-        """波动率调整后的多头超额收益统计"""
+        """波动率调整后的多头超额收益统计（全样本 ddof=0，目标固定 0.20；退化时返回零指标）。"""
         return _reorder_stats(self._inner.long_alpha_stats())
 
     def is_good_strategy(

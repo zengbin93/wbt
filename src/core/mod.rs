@@ -4,6 +4,7 @@ use errors::WbtError;
 use polars::prelude::*;
 use std::path::Path;
 
+pub(crate) mod alpha;
 mod backtest;
 pub mod backtest_result_wire;
 pub mod cal_yearly_days;

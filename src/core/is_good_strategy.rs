@@ -27,6 +27,7 @@
 //!   [`WbtError::InvalidInput`] 显式抛出。
 //! - 业务口径与 [`crate::core::backtest::long_alpha_stats`] 中的波动率归一化保持一致。
 
+use crate::core::alpha::{VOL_EPSILON, compute_vol_adjusted_alpha};
 use crate::core::errors::WbtError;
 use crate::core::utils::std_inline;
 use chrono::{Datelike, NaiveDate};
@@ -35,9 +36,6 @@ use std::collections::HashMap;
 
 /// 年度收益接近 0 时的浮点容差。`year_passed` / `cond_recent_return_passed` 使用。
 const RETURN_EPSILON: f64 = 1e-9;
-
-/// 年化波动率退化阈值。与 [`crate::core::backtest::long_alpha_stats`] 保持一致。
-const VOL_EPSILON: f64 = 1e-12;
 
 /// `is_good_strategy` 的判定模式。模块内部使用，不作为 SemVer 公开承诺。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,45 +126,6 @@ fn full_sample_sharpe(returns: &[f64], yearly_days: usize) -> f64 {
         return f64::NAN;
     }
     mean / std * (yearly_days as f64).sqrt()
-}
-
-/// 给定多头日收益与基准日收益，按目标年化波动率分别归一化后做差，得到波动率归一多头超额日序列。
-///
-/// 返回 `None` 表示**无法归一化**（输入含 NaN/Inf、长度不一致、或任一序列的年化波动率
-/// < [`VOL_EPSILON`]）；此时调用方应将判定降级为"alpha 退化"而非视为零回撤通过。
-pub(crate) fn compute_vol_adjusted_alpha(
-    long: &[f64],
-    bench: &[f64],
-    yearly_days: usize,
-    target_vol: f64,
-) -> Option<Vec<f64>> {
-    if long.len() != bench.len() {
-        return None;
-    }
-    if !target_vol.is_finite() || target_vol <= 0.0 {
-        return None;
-    }
-    if long.iter().any(|v| !v.is_finite()) || bench.iter().any(|v| !v.is_finite()) {
-        return None;
-    }
-    let yd_sqrt = (yearly_days as f64).sqrt();
-    let long_vol = std_inline(long) * yd_sqrt;
-    let bench_vol = std_inline(bench) * yd_sqrt;
-    if !long_vol.is_finite()
-        || !bench_vol.is_finite()
-        || long_vol < VOL_EPSILON
-        || bench_vol < VOL_EPSILON
-    {
-        return None;
-    }
-    let long_scale = target_vol / long_vol;
-    let bench_scale = target_vol / bench_vol;
-    Some(
-        long.iter()
-            .zip(bench.iter())
-            .map(|(&l, &b)| l * long_scale - b * bench_scale)
-            .collect(),
-    )
 }
 
 /// 按年聚合策略绝对收益与波动率归一多头超额，输出每年的单利收益（`Σr`）、交易日数和"完整自然年"标记。
@@ -450,7 +409,12 @@ pub(crate) fn judge(
 
             out.insert(
                 "yearly_metrics".into(),
-                Value::Array(yearly.iter().map(year_metric_to_value).collect()),
+                Value::Array(
+                    yearly
+                        .iter()
+                        .map(|m| year_metric_to_value(m, alpha_degenerate))
+                        .collect(),
+                ),
             );
             out.insert("complete_year_count".into(), json!(complete.len()));
             out.insert("alpha_degenerate".into(), json!(alpha_degenerate));
@@ -575,12 +539,18 @@ pub(crate) fn judge(
     Ok(out)
 }
 
-fn year_metric_to_value(m: &YearMetric) -> Value {
+fn year_metric_to_value(m: &YearMetric, alpha_degenerate: bool) -> Value {
     let mut obj = serde_json::Map::new();
     obj.insert("year".into(), json!(m.year));
     obj.insert("abs_return".into(), json!(m.abs_return));
-    obj.insert("alpha_return".into(), json!(m.alpha_return));
-    obj.insert("alpha_max_drawdown".into(), json!(m.alpha_max_drawdown));
+    obj.insert(
+        "alpha_return".into(),
+        json!((!alpha_degenerate).then_some(m.alpha_return)),
+    );
+    obj.insert(
+        "alpha_max_drawdown".into(),
+        json!((!alpha_degenerate).then_some(m.alpha_max_drawdown)),
+    );
     obj.insert("days".into(), json!(m.days));
     obj.insert("is_complete_year".into(), json!(m.is_complete_year));
     obj.insert("year_passed".into(), json!(m.year_passed));

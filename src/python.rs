@@ -577,11 +577,29 @@ pub fn rolling_daily_performance<'py>(
 // Module registration
 // ---------------------------------------------------------------------------
 
+// Private array adapters: keep normalization and alpha math in the Rust core.
+#[pyfunction]
+fn _normalize_returns(returns: Vec<f64>, yearly_days: usize, target_vol: f64) -> Option<Vec<f64>> {
+    crate::core::alpha::normalize_returns(&returns, yearly_days, target_vol)
+}
+
+#[pyfunction]
+fn _vol_adjusted_alpha(
+    long: Vec<f64>,
+    bench: Vec<f64>,
+    yearly_days: usize,
+    target_vol: f64,
+) -> Option<Vec<f64>> {
+    crate::core::alpha::compute_vol_adjusted_alpha(&long, &bench, yearly_days, target_vol)
+}
+
 #[pymodule]
 fn _wbt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Bridge Rust log::warn! → Python logging (loguru 用户可一行接管)
     let _ = pyo3_log::try_init();
 
+    m.add_function(wrap_pyfunction!(_normalize_returns, m)?)?;
+    m.add_function(wrap_pyfunction!(_vol_adjusted_alpha, m)?)?;
     m.add_class::<PyWeightBacktest>()?;
     m.add_function(wrap_pyfunction!(daily_performance, m)?)?;
     m.add_function(wrap_pyfunction!(top_drawdowns, m)?)?;
