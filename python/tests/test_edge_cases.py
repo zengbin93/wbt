@@ -47,31 +47,33 @@ class TestDailyPerformanceEdgeCases:
     """Edge cases for the standalone daily_performance function."""
 
     def test_single_value_positive(self) -> None:
-        """Single positive return: std=0 → all metrics zero (by design)."""
+        """Single positive return retains its return; volatility ratios are undefined."""
         dp = daily_performance(np.array([0.05]), yearly_days=252)
-        assert dp["绝对收益"] == 0.0
-        assert dp["年化"] == 0.0
+        assert dp["绝对收益"] == 0.05
+        assert dp["年化"] == 12.6
 
     def test_single_value_negative(self) -> None:
-        """Single negative return: std=0 → all metrics zero."""
+        """Single negative return retains its loss."""
         dp = daily_performance(np.array([-0.03]), yearly_days=252)
-        assert dp["绝对收益"] == 0.0
+        assert dp["绝对收益"] == -0.03
 
     def test_constant_positive_returns(self) -> None:
-        """All same positive return: std=0 → all metrics zero."""
+        """Constant positive returns keep profit with a zero Sharpe convention."""
         dp = daily_performance(np.array([0.001] * 100), yearly_days=252)
-        assert dp["绝对收益"] == 0.0
+        assert dp["绝对收益"] == 0.1
         assert dp["夏普"] == 0.0
 
     def test_constant_negative_returns(self) -> None:
-        """All same negative return: std=0 → all metrics zero."""
+        """Constant negative returns keep the accumulated loss."""
         dp = daily_performance(np.array([-0.001] * 100), yearly_days=252)
-        assert dp["绝对收益"] == 0.0
+        assert dp["绝对收益"] == -0.1
 
     def test_cum_return_near_zero(self) -> None:
-        """Returns that cancel out: cum_return ≈ 0 → all metrics zero."""
+        """Returns that cancel out retain their drawdown and volatility."""
         dp = daily_performance(np.array([0.01, -0.01]), yearly_days=252)
         assert dp["绝对收益"] == 0.0
+        assert dp["最大回撤"] == 0.01
+        assert dp["年化波动率"] > 0
 
     def test_two_values_with_variance(self) -> None:
         """Two different values: std > 0, cum_return > 0 → valid metrics."""
@@ -128,10 +130,10 @@ class TestMinimalData:
     """Minimum viable data: 2-3 bars."""
 
     def test_two_bars_one_symbol(self) -> None:
-        """2 bars → 1 daily return → std=0 → stats all zero."""
+        """2 bars produce one 0.5% return, retained despite zero variance."""
         dfw = _make_dfw(2, ["A"], lambda d, s: 0.5, lambda d, s: 100.0 + d)
         bt = WeightBacktest(dfw, digits=2, fee_rate=0.0, n_jobs=1, yearly_days=252)
-        assert bt.stats["绝对收益"] == 0.0
+        assert bt.stats["绝对收益"] == 0.005
 
     def test_three_bars_one_symbol(self) -> None:
         """3 bars → 2 daily returns → std > 0 if different → valid stats."""
