@@ -10,6 +10,8 @@ from __future__ import annotations
 import html
 from typing import TYPE_CHECKING
 
+from wbt.metrics import DETAIL_LABELS as _DETAIL_LABELS
+from wbt.metrics import lookup_metric as _mget
 from wbt.plotting._common import fmt_value
 
 if TYPE_CHECKING:
@@ -17,18 +19,6 @@ if TYPE_CHECKING:
 
 # 关键指标对比所用指标 + 基准/超额（来自 daily_performance）键名别名
 _CMP_METRICS = ["年化收益", "夏普比率", "卡玛比率", "最大回撤", "年化波动率", "日胜率"]
-_ALIASES: dict[str, tuple[str, ...]] = {
-    "年化收益": ("年化收益", "年化"),
-    "夏普比率": ("夏普比率", "夏普"),
-    "卡玛比率": ("卡玛比率", "卡玛"),
-}
-
-
-def _mget(d: dict, key: str) -> object:
-    for alias in _ALIASES.get(key, (key,)):
-        if alias in d:
-            return d[alias]
-    return None
 
 
 def _is_signed(key: str) -> bool:
@@ -157,24 +147,6 @@ def recent_verdict_card_html(v: dict) -> str:
 
 
 # 详情面板逐字段展示用的字段顺序与中文标签（key 名英文，对人友好的标签在右）。
-_DETAIL_LABELS: dict[str, str] = {
-    "mode": "模式",
-    "is_good": "可用",
-    "complete_year_count": "完整年度数",
-    "cond_yearly_passed": "逐年达标",
-    "cond_recent_return_passed": "近期收益/回撤达标",
-    "cond_recent_dd_passed": "近期回撤优于历史",
-    "recent_start_date": "近期起始",
-    "recent_end_date": "近期结束",
-    "recent_actual_days": "近期实际天数",
-    "recent_abs_return": "近期绝对收益",
-    "recent_alpha_return": "近期超额收益",
-    "recent_alpha_max_drawdown": "近期超额回撤",
-    "history_alpha_max_drawdown_excl_recent": "历史超额回撤(剔除近期)",
-    "history_window_empty": "历史窗口不足",
-    "alpha_degenerate": "alpha 退化",
-    "reason": "原始判定说明",
-}
 
 
 def _detail_kv_grid(v: dict) -> str:

@@ -98,7 +98,7 @@ def test_envelope_has_format_and_version(result: BacktestResult) -> None:
     data = result.to_msgpack(full=False)
     envelope = msgpack.unpackb(data, raw=False)
     assert envelope["format"] == FORMAT == "wbt.backtest_result"
-    assert envelope["format_version"] == FORMAT_VERSION == 1
+    assert envelope["format_version"] == FORMAT_VERSION == 2
     assert isinstance(envelope["payload"], dict)
 
 

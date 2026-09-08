@@ -556,7 +556,7 @@ class BacktestResult:
         return _json_safe(out)
 
     # --------------------------------------------------------------- msgpack
-    def to_msgpack(self, *, full: bool = True) -> bytes:
+    def to_msgpack(self, *, full: bool = False) -> bytes:
         """序列化为 MessagePack 字节（完整嵌套结果对象的二进制交换格式）。
 
         封装格式见 ``wbt.serialization``：外层带 ``format`` / ``format_version``，
@@ -567,19 +567,19 @@ class BacktestResult:
 
         return to_msgpack(self, full=full)
 
-    def dump_msgpack(self, path: str | Path, *, full: bool = True) -> None:
+    def dump_msgpack(self, path: str | Path, *, full: bool = False) -> None:
         """把结果写为 ``.msgpack`` 文件。参数同 :meth:`to_msgpack`。"""
         from wbt.serialization import dump_msgpack
 
         dump_msgpack(self, path, full=full)
 
-    def to_json(self, *, full: bool = True) -> bytes:
+    def to_json(self, *, full: bool = False) -> bytes:
         """序列化为带版本 envelope 的 UTF-8 JSON 字节。"""
         from wbt.serialization import to_json
 
         return to_json(self, full=full)
 
-    def dump_json(self, path: str | Path, *, full: bool = True) -> None:
+    def dump_json(self, path: str | Path, *, full: bool = False) -> None:
         """把结果写为带版本 envelope 的 ``.json`` 文件。"""
         from wbt.serialization import dump_json
 
