@@ -48,31 +48,6 @@ pub(crate) fn date_key_to_naive_date(dk: i32) -> NaiveDate {
     })
 }
 
-/// 纯数值 pearson 相关系数 (ddof=1，与 Polars pearson_corr ddof=1 一致)
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn pearson_corr_inline(xs: &[f64], ys: &[f64]) -> f64 {
-    let n = xs.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let nf = n as f64;
-    let mean_x = xs.iter().sum::<f64>() / nf;
-    let mean_y = ys.iter().sum::<f64>() / nf;
-    let mut cov = 0.0f64;
-    let mut var_x = 0.0f64;
-    let mut var_y = 0.0f64;
-    for i in 0..n {
-        let dx = xs[i] - mean_x;
-        let dy = ys[i] - mean_y;
-        cov += dx * dy;
-        var_x += dx * dx;
-        var_y += dy * dy;
-    }
-    let denom = (var_x * var_y).sqrt();
-    if denom == 0.0 { 0.0 } else { cov / denom }
-}
-
 /// 纯数值标准差 (ddof=0，与 Polars .std(0) 一致)
 #[inline]
 pub(crate) fn std_inline(xs: &[f64]) -> f64 {
@@ -132,7 +107,12 @@ mod tests {
     fn weight_type_from_str() {
         assert_eq!("ts".parse::<WeightType>().unwrap(), WeightType::TS);
         assert_eq!("cs".parse::<WeightType>().unwrap(), WeightType::CS);
-        assert!("invalid".parse::<WeightType>().is_err());
+        for invalid in ["invalid", "INVALID", "TS", "CS", "", " ts", "cs ", "Ts"] {
+            assert!(
+                invalid.parse::<WeightType>().is_err(),
+                "accepted {invalid:?}"
+            );
+        }
     }
 
     #[test]
@@ -221,33 +201,6 @@ mod tests {
             date_key_to_naive_date(20001231),
             NaiveDate::from_ymd_opt(2000, 12, 31).unwrap()
         );
-    }
-
-    // --- pearson_corr_inline ---
-    #[test]
-    fn pearson_perfect_positive() {
-        let xs = [1.0, 2.0, 3.0, 4.0, 5.0];
-        let ys = [2.0, 4.0, 6.0, 8.0, 10.0];
-        assert!((pearson_corr_inline(&xs, &ys) - 1.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn pearson_perfect_negative() {
-        let xs = [1.0, 2.0, 3.0, 4.0, 5.0];
-        let ys = [10.0, 8.0, 6.0, 4.0, 2.0];
-        assert!((pearson_corr_inline(&xs, &ys) + 1.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn pearson_constant_returns_zero() {
-        let xs = [3.0, 3.0, 3.0];
-        let ys = [1.0, 2.0, 3.0];
-        assert_eq!(pearson_corr_inline(&xs, &ys), 0.0);
-    }
-
-    #[test]
-    fn pearson_single_element() {
-        assert_eq!(pearson_corr_inline(&[1.0], &[2.0]), 0.0);
     }
 
     // --- std_inline ---

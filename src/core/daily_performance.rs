@@ -8,7 +8,8 @@ use serde::Serialize;
 
 pub(crate) fn calc_underwater(returns: &[f64]) -> Vec<f64> {
     let mut sum = 0.0;
-    let mut sum_max_so_far = f64::NEG_INFINITY;
+    // Initial capital is the t=0 cumulative-return peak.
+    let mut sum_max_so_far: f64 = 0.0;
     returns
         .iter()
         .map(|&r| {
@@ -105,7 +106,9 @@ pub fn daily_performance(
     daily_returns: &[f64],
     yearly_days: Option<usize>,
 ) -> Result<DailyPerformance, WbtError> {
-    if daily_returns.is_empty() {
+    // Preserve the default convention only for empty / genuinely all-zero input.
+    // A zero sum or zero variance does not imply zero return, drawdown or coverage.
+    if daily_returns.is_empty() || daily_returns.iter().all(|&r| r == 0.0) {
         return Ok(DailyPerformance::default());
     }
 
@@ -115,7 +118,7 @@ pub fn daily_performance(
     let mut cum_return = 0.0;
     let mut mean = 0.0;
     let mut m2 = 0.0;
-    let mut max_cum_return: f64 = f64::NEG_INFINITY;
+    let mut max_cum_return: f64 = 0.0;
     let mut zero_drawdown_count = 0;
     // 新高间隔 = 最长「严格水下」连续 bar 数（cum_return < running_max）。
     // 语义与 czsc 漏洞对照文档「方法二」保持一致：只数水下天数本身，
@@ -171,10 +174,6 @@ pub fn daily_performance(
         };
     }
 
-    if cum_return.abs() < f64::EPSILON {
-        return Ok(DailyPerformance::default());
-    }
-
     let lr_sum_x = (total_days - 1.0) * total_days / 2.0;
     let lr_sum_x_squared = (total_days - 1.0) * total_days * (2.0 * total_days - 1.0) / 6.0;
     let lr_denominator = total_days * lr_sum_x_squared - lr_sum_x * lr_sum_x;
@@ -191,15 +190,20 @@ pub fn daily_performance(
 
     let variance = m2 / total_days;
     let std_val = variance.sqrt();
-    if std_val < f64::EPSILON {
-        return Ok(DailyPerformance::default());
-    }
-
-    let sharpe_ratio = mean / std_val * yearly_days.sqrt();
+    // Keep numeric API fields: 0 is the convention for an undefined volatility ratio.
+    let sharpe_ratio = if std_val < f64::EPSILON {
+        0.0
+    } else {
+        mean / std_val * yearly_days.sqrt()
+    };
     let new_high_ratio = (zero_drawdown_count as f64 / total_days).round_to_4_digit();
     let annual_returns = (mean * yearly_days).round_to_4_digit();
     let calmar_ratio = if max_drawdown < f64::EPSILON {
-        10.0
+        if annual_returns == 0.0 {
+            0.0
+        } else {
+            10.0 * annual_returns.signum()
+        }
     } else {
         annual_returns / max_drawdown
     }
@@ -225,9 +229,14 @@ pub fn daily_performance(
     let daily_win_probability =
         (daily_profit_loss_ratio * daily_win_rate - (1.0 - daily_win_rate)).round_to_4_digit();
 
-    let annual_volatility = (std_val * yearly_days.sqrt()).round_to_4_digit();
-
-    let drawdown_risk = (max_drawdown / annual_volatility).round_to_4_digit();
+    let raw_annual_volatility = std_val * yearly_days.sqrt();
+    let annual_volatility = raw_annual_volatility.round_to_4_digit();
+    // Divide before display rounding: a small positive volatility may round to 0.
+    let drawdown_risk = if std_val < f64::EPSILON || raw_annual_volatility < f64::EPSILON {
+        0.0
+    } else {
+        (max_drawdown / raw_annual_volatility).round_to_4_digit()
+    };
 
     let downside_volatility = if neg_count > 0.0 {
         let neg_variance = neg_m2 / neg_count;
@@ -346,6 +355,22 @@ mod tests {
         assert!(uw.iter().all(|&x| x == 0.0));
     }
 
+    #[test]
+    fn initial_loss_is_capital_drawdown() {
+        let returns = [-0.10, 0.02, 0.01];
+        let dp = daily_performance(&returns, Some(252)).unwrap();
+        assert_eq!(dp.absolute_return, -0.07);
+        assert_eq!(dp.max_drawdown, 0.10);
+        assert_eq!(dp.calmar_ratio, -10.0);
+        assert_eq!(dp.new_high_ratio, 0.0);
+        assert_eq!(dp.new_high_interval, 3.0);
+        assert_eq!(calc_underwater(&[-0.1]), vec![-0.1]);
+        assert_eq!(
+            calc_underwater(&[-0.125, 0.125, 0.25]),
+            vec![-0.125, 0.0, 0.0]
+        );
+    }
+
     // --- calc_underwater_valley ---
     #[test]
     fn valley_finds_min() {
@@ -393,6 +418,49 @@ mod tests {
     }
 
     #[test]
+    fn f02_cancelling_returns_preserve_risk() {
+        let dp = daily_performance(&[0.1, -0.1], Some(252)).unwrap();
+        assert_eq!(dp.absolute_return, 0.0);
+        assert_eq!(dp.max_drawdown, 0.1);
+        assert_eq!(dp.annual_volatility, 1.5875);
+        assert_eq!(dp.daily_win_rate, 0.5);
+        assert_eq!(dp.non_zero_coverage, 1.0);
+        assert_eq!(dp.annual_lin_reg_cumsum_return, Some(-25.2));
+    }
+
+    #[test]
+    fn f02_constant_returns_preserve_signed_return_and_drawdown() {
+        for sign in [1.0, -1.0] {
+            let dp = daily_performance(&[sign * 0.01; 3], Some(252)).unwrap();
+            assert_eq!(dp.absolute_return, sign * 0.03);
+            assert_eq!(dp.annual_returns, sign * 2.52);
+            assert_eq!(dp.max_drawdown, if sign > 0.0 { 0.0 } else { 0.03 });
+            assert_eq!(dp.sharpe_ratio, 0.0);
+            assert_eq!(dp.drawdown_risk, 0.0);
+            assert_eq!(dp.annual_lin_reg_cumsum_return, Some(sign * 2.52));
+        }
+    }
+
+    #[test]
+    fn f02_single_return_preserves_return_without_regression_slope() {
+        for sign in [1.0, -1.0] {
+            let dp = daily_performance(&[sign * 0.01], Some(252)).unwrap();
+            assert_eq!(dp.absolute_return, sign * 0.01);
+            assert_eq!(dp.annual_returns, sign * 2.52);
+            assert_eq!(dp.max_drawdown, if sign > 0.0 { 0.0 } else { 0.01 });
+            assert_eq!(dp.calmar_ratio, sign * 10.0);
+            assert_eq!(dp.annual_lin_reg_cumsum_return, None);
+        }
+    }
+
+    #[test]
+    fn f02_drawdown_risk_uses_unrounded_volatility() {
+        let dp = daily_performance(&[1e-6, -1e-6], Some(252)).unwrap();
+        assert_eq!(dp.annual_volatility, 0.0);
+        assert_eq!(dp.drawdown_risk, 0.063);
+    }
+
+    #[test]
     fn daily_performance_known_values() {
         // returns = [0.01, -0.005, 0.02], yearly_days=252
         //
@@ -437,32 +505,24 @@ mod tests {
     }
 
     #[test]
-    fn daily_performance_constant_returns_default() {
-        // Constant returns have zero std => returns default
-        // This is a design decision: when std=0, all metrics are zeroed out
+    fn daily_performance_constant_returns_keep_return() {
         let returns: Vec<f64> = (0..100).map(|_| 0.001).collect();
         let dp = daily_performance(&returns, Some(252)).unwrap();
-        assert_eq!(dp, DailyPerformance::default());
+        assert_eq!(dp.absolute_return, 0.1);
+        assert_eq!(dp.annual_returns, 0.252);
+        assert_eq!(dp.sharpe_ratio, 0.0);
+        assert_eq!(dp.daily_win_rate, 1.0);
     }
 
     #[test]
     fn daily_performance_negative_returns_known() {
-        // returns = [-0.01, -0.02, 0.005]
-        // cum = [-0.01, -0.03, -0.025]
-        // calc_underwater starts with sum_max = -inf
-        //   day0: sum=-0.01, max=-0.01, uw=0
-        //   day1: sum=-0.03, max=-0.01, uw=-0.02
-        //   day2: sum=-0.025, max=-0.01, uw=-0.015
-        // max_drawdown = 0.02 (from peak -0.01 to valley -0.03)
-        //
-        // win=1 (0.005>0), loss=2 (-0.01,-0.02 <0)
-        // daily_win_rate = 1/3 = 0.3333
+        // cum = [-0.01, -0.03, -0.025], measured from initial capital 0.
         let returns = [-0.01, -0.02, 0.005];
         let dp = daily_performance(&returns, Some(252)).unwrap();
         assert_eq!(dp.absolute_return, -0.025);
         assert!(dp.annual_returns < 0.0);
         assert!(dp.sharpe_ratio < 0.0);
-        assert_eq!(dp.max_drawdown, 0.02);
+        assert_eq!(dp.max_drawdown, 0.03);
         assert_eq!(dp.daily_win_rate, 0.3333);
     }
 

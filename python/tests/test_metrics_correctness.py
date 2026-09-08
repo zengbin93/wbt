@@ -173,8 +173,8 @@ def _python_daily_perf(returns: np.ndarray, yearly_days: int = 252) -> dict:
     # Clamp sharpe to [-5, 10]
     sharpe = max(-5.0, min(10.0, sharpe))
 
-    # Max drawdown: peak starts from -∞ (first cumsum value becomes initial peak)
-    running_max = np.maximum.accumulate(cumsum)
+    # Max drawdown: peak includes initial capital at zero
+    running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
     drawdown = running_max - cumsum
     max_dd = float(np.max(drawdown)) if len(drawdown) > 0 else 0.0
 
@@ -230,12 +230,12 @@ class TestStatsBasicMetrics:
         assert stats["夏普比率"] == pytest.approx(expected, abs=0.01)
 
     def test_max_drawdown(self, bt: WeightBacktest) -> None:
-        """最大回撤: peak starts from -∞ (first cumsum value is initial peak)."""
+        """最大回撤: peak includes initial capital at zero."""
         stats = bt.stats
         dr = bt.daily_return
         total_returns = dr["total"].values
         cumsum = np.cumsum(total_returns)
-        running_max = np.maximum.accumulate(cumsum)
+        running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
         drawdown = running_max - cumsum
         expected = float(np.max(drawdown)) if len(drawdown) > 0 else 0.0
         assert stats["最大回撤"] == pytest.approx(expected, abs=0.001)
@@ -716,13 +716,12 @@ class TestSegmentStats:
         assert seg["交易次数"] == 0
 
     def test_single_day(self, bt: WeightBacktest) -> None:
-        """Single day: daily_performance returns default (zero) when std=0.
-
-        With only 1 day of data, std of returns = 0, so daily_performance
-        returns all-zero metrics (by design — Sharpe etc. are undefined).
-        """
+        """A single-day segment retains that day's published return with zero Sharpe."""
         seg = bt.segment_stats(sdt=20240105, edt=20240105)
-        assert seg["绝对收益"] == 0.0  # daily_performance zeros out when std=0
+        daily = bt.daily_return
+        expected = daily.loc[pd.to_datetime(daily["date"]) == pd.Timestamp("2024-01-05"), "total"].iloc[0]
+        assert expected != 0.0
+        assert seg["绝对收益"] == pytest.approx(expected, abs=5e-5)
 
     def test_inverted_range(self, bt: WeightBacktest) -> None:
         """sdt > edt should return zero (empty set)."""
@@ -905,8 +904,7 @@ class TestLongAlphaStats:
     def test_max_drawdown(self, bt: WeightBacktest) -> None:
         """最大回撤 of alpha cumsum.
 
-        Drawdown peak starts from -∞ (not 0), meaning only drawdowns from
-        historical highs are counted, not initial losses.
+        Drawdown peak includes initial capital at zero, so initial losses count.
         """
         ref = self._python_alpha(bt)
         if ref is None:
@@ -915,7 +913,7 @@ class TestLongAlphaStats:
         ad = ref["alpha_daily"]
         cumsum = np.cumsum(ad)
         # peak = -∞: running_max tracks from first value, not from 0
-        running_max = np.maximum.accumulate(cumsum)
+        running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
         dd = running_max - cumsum
         expected = float(np.max(dd)) if len(dd) > 0 else 0.0
         assert alpha_stats["最大回撤"] == pytest.approx(expected, abs=0.001)
@@ -997,7 +995,7 @@ class TestLongAlphaStats:
         mean_a = np.mean(ad)
         annual_ret = mean_a * YEARLY_DAYS
         cumsum = np.cumsum(ad)
-        running_max = np.maximum.accumulate(cumsum)
+        running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
         dd = running_max - cumsum
         max_dd = float(np.max(dd)) if len(dd) > 0 else 0.0
         expected = max(-10.0, min(20.0, annual_ret / max_dd)) if max_dd > 1e-10 else 10.0
@@ -1012,7 +1010,7 @@ class TestLongAlphaStats:
         alpha_stats = bt.long_alpha_stats
         ad = ref["alpha_daily"]
         cumsum = np.cumsum(ad)
-        running_max = np.maximum.accumulate(cumsum)
+        running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
         at_high = np.sum(running_max - cumsum <= 0.0)
         expected = at_high / len(ad)
         assert alpha_stats["新高占比"] == pytest.approx(expected, abs=0.001)
@@ -1025,7 +1023,7 @@ class TestLongAlphaStats:
         alpha_stats = bt.long_alpha_stats
         ad = ref["alpha_daily"]
         cumsum = np.cumsum(ad)
-        running_max = np.maximum.accumulate(cumsum)
+        running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
         underwater = cumsum < running_max
         max_streak = 0
         streak = 0
@@ -1211,7 +1209,7 @@ class TestVolatilityMetrics:
         dr = bt.daily_return
         total_returns = dr["total"].values
         cumsum = np.cumsum(total_returns)
-        running_max = np.maximum.accumulate(cumsum)
+        running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
         at_new_high = np.sum(running_max - cumsum <= 0.0)
         expected = at_new_high / len(total_returns)
         assert stats["新高占比"] == pytest.approx(expected, abs=0.001)
@@ -1227,7 +1225,7 @@ class TestVolatilityMetrics:
         dr = bt.daily_return
         total_returns = dr["total"].values
         cumsum = np.cumsum(total_returns)
-        running_max = np.maximum.accumulate(cumsum)
+        running_max = np.maximum(0.0, np.maximum.accumulate(cumsum))
         underwater = cumsum < running_max
 
         max_streak = 0

@@ -1,0 +1,93 @@
+SKZ-721 verification — 2026-09-08
+
+Environment: Apple M1 / macOS arm64 / CPython 3.12.13.
+Exact compiler/package versions, input/source/extension hashes and raw samples:
+results.json. Dependency snapshots: cargo-lock.txt, python-requirements.txt.
+
+Executed against the independent feat/skz-721-position-risk worktree:
+
+1. cd python; VIRTUAL_ENV="$PWD/../.venv" ../.venv/bin/maturin develop --release --skip-install
+   PASS: optimized release artifact, ABI3 Python >=3.10; final rebuild 5m40s.
+   Benchmark additionally checks that native debug assertions are disabled.
+
+2. .venv/bin/python -m pytest python/tests -q
+   PASS: 402 passed in 8.21s (full suite, no skips).
+   The three position-risk test modules contribute 85 tests.
+
+3. cargo test --lib
+   PASS: 238 passed; 0 failed; 0 ignored (includes four new position-risk tests).
+
+4. cargo fmt --all -- --check
+   PASS.
+
+5. cargo clippy --all -- -D warnings -A non_snake_case
+   PASS.
+
+6. cargo clippy --features python --all -- -D warnings -A non_snake_case
+   PASS (includes PyO3 bindings and profiler).
+
+7. .venv/bin/ruff format --check python
+   PASS: 61 files already formatted.
+
+8. .venv/bin/ruff check python --no-fix
+   PASS: all checks passed.
+
+9. .venv/bin/basedpyright --project python/pyproject.toml --pythonpath "$PWD/.venv/bin/python"
+   PASS: 0 errors, 0 warnings, 0 notes.
+   An initial invocation without the explicit isolated interpreter reported 18
+   optional-value errors in existing tests because pytest's types were not
+   resolved. Selecting this worktree's interpreter resolves them; no unrelated
+   source/config changes were made.
+
+10. .venv/bin/python python/scripts/benchmark_position_risk.py --quick --repeats 2 --warmups 1 --output target/position-risk-smoke
+    PASS: smoke run and JSON/HTML generation.
+
+11. .venv/bin/python python/scripts/benchmark_position_risk.py --seed 721 --repeats 7 --warmups 2 --output docs/benchmarks/position_risk
+    PASS: six scenarios, 7 measured samples per phase, 2 warmups.
+    All output columns compared at rtol=atol=1e-12; all NaNs align.
+    Observed maximum absolute numeric difference is 0.0 in every scenario.
+    All recorded source hashes match delivered computation/benchmark files.
+
+12. .venv/bin/python python/scripts/verify_position_risk_report.py
+    PASS: result table, expandable phase table, no page errors, desktop 1500px
+    and mobile 390px without page-level horizontal overflow.
+    Screenshot was also visually inspected. The initial expanded mobile table
+    overflowed to 403px; the regression now passes with local table scrolling.
+
+13. git diff --check
+    PASS.
+
+Red/green evidence:
+- Initial hand-calculated public API test failed with "public position-risk API
+  is missing", then passed after the Rust/Arrow/Python implementation.
+- Initial same-algorithm Python test failed with "same-algorithm Python reference
+  is missing", then passed; a separate dense history oracle checks its outputs.
+- Expanded boundary tests exposed timezone loss, pd.NA conversion, missing-key /
+  symbol / infinity validation and the missing phase profiler (13 failures).
+  These now pass, including independent raw-IPC checks.
+- Direct native nonnumeric weight test failed with DID NOT RAISE ValueError;
+  strict Rust casting fixes the silent null conversion and the test now passes.
+- Chronological fixtures, zero/NaN behavior, duplicate last-nonmissing updates,
+  overnight carry, leverage, max concentration, empty input, nanoseconds/timezones
+  and large-position closure are covered independently of two-tree equivalence.
+
+Recorded median performance (milliseconds):
+scenario                 Python E2E   Rust E2E   E2E ratio  Python core  Rust core
+tiny (12 rows)               0.950      1.027      0.93x        0.507      0.00775
+small dense (1k)             2.962      1.916      1.55x        1.764      0.06063
+dense (100k)               209.156     17.040     12.27x      199.336      6.50750
+dense (500k)              1199.793     68.580     17.49x     1176.004     34.10308
+sparse (60k, 1000 symbols)  217.422     15.149     14.35x      210.021      5.48383
+shuffled duplicates (44k)  125.517     11.487     10.93x      118.490      3.79825
+
+Interpretation / limits:
+- E2E ratio = Python median / Rust median. Tiny inputs are slower in Rust here.
+- Rust/Python core scope is complete normalized DataFrame-to-DataFrame work,
+  including sorting and materialization, not just the arithmetic loop.
+- Four IPC conversion phases are measured separately; normal public calls have
+  no timers. Segmented timings are not expected to sum exactly to E2E.
+- Single machine, interpreted CPython same-algorithm baseline, no CPU pinning,
+  no memory/parallel-throughput measurement. P95 is descriptive, not a confidence
+  interval. No claim of universal speedup over vectorized pandas/NumPy.
+- Ordinary float64 rounding, cancellation and overflow limits remain.
+- Remote CI is not part of this local evidence; no merge or release performed.

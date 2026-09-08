@@ -48,6 +48,12 @@ uv run maturin develop --release
 
 ## Quick Start
 
+For standalone chronological position exposure, use
+`from wbt import calculate_position_risk` and pass a DataFrame containing
+`dt`, `symbol`, `weight`. It returns seven exposure metrics on the sorted time
+axis with forward-filled positions. See [contract, examples and reproducible
+Rust/Python benchmark](../docs/position_risk.md).
+
 ```python
 import pandas as pd
 from wbt import WeightBacktest
@@ -71,7 +77,7 @@ wb = WeightBacktest(
     digits=2,
     fee_rate=0.0002,
     n_jobs=4,
-    weight_type="ts",  # "ts" or "cs"
+    weight_type="ts",  # exact lowercase "ts" (mean) or "cs" (sum); other strings raise ValueError
     yearly_days=252,
 )
 
@@ -163,6 +169,7 @@ Core `WeightBacktest` properties and methods:
 - `daily_return`, `long_daily_return`, `short_daily_return`
 - `dailys`, `pairs`
 - `alpha`, `alpha_stats`, `bench_stats`
+  `alpha['策略']` equals `daily_return.total` (TS mean / CS sum); the benchmark remains an equal-weight mean. Review yearly/recent absolute returns sum the same portfolio daily returns.
 - `segment_stats(sdt, edt, kind)`
 - `long_alpha_stats`
 - `get_symbol_daily(symbol)`, `get_symbol_pairs(symbol)`

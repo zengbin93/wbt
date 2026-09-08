@@ -118,32 +118,29 @@ class WeightBacktest:
         :param n_jobs: int, default 1，并行计算的线程数
         :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
         :param yearly_days: int, default 252，年化交易日数量
+        :raises ValueError: weight_type 不是严格小写的 'ts' 或 'cs'（不自动去除空白或回退）
         """
-        self.digits = digits
-        self.fee_rate = fee_rate
-        self.weight_type = weight_type
-        self.yearly_days = yearly_days
 
         # Type dispatch
         if isinstance(data, (str, Path)):
             # File path — delegate entirely to Rust
-            self.dfw = None
+            self._dfw = None
             self._inner: PyWeightBacktest = PyWeightBacktest.from_file(
                 str(data), digits, fee_rate, n_jobs, weight_type, yearly_days
             )
-            self.symbols = self._inner.symbol_dict()
+
         else:
             # Try polars types first
             try:
                 import polars as pl
 
                 if isinstance(data, (pl.DataFrame, pl.LazyFrame)):
-                    self.dfw = None
+                    self._dfw = None
                     arrow_data = polars_to_arrow_bytes(data)
                     self._inner = PyWeightBacktest.from_arrow(
                         arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days
                     )
-                    self.symbols = self._inner.symbol_dict()
+
                     return
             except ImportError:
                 pass
@@ -154,8 +151,32 @@ class WeightBacktest:
             dfw = data.loc[:, data.columns.isin(["dt", "symbol", "weight", "price"])].copy()
             arrow_data = pandas_to_arrow_bytes(dfw)
             self._inner = PyWeightBacktest.from_arrow(arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days)
-            self.dfw = dfw[["dt", "symbol", "weight", "price"]].astype({"weight": float, "price": float})
-            self.symbols = list(dfw["symbol"].unique().tolist())
+            self._dfw = dfw[["dt", "symbol", "weight", "price"]].astype({"weight": float, "price": float})
+
+    @property
+    def digits(self) -> int:
+        return self._inner.config()[0]
+
+    @property
+    def fee_rate(self) -> float:
+        return self._inner.config()[1]
+
+    @property
+    def weight_type(self) -> str:
+        return self._inner.config()[2]
+
+    @property
+    def yearly_days(self) -> int:
+        return self._inner.config()[3]
+
+    @property
+    def symbols(self) -> list[str]:
+        return self._inner.symbol_dict()
+
+    @property
+    def dfw(self) -> pd.DataFrame | None:
+        """输入数据的独立副本（Polars/文件入口保持返回 None）。"""
+        return None if self._dfw is None else self._dfw.copy(deep=True)
 
     def get_top_symbols(self, n: int = 1, kind: str = "profit") -> list[str]:
         """获取回测赚钱/亏钱最多的前n个品种
@@ -279,6 +300,9 @@ class WeightBacktest:
     @property
     def alpha(self) -> pd.DataFrame:
         """策略超额收益
+
+        策略列等于 daily_return.total：ts 按当日有效品种取均值，cs 求和。
+        基准在两种模式下均为当日有效品种价格收益的等权均值；超额 = 策略 - 基准。
 
         样例数据如下：
         ==========  ============  ============  ============
@@ -452,6 +476,10 @@ class WeightBacktest:
 
             ``is_good`` 类型为 ``bool``；``yearly_metrics`` 类型为 ``list[dict]``；
             ``reason`` 类型为 ``str``（成功时为空字符串）。
+
+            年度 ``abs_return`` 和 ``recent_abs_return`` 均按对应窗口的
+            ``daily_return.total`` 单利求和（ts 取有效品种均值，cs 求和）。
+            审核的 ``alpha_return`` 仍为波动率归一多头超额，不等同于 ``alpha`` 表的原始超额。
         """
         return self._inner.is_good_strategy(
             mode,
@@ -574,6 +602,7 @@ def backtest(
     :param weight_type: str, default 'ts'，持仓权重类别，可选值：'ts'（时序策略）、'cs'（截面策略）
     :param yearly_days: int, default 252, 年化交易日数量
     :return: WeightBacktest 对象
+    :raises ValueError: weight_type 不是严格小写的 'ts' 或 'cs'（不自动去除空白或回退）
     """
     return WeightBacktest(
         data, digits=digits, fee_rate=fee_rate, n_jobs=n_jobs, weight_type=weight_type, yearly_days=yearly_days

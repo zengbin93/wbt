@@ -33,6 +33,7 @@ The goals:
 ## What wbt Is Good At
 
 - Time-series **and** cross-sectional weight backtests (`weight_type="ts" | "cs"`).
+  `weight_type` defaults to `"ts"` and accepts only exact lowercase `"ts"` (mean of symbol returns) or `"cs"` (sum of symbol returns). Other strings, including uppercase, empty strings and surrounding whitespace, raise `ValueError` across all Python input paths instead of silently falling back. Rust `WeightType` string parsing also rejects invalid values.
 - Multi-symbol daily performance attribution.
 - Long/short decomposition and segment-level metrics.
 - Strategy-vs-benchmark excess (alpha) analysis.
@@ -181,6 +182,7 @@ Invalid input raises a Python `ValueError` naming the column (including missing 
 - wb.long_stats and wb.short_stats: directional breakdown.
 - wb.daily_return and wb.dailys: daily series for analytics.
 - wb.alpha and wb.alpha_stats: strategy-vs-benchmark excess analysis.
+  `alpha['策略']` uses the same portfolio daily returns as `daily_return.total` (TS: mean of active symbols; CS: sum). The benchmark remains an equal-weight mean in both modes, and excess = strategy − benchmark. Review yearly/recent absolute returns sum this same portfolio series. See the [worked example](docs/portfolio_returns.md) (Chinese).
 - wb.pairs: trade-pair table for per-trade evaluation.
 - wb.aggregated_pairs / wb.key_trades(top=3): open-close records deduplicated by (symbol, open time, close time), and the top-N best/worst trades per year (computed in Rust).
 - wb.to_result(target_vol=0.20) → BacktestResult: the standard input object for plotting and the strategy-review page (see "Plotting" below).
@@ -189,6 +191,8 @@ Invalid input raises a Python `ValueError` naming the column (including missing 
 - wb.is_good_strategy(mode="history" | "recent", ...): objective verdict on whether a strategy is worth pursuing. Returns a dict with `is_good` (bool), `reason`, `alpha_degenerate` (bool), per-year breakdown (history mode) or recent-window metrics (recent mode), and condition flags. Adjustable parameters: `target_vol`, `max_dd_threshold`, `max_alpha_dd_threshold`, `min_full_sharpe`, `min_year_days`, `recent_days`, `min_history_days`. In `history` mode, the per-year three-way OR (abs return > 0 / alpha return > 0 / within-year excess drawdown < `max_dd_threshold`) is then gated by **two full-sample hard gates**: full-sample excess drawdown ≤ `max_alpha_dd_threshold` (default 0.30) **and** full-sample Sharpe > `min_full_sharpe` (default 0.5). In `recent` mode, the historical max drawdown is computed on the segment **excluding** the recent window (with a configurable `min_history_days` floor), so the two never overlap by construction. Degenerate alpha (NaN/Inf or zero variance in long/bench) is reported via `alpha_degenerate=True` with all alpha-derived fields set to `None`, and `is_good=False` — no false-positive "zero drawdown" pass-through. Returned dict keys are stable alphabetical order; `history` and `recent` modes return **disjoint** key sets (dispatch on `mode`).
 
 ## Standalone Utility Functions
+
+`daily_performance` preserves calculable returns, win rates, volatility and drawdown for cancelling or constant returns. Empty and all-zero inputs retain default metrics. Undefined volatility ratios use 0; zero-drawdown Calmar uses +10/-10/0 according to annual return; a single sample has no regression slope. Drawdowns start at the first cumulative-return point. See the [full conventions and worked examples](docs/daily_performance_degenerate.md).
 
 Beyond the `WeightBacktest` class, wbt exposes several stand-alone helpers at the top level:
 

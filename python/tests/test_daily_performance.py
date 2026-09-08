@@ -71,10 +71,10 @@ class TestDailyPerformance:
         assert ratio == pytest.approx(365 / 252, rel=0.01)
 
     def test_negative_returns_known(self) -> None:
-        """负收益场景: [-0.01, -0.02, 0.005]，最大回撤 = 0.02。"""
+        """负收益场景: [-0.01, -0.02, 0.005]，最大回撤 = 0.03。"""
         returns = np.array([-0.01, -0.02, 0.005])
         result = daily_performance(returns, yearly_days=252)
         assert result["绝对收益"] == pytest.approx(-0.025)
         assert result["日胜率"] == pytest.approx(0.3333, abs=1e-4)  # 1 win out of 3
-        assert result["最大回撤"] == pytest.approx(0.02)
+        assert result["最大回撤"] == pytest.approx(0.03)
         assert result["年化"] < 0
