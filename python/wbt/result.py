@@ -15,8 +15,10 @@ from __future__ import annotations
 import datetime as _dt
 import logging
 import math
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, fields, is_dataclass, replace
 from functools import cached_property
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -33,6 +35,28 @@ logger = logging.getLogger(__name__)
 
 # curves 键 → daily_return / alpha 的来源列
 _CURVE_KEYS = ("多空", "多头", "空头", "基准", "超额")
+
+
+def _freeze(value: Any) -> Any:
+    """Detach and freeze nested snapshot values; wire exports remain ordinary JSON values."""
+    if isinstance(value, np.ndarray):
+        # Immutable bytes prevent callers from re-enabling writes on numeric arrays.
+        if not value.dtype.hasobject:
+            return np.frombuffer(value.tobytes(), dtype=value.dtype).reshape(value.shape)
+        # Text arrays can use a fixed-width Unicode dtype and the same immutable buffer.
+        return _freeze(value.astype(str))
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(item) for item in value)
+    if is_dataclass(value) and not isinstance(value, type):
+        return replace(value, **{field.name: _freeze(getattr(value, field.name)) for field in fields(value)})
+    return value
+
+
+class _snapshot_cached_property(cached_property):  # noqa: N801
+    def __init__(self, func):
+        super().__init__(lambda instance: _freeze(func(instance)))
 
 
 @dataclass(frozen=True)
@@ -150,7 +174,7 @@ def _json_safe(obj: Any) -> Any:
         return val
     if isinstance(obj, (pd.Timestamp, _dt.date, _dt.datetime)):
         return obj.isoformat()
-    if isinstance(obj, dict):
+    if isinstance(obj, Mapping):
         return {(_json_safe(k) if not isinstance(k, str) else k): _json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_json_safe(x) for x in obj]
@@ -177,6 +201,18 @@ def _json_safe(obj: Any) -> Any:
 
 class BacktestResult:
     """绘图与审核页面的统一输入。轻量字段构造期算好，重字段按需。"""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if not name.startswith("_"):
+            if getattr(self, "_sealed", False):
+                raise AttributeError("BacktestResult is a read-only snapshot; create a new result to recompute")
+            value = _freeze(value)
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if not name.startswith("_"):
+            raise AttributeError("BacktestResult is a read-only snapshot")
+        object.__delattr__(self, name)
 
     def __init__(
         self,
@@ -214,6 +250,7 @@ class BacktestResult:
         self.pairs_dist = pairs_dist
         self.stats = stats
         self.stats_by_side = stats_by_side
+        self._sealed = True
 
     # ------------------------------------------------------------------ build
     @classmethod
@@ -337,7 +374,7 @@ class BacktestResult:
         return PairsDist(pnl_pct=pnl_pct, holds=holds)
 
     # -------------------------------------------------------- cached (按需)
-    @cached_property
+    @_snapshot_cached_property
     def curves_voladj(self) -> dict[str, Curve]:
         """波动率归一后的同名曲线；scale = target_vol / (daily.std · √yearly_days)。
 
@@ -360,17 +397,17 @@ class BacktestResult:
             out["空头超额"] = _build_curve(out["空头"].daily + out["基准"].daily)
         return out
 
-    @cached_property
+    @_snapshot_cached_property
     def drawdowns(self) -> list[dict]:
         """top_drawdowns 明细（基于多空日收益序列）。"""
         total = self.curves["多空"].daily
         series = pd.Series(total, index=pd.DatetimeIndex(self.dates))
         df = top_drawdowns(series, top=10)
         # top_drawdowns 的日期列是 datetime.date、数值列是 numpy 标量；统一转 JSON 安全类型，
-        # 使 result.drawdowns 本身即可 json.dumps（不依赖 to_dict 兜底）。
+        # 记录在缓存边界冻结；to_dict 再转换为可序列化的普通字典。
         return [_json_safe(rec) for rec in df.to_dict("records")]
 
-    @cached_property
+    @_snapshot_cached_property
     def key_trades(self) -> KeyTrades:
         kt = self._wb.key_trades(3)
         best: dict[int, list[KeyTrade]] = {}
@@ -392,17 +429,17 @@ class BacktestResult:
             bucket.setdefault(year, []).append(trade)
         return KeyTrades(best=best, worst=worst)
 
-    @cached_property
+    @_snapshot_cached_property
     def verdict(self) -> dict:
         """history 模式判定（逐年）。yearly_returns 复用其 yearly_metrics。"""
         return self._wb.is_good_strategy(mode="history")
 
-    @cached_property
+    @_snapshot_cached_property
     def verdict_recent(self) -> dict:
         """recent 模式判定（尾部 recent_days 天）。"""
         return self._wb.is_good_strategy(mode="recent")
 
-    @cached_property
+    @_snapshot_cached_property
     def yearly_returns(self) -> YearlyReturns:
         """逐年绝对/超额收益，复用 verdict 的 yearly_metrics（不额外计算）。"""
         ym = sorted(self.verdict.get("yearly_metrics") or [], key=lambda m: m["year"])
@@ -412,7 +449,7 @@ class BacktestResult:
             alpha_returns=np.array([float(m["alpha_return"]) for m in ym], dtype=float),
         )
 
-    @cached_property
+    @_snapshot_cached_property
     def rolling(self) -> RollingMetrics:
         """多空日收益的滚动窗口指标（夏普/年化/年化波动率），x 轴为窗口结束日。"""
         from wbt.utils.rolling_daily_performance import rolling_daily_performance
@@ -434,7 +471,7 @@ class BacktestResult:
             annual_vol=roll["年化波动率"].to_numpy(dtype=float),
         )
 
-    @cached_property
+    @_snapshot_cached_property
     def segment_comparison(self) -> dict[str, dict]:
         """近 1 年 vs 全样本的关键指标对比（多空口径），值为 stats dict。"""
         out: dict[str, dict] = {"全样本": self.stats}
@@ -516,7 +553,7 @@ class BacktestResult:
                 "annual_vol": _json_safe(self.rolling.annual_vol),
             }
             out["segment_comparison"] = _json_safe(self.segment_comparison)
-        return out
+        return _json_safe(out)
 
     # --------------------------------------------------------------- msgpack
     def to_msgpack(self, *, full: bool = True) -> bytes:

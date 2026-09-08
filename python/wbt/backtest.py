@@ -120,31 +120,27 @@ class WeightBacktest:
         :param yearly_days: int, default 252，年化交易日数量
         :raises ValueError: weight_type 不是严格小写的 'ts' 或 'cs'（不自动去除空白或回退）
         """
-        self.digits = digits
-        self.fee_rate = fee_rate
-        self.weight_type = weight_type
-        self.yearly_days = yearly_days
 
         # Type dispatch
         if isinstance(data, (str, Path)):
             # File path — delegate entirely to Rust
-            self.dfw = None
+            self._dfw = None
             self._inner: PyWeightBacktest = PyWeightBacktest.from_file(
                 str(data), digits, fee_rate, n_jobs, weight_type, yearly_days
             )
-            self.symbols = self._inner.symbol_dict()
+
         else:
             # Try polars types first
             try:
                 import polars as pl
 
                 if isinstance(data, (pl.DataFrame, pl.LazyFrame)):
-                    self.dfw = None
+                    self._dfw = None
                     arrow_data = polars_to_arrow_bytes(data)
                     self._inner = PyWeightBacktest.from_arrow(
                         arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days
                     )
-                    self.symbols = self._inner.symbol_dict()
+
                     return
             except ImportError:
                 pass
@@ -155,8 +151,32 @@ class WeightBacktest:
             dfw = data.loc[:, data.columns.isin(["dt", "symbol", "weight", "price"])].copy()
             arrow_data = pandas_to_arrow_bytes(dfw)
             self._inner = PyWeightBacktest.from_arrow(arrow_data, digits, fee_rate, n_jobs, weight_type, yearly_days)
-            self.dfw = dfw[["dt", "symbol", "weight", "price"]].astype({"weight": float, "price": float})
-            self.symbols = list(dfw["symbol"].unique().tolist())
+            self._dfw = dfw[["dt", "symbol", "weight", "price"]].astype({"weight": float, "price": float})
+
+    @property
+    def digits(self) -> int:
+        return self._inner.config()[0]
+
+    @property
+    def fee_rate(self) -> float:
+        return self._inner.config()[1]
+
+    @property
+    def weight_type(self) -> str:
+        return self._inner.config()[2]
+
+    @property
+    def yearly_days(self) -> int:
+        return self._inner.config()[3]
+
+    @property
+    def symbols(self) -> list[str]:
+        return self._inner.symbol_dict()
+
+    @property
+    def dfw(self) -> pd.DataFrame | None:
+        """输入数据的独立副本（Polars/文件入口保持返回 None）。"""
+        return None if self._dfw is None else self._dfw.copy(deep=True)
 
     def get_top_symbols(self, n: int = 1, kind: str = "profit") -> list[str]:
         """获取回测赚钱/亏钱最多的前n个品种

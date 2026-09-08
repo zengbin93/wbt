@@ -49,7 +49,8 @@ def test_json_safe_coerces_non_finite() -> None:
 def test_json_and_msgpack_roundtrip_preserve_normalized_payload_types(
     result: BacktestResult, tmp_path, full: bool
 ) -> None:
-    result.stats["wire_contract"] = {
+    payload = result.to_dict(full=full)
+    payload["stats"]["wire_contract"] = {
         "unicode": "回测结果",
         "empty_list": [],
         "empty_object": {},
@@ -61,8 +62,14 @@ def test_json_and_msgpack_roundtrip_preserve_normalized_payload_types(
     json_path = tmp_path / "backtest_results.json"
     msgpack_path = tmp_path / "backtest_results.msgpack"
 
-    result.dump_json(json_path, full=full)
-    result.dump_msgpack(msgpack_path, full=full)
+    from wbt.serialization import to_json
+
+    class PayloadResult:
+        def to_dict(self, *, full):
+            return payload
+
+    json_path.write_bytes(to_json(PayloadResult(), full=full))
+    msgpack_path.write_bytes(to_msgpack(PayloadResult(), full=full))
 
     json_payload = wbt.load_json(json_path)
     msgpack_payload = wbt.load_msgpack(msgpack_path)
