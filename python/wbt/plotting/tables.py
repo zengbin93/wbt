@@ -4,6 +4,10 @@ from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 
+from wbt.metrics import RECENT_KEYS as _RECENT_KEYS
+from wbt.metrics import YEARLY_COLS as _YEARLY_COLS
+from wbt.metrics import lookup_metric as _lookup_metric
+
 from ._common import COLOR_LONG, COLOR_SHORT, apply_default_layout, figure_to_html, fmt_value
 
 if TYPE_CHECKING:
@@ -11,41 +15,7 @@ if TYPE_CHECKING:
 
 _COMPARE_METRICS = ["年化收益", "夏普比率", "卡玛比率", "最大回撤", "年化波动率", "日胜率"]
 _COMPARE_SIDES = ["多空", "多头", "空头", "基准", "超额"]
-# 基准/超额 stats 来自 daily_performance（键名为 年化/夏普/卡玛），与 Rust stats 不同，做别名兼容
-_METRIC_ALIASES: dict[str, tuple[str, ...]] = {
-    "年化收益": ("年化收益", "年化"),
-    "夏普比率": ("夏普比率", "夏普"),
-    "卡玛比率": ("卡玛比率", "卡玛"),
-}
-
 # plot_verdict 年度指标表的中文列名与顺序（年份首列）
-_YEARLY_COLS: list[tuple[str, str]] = [
-    ("year", "年份"),
-    ("abs_return", "绝对收益"),
-    ("alpha_return", "超额收益"),
-    ("alpha_max_drawdown", "超额回撤"),
-    ("days", "交易日数"),
-    ("is_complete_year", "完整年"),
-    ("year_passed", "达标"),
-]
-_RECENT_KEYS: list[tuple[str, str]] = [
-    ("recent_start_date", "窗口开始"),
-    ("recent_end_date", "窗口结束"),
-    ("recent_actual_days", "实际交易日"),
-    ("recent_abs_return", "近期绝对收益"),
-    ("recent_alpha_return", "近期超额收益"),
-    ("recent_alpha_max_drawdown", "近期超额回撤"),
-    ("history_alpha_max_drawdown_excl_recent", "历史超额回撤(剔除近期)"),
-    ("history_window_empty", "历史窗口不足"),
-]
-
-
-def _lookup_metric(side_stats: dict, metric: str) -> object:
-    """按别名在某侧 stats 中取指标值，取不到返回 None。"""
-    for alias in _METRIC_ALIASES.get(metric, (metric,)):
-        if alias in side_stats:
-            return side_stats[alias]
-    return None
 
 
 def plot_key_trades(

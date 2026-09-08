@@ -8,7 +8,8 @@
 
     {
         "format": "wbt.backtest_result",
-        "format_version": 1,
+        "format_version": 2,
+        "full": full,
         "payload": result.to_dict(full=full),
     }
 
@@ -27,7 +28,35 @@ if TYPE_CHECKING:
     from wbt.result import BacktestResult
 
 FORMAT = "wbt.backtest_result"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
+
+# v2 minimum payload contract; v1 stays readable without retroactive validation.
+BASE_FIELDS = {
+    "start_date": str,
+    "end_date": str,
+    "symbol_count": int,
+    "weight_type": str,
+    "yearly_days": int,
+    "dates": list,
+    "year_starts": list,
+    "curves": dict,
+    "return_dist": dict,
+    "monthly": dict,
+    "symbol_returns": dict,
+    "pairs_dist": dict,
+    "stats": dict,
+    "stats_by_side": dict,
+}
+FULL_FIELDS = {
+    "curves_voladj": dict,
+    "drawdowns": list,
+    "key_trades": dict,
+    "verdict": dict,
+    "verdict_recent": dict,
+    "yearly_returns": dict,
+    "rolling": dict,
+    "segment_comparison": dict,
+}
 
 
 def _require_msgpack():
@@ -40,23 +69,23 @@ def _require_msgpack():
     return msgpack
 
 
-def to_msgpack(result: BacktestResult, *, full: bool = True) -> bytes:
+def to_msgpack(result: BacktestResult, *, full: bool = False) -> bytes:
     """把 ``BacktestResult`` 编码为 MessagePack 字节。"""
     msgpack = _require_msgpack()
     return cast(bytes, msgpack.packb(_envelope(result, full=full), use_bin_type=True))
 
 
-def to_json(result: BacktestResult, *, full: bool = True) -> bytes:
+def to_json(result: BacktestResult, *, full: bool = False) -> bytes:
     """把 ``BacktestResult`` 编码为 UTF-8 JSON 字节。"""
     return json.dumps(_envelope(result, full=full), ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
 
 
-def dump_msgpack(result: BacktestResult, path: str | Path, *, full: bool = True) -> None:
+def dump_msgpack(result: BacktestResult, path: str | Path, *, full: bool = False) -> None:
     """把 ``BacktestResult`` 写为 ``.msgpack`` 文件。"""
     Path(path).write_bytes(to_msgpack(result, full=full))
 
 
-def dump_json(result: BacktestResult, path: str | Path, *, full: bool = True) -> None:
+def dump_json(result: BacktestResult, path: str | Path, *, full: bool = False) -> None:
     """把结果写为带版本 envelope 的 ``.json`` 文件。"""
     Path(path).write_bytes(to_json(result, full=full))
 
@@ -95,10 +124,13 @@ def assert_payload_equal(left: Any, right: Any, path: str = "payload") -> None:
 
 
 def _envelope(result: BacktestResult, *, full: bool) -> dict[str, Any]:
+    payload = _normalize_payload(result.to_dict(full=full))
+    _validate_payload(payload, full)
     return {
         "format": FORMAT,
         "format_version": FORMAT_VERSION,
-        "payload": _normalize_payload(result.to_dict(full=full)),
+        "full": full,
+        "payload": payload,
     }
 
 
@@ -139,10 +171,33 @@ def _unwrap(envelope: Any) -> dict[str, Any]:
     if type(fmt) is not str or fmt != FORMAT:
         raise ValueError(f"unexpected format {fmt!r}, expected {FORMAT!r}")
     version = envelope.get("format_version")
-    if type(version) is not int or version != FORMAT_VERSION:
-        raise ValueError(f"unsupported format_version {version!r}, expected {FORMAT_VERSION}")
+    if type(version) is not int or version not in (1, FORMAT_VERSION):
+        raise ValueError(f"unsupported format_version {version!r}, expected 1 or {FORMAT_VERSION}")
     payload = envelope.get("payload")
     if not isinstance(payload, dict):
         raise ValueError("invalid msgpack envelope: missing or malformed payload")
     _validate_json_value(payload)
+    if version == FORMAT_VERSION:
+        _validate_payload(payload, envelope.get("full"))
     return payload
+
+
+def _validate_payload(payload: dict[str, Any], full: Any) -> None:
+    """Validate v2 structural minimum; unknown additive fields are preserved."""
+    if type(full) is not bool:
+        raise ValueError("invalid full: expected boolean")
+    required = {**BASE_FIELDS, **(FULL_FIELDS if full else {})}
+    for key, kind in required.items():
+        if type(payload.get(key)) is not kind:
+            raise ValueError(f"invalid payload.{key}: expected {kind.__name__}")
+    if not full and FULL_FIELDS.keys() & payload.keys():
+        raise ValueError("full=False payload must omit full-only fields")
+    n = len(payload["dates"])
+    for name in ("多空", "多头", "空头", "基准", "超额"):
+        curve = payload["curves"].get(name)
+        if not isinstance(curve, dict):
+            raise ValueError(f"invalid payload.curves.{name}: expected mapping")
+        for field in ("daily", "cum", "drawdown"):
+            values = curve.get(field)
+            if not isinstance(values, list) or len(values) != n:
+                raise ValueError(f"invalid payload.curves.{name}.{field}: must align with dates")
