@@ -10,6 +10,8 @@
 
 > **v0.5.0 BREAKING（SKZ-195）**：框架内所有收益/净值累积统一为**单利** `Σr`。此前 `WeightBacktest.yearly_return()` 与 `is_good_strategy()` 的年度/近期收益及超额回撤为**复利** `∏(1+r)-1` / 复利净值回撤，现改为单利，与 stats 的绝对收益、净值曲线口径一致。数值口径变更，旧版复利结果不可直接沿用；迁移说明见 [release notes v0.5.0](docs/release_notes/v0.5.0.md)。
 
+> **v0.9.0 BREAKING（相对 v0.8.2）**：① `to_msgpack` / `to_json` / `dump_msgpack` / `dump_json` 的 `full` 参数默认值从 `True` 改为 `False`——默认落盘仅基础字段，需要 `verdict` / `verdict_recent` / `drawdowns` / `key_trades` / `yearly_returns` / `rolling` / `segment_comparison` / `curves_voladj` 审核字段时须显式传 `full=True`（语义详见 [交换格式与导出语义](docs/d04-wire-schema.md)）。② `BacktestResult` 的快照字段（`stats` / `verdict` 等）改为只读冻结结构（嵌套 dict 为 `MappingProxyType`、list 为 tuple），`json.dumps(result.stats)` 会抛 `TypeError`——请改用 `result.to_dict()`（返回普通 dict 且 JSON 安全）；迁移指引见 [只读配置与结果快照边界](docs/d03-snapshots.md)。
+
 ## 项目目标
 
 多数策略团队都把**目标持仓权重**作为信号生成与执行模拟之间的标准接口：信号层决定"持有多大权重"，回测层把这些权重转成收益、风险与交易记录。现有工具要么在订单/撮合级别仿真（太细、太慢），要么是纯 Python 循环，撑不住大规模多品种权重表。
@@ -197,7 +199,8 @@ Python 侧支持输入：
 除了 `WeightBacktest` 类，wbt 顶层还导出一组独立工具：
 
 - `daily_performance(returns, yearly_days=252)`：基于日收益序列的完整绩效指标（Rust 核心）。
-- `top_drawdowns(returns, top=10)`：Top-N 回撤窗口（Rust 核心）。
+- `top_drawdowns(returns, top=10)`：Top-N 回撤窗口（Rust 核心）。回撤峰值基线含初始本金：首日亏损即视为从初始本金开始的回撤，计入 Top-N。
+- `calculate_position_risk(frame)`：基于持仓权重快照在输入时间戳的排序并集上计算 7 个敞口指标（Rust 核心）：`total_risk` / `long_risk` / `short_risk` / `net_exposure` / `max_single_risk` / `herfindahl` / `long_short_ratio`。缺失权重沿用上一期持仓（初始为零）；重复 (dt, symbol) 行按输入顺序取最后一条非缺失值；持仓隔夜持续，显式 0 平仓，杠杆不裁剪；空头敞口为零时多空比为 NaN。`herfindahl` 是权重平方和，未按总敞口归一（总杠杆 ≠ 1 时与惯例 HHI 值不同）。详见 [持仓风险敞口](docs/position_risk.md)。
 - `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`：滚动窗口日度绩效（Rust 核心）。
 - `cal_yearly_days(dts)`：根据日期序列自动推断年度交易日数（Rust 核心）。
 - `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False, **kwargs)`：多策略权重集成（`mean` / `vote` / `sum_clip`）。返回新 DataFrame（不修改入参 `df`）。`sum_clip` 模式可通过 kwargs 传 `clip_min=-1, clip_max=1`。
@@ -210,6 +213,8 @@ Rust 端发出的 warning（如 `cal_yearly_days` 跨度不足时回退到 252�
 ## HTML 报告生成
 
 `wbt.generate_backtest_report(df, output_path)` 输出一个自包含的 HTML 报告（回测概览、多空对比、关键交易等标签页）。内部仅做一次 `wb.to_result()` 预处理，再交由 `wbt.plotting` 绘图。
+
+已有 `WeightBacktest` 实例时可免传原始数据：`wb.generate_html_report(output_path=None, title="权重回测报告", target_vol=0.20)` 基于当前实例生成同样的报告并返回输出路径；`output_path` 缺省时写入当前目录 `backtest_report.html`。
 
 ## 可视化
 
@@ -242,7 +247,7 @@ wbt.assert_payload_equal(json_payload, msgpack_payload)  # 值与类型递归一
 ```
 
 - JSON 不需要额外依赖；MessagePack 需要 `msgpack`：`pip install wbt[msgpack]`。
-- `full=True` 的 payload 同时含 `verdict`（history，逐年）和 `verdict_recent`（recent，尾部 `recent_days`，默认 252 个交易日）；recent 的实际窗口、收益和回撤字段分别为 `recent_start_date`、`recent_end_date`、`recent_actual_days`、`recent_abs_return`、`recent_alpha_return`、`recent_alpha_max_drawdown`。
+- `full=True` 的 payload 同时含 `verdict`（history，逐年）和 `verdict_recent`（recent，尾部 `recent_days`，默认 252 个交易日）；recent 的实际窗口、收益和回撤字段分别为 `recent_start_date`、`recent_end_date`、`recent_actual_days`、`recent_abs_return`、`recent_alpha_return`、`recent_alpha_max_drawdown`。注意 `full` 默认为 `False`（v0.9.0 起的 BREAKING 变化，见文首说明），落盘审核字段需显式传 `full=True`。
 - 非有限浮点会在共享规范化入口转为 `null`；格式、版本或 JSON 值域不符会被拒绝。
 - Rust 侧 `wbt::core::backtest_result_wire::decode_wire` 可读取 MessagePack 字节并返回 payload。
 - **定位**：两种格式都用于完整嵌套结果对象的交换，**不替代** Arrow IPC / Parquet 处理收益曲线、rolling、drawdowns、key_trades 等列式表格热数据。

@@ -63,6 +63,12 @@ impl Exposure {
 }
 
 /// Chronological forward-filled exposure, without materializing a time-symbol grid.
+///
+/// Semantics: missing weights carry the previous position (initially zero);
+/// duplicate `(dt, symbol)` rows **overwrite** in input order (the last
+/// non-missing weight wins, they are not accumulated); positions persist
+/// overnight and an explicit 0 closes a position; `herfindahl` is the sum of
+/// squared weights, not normalized by total exposure.
 pub fn calculate_position_risk(frame: &DataFrame) -> PolarsResult<DataFrame> {
     let dt = frame.column("dt")?;
     polars_ensure!(matches!(dt.dtype(), DataType::Datetime(_, _)), InvalidOperation: "dt must be Datetime");

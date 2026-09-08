@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
@@ -247,7 +248,9 @@ def plot_verdict(
     fig = go.Figure()
 
     yearly = history.get("yearly_metrics") or []
-    if yearly and isinstance(yearly, list) and isinstance(yearly[0], dict):
+    # verdict 快照把嵌套 list/dict 冻结为 tuple/MappingProxyType（D03 只读边界），
+    # 守卫按结构而非具体容器类型判断，否则年度明细表会静默消失。
+    if yearly and isinstance(yearly, (list, tuple)) and isinstance(yearly[0], Mapping):
         present = [(ek, zh) for ek, zh in _YEARLY_COLS if ek in yearly[0]]
         header_zh = [zh for _, zh in present]
         columns = [[fmt_value(ek, row.get(ek)) for row in yearly] for ek, _ in present]

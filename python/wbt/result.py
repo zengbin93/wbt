@@ -56,7 +56,14 @@ def _freeze(value: Any) -> Any:
 
 class _snapshot_cached_property(cached_property):  # noqa: N801
     def __init__(self, func):
-        super().__init__(lambda instance: _freeze(func(instance)))
+        # 保留原函数的 docstring 与名字：cached_property 的 help()/IDE 提示
+        # 走 self.func，直接包 lambda 会让 8 个快照字段的中文文档全部丢失。
+        def wrapper(instance):
+            return _freeze(func(instance))
+
+        wrapper.__doc__ = func.__doc__
+        wrapper.__name__ = getattr(func, "__name__", "<snapshot>")
+        super().__init__(wrapper)
 
 
 @dataclass(frozen=True)
@@ -409,6 +416,7 @@ class BacktestResult:
 
     @_snapshot_cached_property
     def key_trades(self) -> KeyTrades:
+        """每年最赚/最亏各 top=3 笔关键交易（Rust 聚合去重后的开平记录）。"""
         kt = self._wb.key_trades(3)
         best: dict[int, list[KeyTrade]] = {}
         worst: dict[int, list[KeyTrade]] = {}

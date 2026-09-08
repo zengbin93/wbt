@@ -10,6 +10,8 @@
 
 > **v0.5.0 BREAKING (SKZ-195)**: all return / net-value accumulation is unified to **simple interest** (`Σr`). Previously `WeightBacktest.yearly_return()` and the yearly/recent returns and excess drawdown of `is_good_strategy()` used **compound** `∏(1+r)-1` / compound net-value drawdown; they are now simple-interest, consistent with the stats absolute return and the equity curve. This is a numeric-convention change — old compound values are not directly comparable; see the [v0.5.0 release notes](docs/release_notes/v0.5.0.md) for migration.
 
+> **v0.9.0 BREAKING (vs v0.8.2)**: ① the `full` parameter of `to_msgpack` / `to_json` / `dump_msgpack` / `dump_json` now defaults to `False` instead of `True` — default exports contain base fields only; pass `full=True` explicitly when you need the review fields `verdict` / `verdict_recent` / `drawdowns` / `key_trades` / `yearly_returns` / `rolling` / `segment_comparison` / `curves_voladj` (see [wire format and export semantics](docs/d04-wire-schema.md)). ② snapshot fields of `BacktestResult` (`stats` / `verdict`, …) are now read-only frozen structures (nested dicts become `MappingProxyType`, lists become tuples), so `json.dumps(result.stats)` raises `TypeError` — use `result.to_dict()` (plain, JSON-safe dict) instead; see the [snapshot boundary migration guide](docs/d03-snapshots.md).
+
 ## Why This Project Exists
 
 Most strategy teams treat **target position weights** as the canonical interface between signal generation and execution simulation: the signal layer decides "what weight to hold," the backtest layer turns those weights into returns, risk, and trades. Existing tools either simulate at the order/matching-engine level (too detailed, too slow) or are pure-Python loops that don't scale to large multi-symbol weight tables.
@@ -197,7 +199,8 @@ Invalid input raises a Python `ValueError` naming the column (including missing 
 Beyond the `WeightBacktest` class, wbt exposes several stand-alone helpers at the top level:
 
 - `daily_performance(returns, yearly_days=252)`: full performance metrics on a daily return series (Rust core).
-- `top_drawdowns(returns, top=10)`: top-N drawdown windows (Rust core).
+- `top_drawdowns(returns, top=10)`: top-N drawdown windows (Rust core). The drawdown peak baseline includes the initial capital: a first-day loss counts as a drawdown from the initial capital and enters the top-N.
+- `calculate_position_risk(frame)`: seven exposure metrics on the sorted union of input timestamps (Rust core): `total_risk` / `long_risk` / `short_risk` / `net_exposure` / `max_single_risk` / `herfindahl` / `long_short_ratio`. Missing weights carry the previous position (initially zero); duplicate (dt, symbol) rows use the last non-missing value in input order; positions persist overnight, an explicit 0 closes a position, leverage is not clipped; the long/short ratio is NaN when short exposure is zero. `herfindahl` is the sum of squared weights, not normalized by total exposure (differs from the conventional HHI when gross leverage ≠ 1). See [position risk](docs/position_risk.md).
 - `rolling_daily_performance(df, ret_col, window=252, min_periods=100, yearly_days=None)`: rolling-window daily performance (Rust core).
 - `cal_yearly_days(dts)`: infer yearly trading-day count from a date series (Rust core).
 - `weights_simple_ensemble(df, weight_cols, method="mean", only_long=False, **kwargs)`: ensemble multiple strategy weights (`mean` / `vote` / `sum_clip`). Returns a new DataFrame (input `df` is not mutated). `sum_clip` mode additionally accepts `clip_min=-1, clip_max=1` via kwargs.
@@ -210,6 +213,8 @@ The Rust-backed helpers emit warnings (e.g. short-span fallback in `cal_yearly_d
 ## HTML Report Generation
 
 `wbt.generate_backtest_report(df, output_path)` produces a self-contained HTML report (overview, long/short comparison, key-trades tabs). Internally it runs a single `wb.to_result()` pre-processing pass, then delegates to `wbt.plotting`.
+
+When you already hold a `WeightBacktest` instance, skip the raw input: `wb.generate_html_report(output_path=None, title="权重回测报告", target_vol=0.20)` builds the same report from the current instance and returns the output path; with `output_path` omitted it writes `backtest_report.html` into the current working directory.
 
 ## Plotting
 
@@ -242,7 +247,7 @@ wbt.assert_payload_equal(json_payload, msgpack_payload)  # values and types matc
 ```
 
 - JSON has no extra dependency; MessagePack requires `msgpack`: `pip install wbt[msgpack]`.
-- With `full=True`, payloads include both `verdict` (history, yearly) and `verdict_recent` (recent, trailing `recent_days`, default 252 trading days); its actual window, returns, and drawdown are `recent_start_date`, `recent_end_date`, `recent_actual_days`, `recent_abs_return`, `recent_alpha_return`, and `recent_alpha_max_drawdown`.
+- With `full=True`, payloads include both `verdict` (history, yearly) and `verdict_recent` (recent, trailing `recent_days`, default 252 trading days); its actual window, returns, and drawdown are `recent_start_date`, `recent_end_date`, `recent_actual_days`, `recent_abs_return`, `recent_alpha_return`, and `recent_alpha_max_drawdown`. Note that `full` defaults to `False` (a BREAKING change in v0.9.0, see the note at the top); pass `full=True` explicitly to persist review fields.
 - Non-finite floats are converted to `null` by the shared normalizer; invalid formats, versions, or JSON-value domains are rejected.
 - On the Rust side, `wbt::core::backtest_result_wire::decode_wire` reads MessagePack bytes and returns the payload.
 - **Scope**: both formats exchange the full nested result object; they do **not** replace Arrow IPC / Parquet for columnar hot tables such as return curves, rolling, drawdowns, or key_trades.

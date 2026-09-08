@@ -253,9 +253,13 @@ class TestPlotVerdict:
     def test_yearly_table_chinese_year_first(self, result):
         """年度指标表应为中文列名且「年份」在首列。"""
         fig = plot_verdict(result)
-        # 若存在表格 trace，校验表头
+        # yearly_metrics 非空时必须产出表格 trace：verdict 是 D03 冻结快照
+        # （tuple / MappingProxyType），守卫按结构判断而非具体容器类型，
+        # 否则年度明细表会静默消失（回归锁定）。
+        yearly = result.verdict.get("yearly_metrics") or []
         tables = [t for t in fig.data if t.type == "table"]
-        if tables:
+        if yearly:
+            assert tables, "yearly_metrics 非空时 plot_verdict 必须产出年度明细表"
             header = list(tables[0].header.values)
             assert header[0] == "年份"
             assert "abs_return" not in header and "绝对收益" in header
