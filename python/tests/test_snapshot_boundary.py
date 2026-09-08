@@ -17,9 +17,15 @@ def test_effective_configuration_is_read_only(wb, name, value):
     assert getattr(wb, name) == original
 
 
-def test_configuration_reports_rust_fallback(sample_dfw):
-    wb = WeightBacktest(sample_dfw, weight_type="invalid", fee_rate=None)
-    assert wb.weight_type == "ts"
+def test_configuration_rejects_invalid_weight_type(sample_dfw):
+    with pytest.raises(ValueError, match="invalid weight_type"):
+        WeightBacktest(sample_dfw, weight_type="invalid")
+
+
+@pytest.mark.parametrize("weight_type", ["ts", "cs"])
+def test_configuration_reports_effective_fee_default(sample_dfw, weight_type):
+    wb = WeightBacktest(sample_dfw, weight_type=weight_type, fee_rate=None)
+    assert wb.weight_type == weight_type
     assert wb.fee_rate == 0.0002
     assert not wb.long_daily_return.empty
 
