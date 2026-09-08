@@ -356,6 +356,11 @@ impl WeightBacktest {
             let values = column.strict_cast(&DataType::Float64).map_err(|e| {
                 WbtError::InvalidInput(format!("column '{name}' cannot convert to Float64: {e}"))
             })?;
+            if values.f64()?.into_no_null_iter().any(|v| !v.is_finite()) {
+                return Err(WbtError::InvalidInput(format!(
+                    "column '{name}' must contain only finite values (no NaN or infinity)"
+                )));
+            }
             df.replace(name, values.into())?;
         }
         Ok(df)
@@ -614,6 +619,27 @@ mod tests {
                 .expect("must reject strings");
             assert!(matches!(err, WbtError::InvalidInput(_)));
             assert!(err.to_string().contains(name));
+        }
+    }
+
+    #[test]
+    fn new_rejects_non_finite_weights_and_prices() {
+        for name in ["weight", "price"] {
+            for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                for dtype in [DataType::Float32, DataType::Float64] {
+                    let mut df = raw_example_data();
+                    let values = Series::new(name.into(), [1.0, value, 1.0, 1.0, 1.0])
+                        .cast(&dtype)
+                        .unwrap();
+                    df.replace(name, values.into()).unwrap();
+                    let err = WeightBacktest::new(df, 2, None)
+                        .err()
+                        .expect("must reject non-finite input");
+                    assert!(matches!(err, WbtError::InvalidInput(_)));
+                    assert!(err.to_string().contains(name));
+                    assert!(err.to_string().contains("finite"));
+                }
+            }
         }
     }
 

@@ -97,3 +97,15 @@ def test_boolean_is_not_a_numeric_input(path, column, tmp_path):
     df = input_frame().with_columns(pl.lit(True).alias(column))
     with pytest.raises(ValueError, match=column):
         run_input(df, path, tmp_path)
+
+
+@pytest.mark.parametrize("path", PATHS)
+@pytest.mark.parametrize("column", ["weight", "price"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "neg_inf"])
+@pytest.mark.parametrize("dtype", [pl.Float32, pl.Float64])
+def test_non_finite_numeric_input_raises_value_error(path, column, value, dtype, tmp_path):
+    df = input_frame().with_columns(
+        pl.when(pl.int_range(pl.len()) == 1).then(value).otherwise(pl.col(column)).cast(dtype).alias(column)
+    )
+    with pytest.raises(ValueError, match=column):
+        run_input(df, path, tmp_path)

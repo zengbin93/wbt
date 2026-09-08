@@ -172,7 +172,7 @@ Python 侧支持输入：
 - 文件路径（csv、parquet、feather、arrow）
 
 各入口在 Rust 中统一校验必需列：`dt`、`symbol`、`weight`、`price` 不得缺失或含 null；
-`symbol` 必须为非空字符串；`weight` 和 `price` 接受整数或浮点数，并统一转换为 Float64。
+`symbol` 必须为非空字符串；`weight` 和 `price` 接受有限的整数或浮点数，并统一转换为 Float64，拒绝 NaN 和正负 Inf。
 非法输入在 Python 中抛出带列名的 `ValueError`（包括 pandas 缺列，原为 `KeyError`）；数值字符串和布尔值不作为数值列接受。
 
 ## 关键输出能力
