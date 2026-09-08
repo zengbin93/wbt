@@ -71,7 +71,7 @@ wb = WeightBacktest(
     digits=2,
     fee_rate=0.0002,
     n_jobs=4,
-    weight_type="ts",  # "ts" or "cs"
+    weight_type="ts",  # exact lowercase "ts" (mean) or "cs" (sum); other strings raise ValueError
     yearly_days=252,
 )
 

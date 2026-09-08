@@ -132,7 +132,12 @@ mod tests {
     fn weight_type_from_str() {
         assert_eq!("ts".parse::<WeightType>().unwrap(), WeightType::TS);
         assert_eq!("cs".parse::<WeightType>().unwrap(), WeightType::CS);
-        assert!("invalid".parse::<WeightType>().is_err());
+        for invalid in ["invalid", "INVALID", "TS", "CS", "", " ts", "cs ", "Ts"] {
+            assert!(
+                invalid.parse::<WeightType>().is_err(),
+                "accepted {invalid:?}"
+            );
+        }
     }
 
     #[test]

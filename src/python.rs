@@ -18,6 +18,14 @@ fn input_error_to_py(error: WbtError) -> PyErr {
     }
 }
 
+fn parse_weight_type(weight_type: &str) -> PyResult<WeightType> {
+    WeightType::from_str(weight_type).map_err(|_| {
+        PyValueError::new_err(format!(
+            "invalid weight_type {weight_type:?}: expected 'ts' or 'cs'"
+        ))
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Arrow IPC <-> Polars DataFrame helpers
 // ---------------------------------------------------------------------------
@@ -125,9 +133,9 @@ impl PyWeightBacktest {
         weight_type: &str,
         yearly_days: usize,
     ) -> PyResult<Self> {
+        let weight_type = parse_weight_type(weight_type)?;
         let data = data.as_bytes();
         let df = pyarrow_to_df(data)?;
-        let weight_type = WeightType::from_str(weight_type).unwrap_or(WeightType::TS);
 
         let mut inner = WeightBacktest::new(df, digits, fee_rate).map_err(input_error_to_py)?;
         py.detach(|| {
@@ -285,7 +293,7 @@ impl PyWeightBacktest {
         weight_type: &str,
         yearly_days: usize,
     ) -> PyResult<Self> {
-        let weight_type_enum = WeightType::from_str(weight_type).unwrap_or(WeightType::TS);
+        let weight_type_enum = parse_weight_type(weight_type)?;
         let mut inner =
             WeightBacktest::from_file(path, digits, fee_rate).map_err(input_error_to_py)?;
         py.detach(|| {
