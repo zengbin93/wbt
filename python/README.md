@@ -163,6 +163,7 @@ Core `WeightBacktest` properties and methods:
 - `daily_return`, `long_daily_return`, `short_daily_return`
 - `dailys`, `pairs`
 - `alpha`, `alpha_stats`, `bench_stats`
+  `alpha['策略']` equals `daily_return.total` (TS mean / CS sum); the benchmark remains an equal-weight mean. Review yearly/recent absolute returns sum the same portfolio daily returns.
 - `segment_stats(sdt, edt, kind)`
 - `long_alpha_stats`
 - `get_symbol_daily(symbol)`, `get_symbol_pairs(symbol)`

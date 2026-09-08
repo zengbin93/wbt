@@ -182,6 +182,7 @@ Python 侧支持输入：
 - wb.long_stats / wb.short_stats：多头与空头拆分指标。
 - wb.daily_return / wb.dailys：日度收益明细序列。
 - wb.alpha / wb.alpha_stats：相对基准超额分析。
+  `alpha['策略']` 与 `daily_return.total` 使用同一组合日收益（ts 取当日有效品种均值，cs 求和）；基准在两种模式下均为等权均值，超额=策略−基准。审核年度/近期绝对收益按同一组合序列单利求和，手算示例见 [组合收益口径](docs/portfolio_returns.md)。
 - wb.pairs：交易对级别评估数据。
 - wb.aggregated_pairs / wb.key_trades(top=3)：按 (品种, 开仓时间, 平仓时间) 聚合去重的开平记录，以及每年最赚/最亏各 N 笔关键交易（Rust 计算）。
 - wb.to_result(target_vol=0.20) → BacktestResult：绘图与审核页面的标准输入数据对象（详见下文「可视化」）。

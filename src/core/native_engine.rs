@@ -36,9 +36,10 @@ pub fn dt_to_days_since_epoch(dt_val: i64, tu: TimeUnit) -> i32 {
     (dt_val_to_secs(dt_val, tu) / 86400) as i32
 }
 
-/// 内联聚合的每日等权收益数据
+/// 内联聚合的每日组合收益与等权基准数据
 pub struct DailyTotals {
     pub date_keys: Vec<i32>,
+    /// 组合净日收益：TS 为有效品种均值，CS 为求和；stats、alpha 策略腿与审核共用。
     pub totals: Vec<f64>,
     /// 每日等权 n1b（基准收益）
     pub n1b_totals: Vec<f64>,
@@ -56,8 +57,9 @@ pub struct DailyTotals {
     pub long_count_per_day: Vec<u64>,
     pub short_count_per_day: Vec<u64>,
     pub weight_rows_per_day: Vec<u64>,
-    /// 未四舍五入的日均值（用于 alpha 统计计算，精度对齐 Polars mean）
+    /// 未四舍五入的品种策略收益均值；保留该字段兼容性，CS 组合收益应读取 totals。
     pub strategy_means: Vec<f64>,
+    /// 每日有效品种的等权基准收益，TS/CS 均采用此口径。
     pub benchmark_means: Vec<f64>,
 }
 

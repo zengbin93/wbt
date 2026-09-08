@@ -182,6 +182,7 @@ Invalid input raises a Python `ValueError` naming the column (including missing 
 - wb.long_stats and wb.short_stats: directional breakdown.
 - wb.daily_return and wb.dailys: daily series for analytics.
 - wb.alpha and wb.alpha_stats: strategy-vs-benchmark excess analysis.
+  `alpha['策略']` uses the same portfolio daily returns as `daily_return.total` (TS: mean of active symbols; CS: sum). The benchmark remains an equal-weight mean in both modes, and excess = strategy − benchmark. Review yearly/recent absolute returns sum this same portfolio series. See the [worked example](docs/portfolio_returns.md) (Chinese).
 - wb.pairs: trade-pair table for per-trade evaluation.
 - wb.aggregated_pairs / wb.key_trades(top=3): open-close records deduplicated by (symbol, open time, close time), and the top-N best/worst trades per year (computed in Rust).
 - wb.to_result(target_vol=0.20) → BacktestResult: the standard input object for plotting and the strategy-review page (see "Plotting" below).

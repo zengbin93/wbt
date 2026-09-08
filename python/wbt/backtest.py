@@ -281,6 +281,9 @@ class WeightBacktest:
     def alpha(self) -> pd.DataFrame:
         """策略超额收益
 
+        策略列等于 daily_return.total：ts 按当日有效品种取均值，cs 求和。
+        基准在两种模式下均为当日有效品种价格收益的等权均值；超额 = 策略 - 基准。
+
         样例数据如下：
         ==========  ============  ============  ============
         date                超额          策略          基准
@@ -453,6 +456,10 @@ class WeightBacktest:
 
             ``is_good`` 类型为 ``bool``；``yearly_metrics`` 类型为 ``list[dict]``；
             ``reason`` 类型为 ``str``（成功时为空字符串）。
+
+            年度 ``abs_return`` 和 ``recent_abs_return`` 均按对应窗口的
+            ``daily_return.total`` 单利求和（ts 取有效品种均值，cs 求和）。
+            审核的 ``alpha_return`` 仍为波动率归一多头超额，不等同于 ``alpha`` 表的原始超额。
         """
         return self._inner.is_good_strategy(
             mode,
