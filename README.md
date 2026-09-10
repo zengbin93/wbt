@@ -10,7 +10,9 @@
 
 > **v0.5.0 BREAKING（SKZ-195）**：框架内所有收益/净值累积统一为**单利** `Σr`。此前 `WeightBacktest.yearly_return()` 与 `is_good_strategy()` 的年度/近期收益及超额回撤为**复利** `∏(1+r)-1` / 复利净值回撤，现改为单利，与 stats 的绝对收益、净值曲线口径一致。数值口径变更，旧版复利结果不可直接沿用；迁移说明见 [release notes v0.5.0](docs/release_notes/v0.5.0.md)。
 
-> **v0.9.0 BREAKING（相对 v0.8.2）**：① `to_msgpack` / `to_json` / `dump_msgpack` / `dump_json` 的 `full` 参数默认值从 `True` 改为 `False`——默认落盘仅基础字段，需要 `verdict` / `verdict_recent` / `drawdowns` / `key_trades` / `yearly_returns` / `rolling` / `segment_comparison` / `curves_voladj` 审核字段时须显式传 `full=True`（语义详见 [交换格式与导出语义](docs/d04-wire-schema.md)）。② `BacktestResult` 的快照字段（`stats` / `verdict` 等）改为只读冻结结构（嵌套 dict 为 `MappingProxyType`、list 为 tuple），`json.dumps(result.stats)` 会抛 `TypeError`——请改用 `result.to_dict()`（返回普通 dict 且 JSON 安全）；迁移指引见 [只读配置与结果快照边界](docs/d03-snapshots.md)。
+> **v0.9.0 发布版 BREAKING（相对 v0.8.2）**：① `to_msgpack` / `to_json` / `dump_msgpack` / `dump_json` 的 `full` 参数默认值从 `True` 改为 `False`——默认落盘仅基础字段，需要 `verdict` / `verdict_recent` / `drawdowns` / `key_trades` / `yearly_returns` / `rolling` / `segment_comparison` / `curves_voladj` 审核字段时须显式传 `full=True`（语义详见 [交换格式与导出语义](docs/d04-wire-schema.md)）。② `BacktestResult` 的快照字段（`stats` / `verdict` 等）改为只读冻结结构（嵌套 dict 为 `MappingProxyType`、list 为 tuple），`json.dumps(result.stats)` 会抛 `TypeError`——请改用 `result.to_dict()`（返回普通 dict 且 JSON 安全）；迁移指引见 [只读配置与结果快照边界](docs/d03-snapshots.md)。
+
+> **当前源码修正（SKZ-753）**：JSON/MessagePack 导出的 `full` 默认值已恢复为 `True`，默认包含全部审核字段；`to_dict()` 保持默认 `False`。wire v2 保持不变，读取端仍需支持 v2。
 
 ## 项目目标
 
@@ -247,7 +249,7 @@ wbt.assert_payload_equal(json_payload, msgpack_payload)  # 值与类型递归一
 ```
 
 - JSON 不需要额外依赖；MessagePack 需要 `msgpack`：`pip install wbt[msgpack]`。
-- `full=True` 的 payload 同时含 `verdict`（history，逐年）和 `verdict_recent`（recent，尾部 `recent_days`，默认 252 个交易日）；recent 的实际窗口、收益和回撤字段分别为 `recent_start_date`、`recent_end_date`、`recent_actual_days`、`recent_abs_return`、`recent_alpha_return`、`recent_alpha_max_drawdown`。注意 `full` 默认为 `False`（v0.9.0 起的 BREAKING 变化，见文首说明），落盘审核字段需显式传 `full=True`。
+- `full=True` 的 payload 同时含 `verdict`（history，逐年）和 `verdict_recent`（recent，尾部 `recent_days`，默认 252 个交易日）；recent 的实际窗口、收益和回撤字段分别为 `recent_start_date`、`recent_end_date`、`recent_actual_days`、`recent_abs_return`、`recent_alpha_return`、`recent_alpha_max_drawdown`。当前 JSON/MessagePack 导出默认 `full=True`，直接调用即可保留审核字段；显式传 `full=False` 可仅导出基础字段。`to_dict()` 仍默认 `full=False`。
 - 非有限浮点会在共享规范化入口转为 `null`；格式、版本或 JSON 值域不符会被拒绝。
 - Rust 侧 `wbt::core::backtest_result_wire::decode_wire` 可读取 MessagePack 字节并返回 payload。
 - **定位**：两种格式都用于完整嵌套结果对象的交换，**不替代** Arrow IPC / Parquet 处理收益曲线、rolling、drawdowns、key_trades 等列式表格热数据。

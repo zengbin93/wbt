@@ -69,23 +69,23 @@ def _require_msgpack():
     return msgpack
 
 
-def to_msgpack(result: BacktestResult, *, full: bool = False) -> bytes:
+def to_msgpack(result: BacktestResult, *, full: bool = True) -> bytes:
     """把 ``BacktestResult`` 编码为 MessagePack 字节。"""
     msgpack = _require_msgpack()
     return cast(bytes, msgpack.packb(_envelope(result, full=full), use_bin_type=True))
 
 
-def to_json(result: BacktestResult, *, full: bool = False) -> bytes:
+def to_json(result: BacktestResult, *, full: bool = True) -> bytes:
     """把 ``BacktestResult`` 编码为 UTF-8 JSON 字节。"""
     return json.dumps(_envelope(result, full=full), ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
 
 
-def dump_msgpack(result: BacktestResult, path: str | Path, *, full: bool = False) -> None:
+def dump_msgpack(result: BacktestResult, path: str | Path, *, full: bool = True) -> None:
     """把 ``BacktestResult`` 写为 ``.msgpack`` 文件。"""
     Path(path).write_bytes(to_msgpack(result, full=full))
 
 
-def dump_json(result: BacktestResult, path: str | Path, *, full: bool = False) -> None:
+def dump_json(result: BacktestResult, path: str | Path, *, full: bool = True) -> None:
     """把结果写为带版本 envelope 的 ``.json`` 文件。"""
     Path(path).write_bytes(to_json(result, full=full))
 

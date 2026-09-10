@@ -1,6 +1,8 @@
 # D04：交换格式和指标名称
 
-所有 `BacktestResult.to_dict/to_json/to_msgpack/dump_json/dump_msgpack` 及同名模块函数统一默认 `full=False`。过去 JSON/MessagePack 默认完整导出的调用方，应显式传 `full=True`。
+`BacktestResult.to_json/to_msgpack/dump_json/dump_msgpack` 及同名模块函数默认 `full=True`，完整导出基础与审核字段；仅需基础字段时显式传 `full=False`。`BacktestResult.to_dict()` 保持默认 `full=False`，需要审核字段时传 `full=True`。
+
+v0.9.0 发布版曾将 JSON/MessagePack 导出默认值改为 `False`；当前源码已恢复为 `True`（SKZ-753）。wire 格式仍为 v2，读取端仍需支持 v2；恢复完整导出不会使旧版读取器兼容 v2。
 
 JSON 返回 UTF-8 bytes，MessagePack 返回 bytes，dump 写文件，load 返回普通 dict payload。load 不恢复 BacktestResult：缺少回测源数据不能可靠恢复懒计算；绘图需要保留原实例或从原始权重重新回测。to_dict 返回无 envelope 的 payload。
 
