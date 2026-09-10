@@ -3,26 +3,42 @@ import json
 import msgpack
 import pytest
 
-from wbt import load_json, load_msgpack, to_json, to_msgpack
+import wbt
 from wbt.metrics import METRIC_LABELS, lookup_metric, to_machine_metrics
 from wbt.serialization import FORMAT, FULL_FIELDS, _unwrap
 
 
-def test_export_defaults_are_compact_and_symmetric(wb, tmp_path):
+@pytest.mark.parametrize("name", ["to_json", "to_msgpack", "dump_json", "dump_msgpack"])
+@pytest.mark.parametrize("module_helper", [False, True])
+@pytest.mark.parametrize("full", [None, True, False], ids=["default", "full", "compact"])
+def test_export_defaults_are_full_and_compact_is_explicit(wb, tmp_path, name, module_helper, full):
     result = wb.to_result()
-    expected = result.to_dict()
-    for encode in (result.to_json, result.to_msgpack):
-        raw = encode()
-        env = json.loads(raw) if raw.startswith(b"{") else msgpack.unpackb(raw, raw=False)
-        assert env["full"] is False
-        assert env["payload"] == expected
-    assert json.loads(to_json(result))["payload"] == expected
-    assert msgpack.unpackb(to_msgpack(result), raw=False)["payload"] == expected
-    for dump, load, suffix in ((result.dump_json, load_json, "json"), (result.dump_msgpack, load_msgpack, "msgpack")):
-        path = tmp_path / f"result.{suffix}"
-        dump(path)
-        assert load(path) == expected
-    assert not FULL_FIELDS.keys() & expected.keys()
+    export = getattr(wbt, name) if module_helper else getattr(result, name)
+    args = [result] if module_helper else []
+    kwargs = {} if full is None else {"full": full}
+    if name.startswith("dump_"):
+        path = tmp_path / "result"
+        export(*args, path, **kwargs)
+        raw = path.read_bytes()
+    else:
+        raw = export(*args, **kwargs)
+    env = json.loads(raw) if name.endswith("json") else msgpack.unpackb(raw, raw=False)
+    expected_full = full is not False
+    assert env["full"] is expected_full
+    assert env["format_version"] == 2
+    assert env["payload"] == result.to_dict(full=expected_full)
+    if expected_full:
+        assert FULL_FIELDS.keys() <= env["payload"].keys()
+    else:
+        assert not FULL_FIELDS.keys() & env["payload"].keys()
+        assert not FULL_FIELDS.keys() & result.__dict__.keys()
+
+
+def test_to_dict_default_remains_compact(wb):
+    result = wb.to_result()
+    assert result.to_dict() == result.to_dict(full=False)
+    assert not FULL_FIELDS.keys() & result.to_dict().keys()
+    assert not FULL_FIELDS.keys() & result.__dict__.keys()
 
 
 @pytest.mark.parametrize("full", [False, True])
