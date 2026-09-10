@@ -6,7 +6,7 @@ v0.9.0 发布版曾将 JSON/MessagePack 导出默认值改为 `False`；当前�
 
 JSON 返回 UTF-8 bytes，MessagePack 返回 bytes，dump 写文件，load 返回普通 dict payload。load 不恢复 BacktestResult：缺少回测源数据不能可靠恢复懒计算；绘图需要保留原实例或从原始权重重新回测。to_dict 返回无 envelope 的 payload。
 
-新写出 envelope 为 `{"format":"wbt.backtest_result","format_version":2,"full":false,"payload":{...}}`。JSON 和 MessagePack 共用相同版本、结构和规范化逻辑。Rust `decode_wire/load_wire` 读取 MessagePack 并返回 serde_json::Value。
+新写出 envelope 为 `{"format":"wbt.backtest_result","format_version":2,"full":true,"payload":{...}}`（`full` 与实际导出一致：默认完整导出为 `true`，显式传 `full=False` 时为 `false`）。JSON 和 MessagePack 共用相同版本、结构和规范化逻辑。Rust `decode_wire/load_wire` 读取 MessagePack 并返回 serde_json::Value。
 
 最小 payload（full=False）必需字段：
 
