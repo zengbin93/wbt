@@ -15,6 +15,8 @@
 > 2. **§4 大模型对全仓代码做一次快速 Review**，捕捉单元测试覆盖不到的逻辑陷阱与隐藏 bug；
 > 3. **§5 文档与代码一致性校验**——发现不一致一律以代码为准、修改文档（除非代码本身是 Bug）。
 
+> **流程基线（2026-09-10 维护者确认）**：本地**不再执行** §2/§3 的静态检查与测试门禁——质量验证全部由 GitHub CI 承担。发版前本地的强制环节只有：§1 版本号判定、§4 大模型代码审核（只审代码，不执行单元测试）、§5 文档一致性校验。打 tag 触发发布后，**监控线上 GitHub CI 的执行**（`Release Crate` → crates.io、`Release` → PyPI），最终以 crates.io / PyPI 上的新版本作为发布验收。
+
 ---
 
 ## 0. 前置确认（开工前 60 秒）
@@ -52,9 +54,9 @@
 - [ ] **公共 API 表面已审阅**：`python/wbt/__init__.py` 的 `__all__`、`python/wbt/_wbt.pyi` 的导出符号，与上个版本逐项 diff，每一处差异都已映射到决策表的某一行。
 - [ ] `Cargo.lock` 已随 `cargo build` 同步刷新（本仓库作为库 crate 不跟踪 Cargo.lock，见 `.gitignore`，无需提交）；`python/pyproject.toml` 的 `requires-python`、依赖最低版本未被意外修改。
 
-## 2. 代码静态检查（与 CI 等价的本地跑一遍）
+## 2. 代码静态检查（可选：本地复现 CI；正式门禁由 CI 承担）
 
-> 这一步的意义是在 push tag 前发现 CI 会失败的问题，避免「tag 推上去才发现红 → 删 tag → 重发」造成的混乱与脏 PyPI/crates.io 状态。
+> 按流程基线，本节不是发版前的强制门禁。如需在 push tag 前预判 CI 失败（避免「tag 推上去才发现红 → 删 tag → 重发」造成的混乱与脏 PyPI/crates.io 状态），可选本地复现一遍。
 
 Rust 侧：
 
@@ -72,7 +74,7 @@ Python 侧（`cd python`）：
 - [ ] `uv run maturin develop --release` 成功，本地导入 `import wbt` 不抛错。
 - [ ] `uv run basedpyright` 无新增错误。
 
-## 3. 测试与功能验证
+## 3. 测试与功能验证（可选：本地复现 CI；正式门禁由 CI 承担）
 
 - [ ] `cd python && uv run pytest -v --tb=short` 全部通过。
 - [ ] 关键回归用例已抽查（至少手跑或确认存在对应自动化测试）：
@@ -166,7 +168,7 @@ Python 侧（`cd python`）：
   - 在 [pypi.org/project/wbt](https://pypi.org/project/wbt/) 确认新版本与全部 wheel（linux x86_64/aarch64, macos x86_64/aarch64, windows x86_64）齐全。
 - [ ] 在 GitHub Releases 页面基于 `vX.Y.Z` tag 创建 Release，贴入变更摘要。
 
-## 8. 发布后冒烟（10 分钟内完成）
+## 8. 发布后冒烟（可选补充；线上验收以 CI 全绿 + PyPI/crates.io 新版本可见为准）
 
 - [ ] 在一个干净的虚拟环境中：
   - `pip install -U wbt==X.Y.Z`
