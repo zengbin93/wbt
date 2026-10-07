@@ -7,12 +7,15 @@ HTML 报告构建器
 
 from __future__ import annotations
 
+import html
 import os
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
 import pandas as pd
+
+from ._styles import REPORT_CSS
 
 
 class HtmlReportBuilder:
@@ -43,266 +46,7 @@ class HtmlReportBuilder:
         self._init_default_styles()
 
     def _init_default_styles(self) -> None:
-        """初始化默认样式（Quant Terminal 设计系统，双主题）。"""
-        self.base_css = """
-        /* ============ 主题变量：机构研报(light) / 交易终端(dark) ============ */
-        [data-theme="light"] {
-            --bg: #f6f7f9;
-            --panel: #ffffff;
-            --panel-2: #eef1f5;
-            --ink: #0e1116;
-            --muted: #5b6573;
-            --border: #e4e8ee;
-            --border-strong: #cfd6e0;
-            --accent: #2f5fef;
-            --up: #d6233b;      /* 红涨：正收益/盈利 */
-            --down: #0b9d6f;    /* 绿跌：负收益/亏损 */
-            --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.05);
-            --dot: rgba(14,17,22,0.035);
-        }
-        [data-theme="dark"] {
-            --bg: #0b0e15;
-            --panel: #131722;
-            --panel-2: #1b2130;
-            --ink: #e6e9ef;
-            --muted: #868fa3;
-            --border: #232b3b;
-            --border-strong: #313b50;
-            --accent: #5b8cff;
-            --up: #f6465d;
-            --down: #1fc995;
-            --shadow: 0 1px 2px rgba(0,0,0,.45);
-            --dot: rgba(230,233,239,0.045);
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; overflow-x: hidden; }
-        html { scroll-behavior: smooth; }
-
-        body {
-            background-color: var(--bg);
-            background-image: radial-gradient(var(--dot) 1px, transparent 1px);
-            background-size: 22px 22px;
-            color: var(--ink);
-            font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
-            line-height: 1.5;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            -webkit-font-smoothing: antialiased;
-            transition: background-color .25s ease, color .25s ease;
-        }
-
-        .container { max-width: 1440px; width: 94%; padding: 0 8px; margin: 0 auto; }
-        .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-
-        /* ============ Header ============ */
-        .header-section {
-            border-bottom: 1px solid var(--border);
-            padding: 1.6rem 0 1.3rem;
-            margin-bottom: .4rem;
-        }
-        .header-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
-        .header-title {
-            display: flex; align-items: center; gap: .6rem;
-            font-size: 1.5rem; font-weight: 600; letter-spacing: -0.015em; color: var(--ink);
-        }
-        .brand-mark {
-            width: 12px; height: 22px; border-radius: 2px;
-            background: linear-gradient(180deg, var(--up) 0 50%, var(--down) 50% 100%);
-            display: inline-block; flex: none;
-        }
-        .header-subtitle { color: var(--muted); font-size: .85rem; margin-top: .35rem; }
-        .param-badges { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: 1rem; }
-        .param-badge {
-            font-family: 'IBM Plex Mono', monospace; font-size: .72rem; color: var(--muted);
-            background: var(--panel-2); border: 1px solid var(--border);
-            border-radius: 5px; padding: .3rem .6rem; white-space: nowrap;
-        }
-        .param-badge b { color: var(--ink); font-weight: 500; }
-
-        /* ============ Theme switch ============ */
-        .theme-switch {
-            display: inline-flex; flex: none; border: 1px solid var(--border);
-            border-radius: 7px; overflow: hidden; background: var(--panel-2);
-        }
-        .theme-switch button {
-            background: transparent; border: 0; color: var(--muted); cursor: pointer;
-            padding: .42rem .7rem; font-size: .78rem; font-family: inherit;
-            display: inline-flex; align-items: center; gap: .35rem; transition: all .15s;
-        }
-        .theme-switch button:hover { color: var(--ink); }
-        .theme-switch button.active { background: var(--accent); color: #fff; }
-
-        .main-content { flex: 1; padding-bottom: 2.5rem; }
-
-        /* ============ Section header ============ */
-        .section-header { display: flex; align-items: center; gap: .55rem; margin: 1.5rem 0 .5rem; }
-        .section-header .section-icon { color: var(--accent); font-size: .95rem; }
-        .section-title {
-            font-size: .82rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-            color: var(--muted); margin: 0;
-        }
-        .section-header::after { content: ""; flex: 1; height: 1px; background: var(--border); margin-left: .3rem; }
-
-        /* ============ Stat tiles ============ */
-        .stat-grid {
-            display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border);
-            border-radius: 9px; overflow: hidden;
-            /* 列数由 add_metrics 按指标数取整除值内联设置，保证每行填满、无空位 */
-        }
-        .stat-tile {
-            background: var(--panel); padding: .8rem .95rem; display: flex; flex-direction: column;
-            gap: .35rem; position: relative; transition: background .15s;
-        }
-        .stat-tile:hover { background: var(--panel-2); }
-        .stat-label { font-size: .67rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-        .stat-value {
-            font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
-            font-weight: 500; font-size: 1.3rem; letter-spacing: -0.01em; line-height: 1.1;
-        }
-        .stat-value.metric-positive { color: var(--up); }
-        .stat-value.metric-negative { color: var(--down); }
-        .stat-value.metric-neutral  { color: var(--ink); }
-
-        /* ============ Tabs (override bootstrap) ============ */
-        .chart-card { background: transparent; border: 0; box-shadow: none; }
-        .nav-tabs {
-            position: sticky; top: 0; z-index: 40; display: flex; gap: .15rem;
-            border: 0; border-bottom: 1px solid var(--border);
-            background: color-mix(in srgb, var(--bg) 88%, transparent);
-            backdrop-filter: blur(8px); padding-top: .3rem;
-        }
-        .nav-tabs .nav-link {
-            border: 0 !important; border-bottom: 2px solid transparent !important; border-radius: 0;
-            background: transparent; color: var(--muted); font-size: .85rem; font-weight: 500;
-            padding: .65rem .95rem; transition: color .15s, border-color .15s;
-        }
-        .nav-tabs .nav-link:hover { color: var(--ink); background: transparent; }
-        .nav-tabs .nav-link.active {
-            color: var(--accent) !important; background: transparent;
-            border-bottom-color: var(--accent) !important;
-        }
-        .tab-content { background: transparent; }
-
-        /* ============ Chart grid panels ============ */
-        .chart-grid { display: grid; gap: 14px; padding: 16px 0; }
-        .chart-grid-item {
-            background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
-            overflow: hidden; box-shadow: var(--shadow); min-width: 0;
-        }
-        .chart-grid-item.full-width { grid-column: 1 / -1; }
-        .chart-grid-item .plotly-graph-div { width: 100% !important; }
-        div:has(> .plotly-graph-div .table) { overflow-x: auto; }
-        .plotly-graph-div:has(.table) { min-width: 1000px; }
-        .chart-grid-title {
-            font-size: .8rem; font-weight: 600; letter-spacing: .01em; color: var(--ink);
-            padding: .65rem .9rem; border-bottom: 1px solid var(--border); background: var(--panel-2);
-        }
-
-        /* ============ add_table fallback ============ */
-        .data-table { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
-        .table { color: var(--ink); margin-bottom: 0; font-size: .88rem; }
-        .table thead th {
-            background: var(--panel-2); border-bottom: 1px solid var(--border); color: var(--muted);
-            font-weight: 600; padding: .7rem; text-transform: uppercase; font-size: .72rem; letter-spacing: .04em;
-        }
-        .table tbody tr { border-bottom: 1px solid var(--border); }
-        .table tbody tr:hover { background: var(--panel-2); }
-        .table tbody td { padding: .65rem .7rem; vertical-align: middle; font-family: 'IBM Plex Mono', monospace; }
-
-        /* ============ Financial tables (native HTML) ============ */
-        .fin-wrap { width: 100%; overflow-x: auto; padding: 4px; }
-        .fin-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-        .fin-table thead th {
-            text-align: right; font-weight: 600; color: var(--muted); text-transform: uppercase;
-            letter-spacing: .04em; font-size: .68rem; padding: .55rem .85rem;
-            border-bottom: 1px solid var(--border-strong); white-space: nowrap; background: var(--panel);
-        }
-        .fin-table thead th:first-child { text-align: left; }
-        .fin-table tbody td {
-            padding: .46rem .85rem; border-bottom: 1px solid var(--border); text-align: right;
-            font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
-            color: var(--ink); white-space: nowrap;
-        }
-        .fin-table tbody td:first-child {
-            text-align: left; font-family: 'IBM Plex Sans', sans-serif; color: var(--muted); font-weight: 500;
-        }
-        .fin-table tbody tr:last-child td { border-bottom: 0; }
-        .fin-table tbody tr:hover td { background: var(--panel-2); }
-        .fin-table .t-up { color: var(--up); }
-        .fin-table .t-down { color: var(--down); }
-        .badge { font-size: .68rem; padding: .14rem .55rem; border-radius: 4px; font-weight: 600; white-space: nowrap; }
-        .badge-pass { color: #fff; background: var(--down); }
-        .badge-fail { color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); }
-
-        /* ============ 完整绩效指标键值网格 ============ */
-        .kv-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 1px; background: var(--border); border-top: 1px solid var(--border); margin: 2px;
-        }
-        .kv {
-            display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
-            background: var(--panel); padding: .5rem .85rem;
-        }
-        .kv-k { color: var(--muted); font-size: .76rem; }
-        .kv-v { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: .86rem; color: var(--ink); }
-        .kv-v .t-up { color: var(--up); }
-        .kv-v .t-down { color: var(--down); }
-
-        /* ============ 策略判定卡 ============ */
-        .verdict { padding: 1.1rem 1.15rem 1.3rem; }
-        .verdict-head { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin-bottom: 1rem; }
-        .verdict-badge {
-            font-size: 1rem; font-weight: 700; padding: .42rem .95rem; border-radius: 8px;
-            display: inline-flex; align-items: center; gap: .4rem; color: #fff; letter-spacing: .02em;
-        }
-        .verdict-badge.good { background: var(--down); }
-        .verdict-badge.bad { background: var(--up); }
-        .verdict-sub { color: var(--muted); font-size: .85rem; font-family: 'IBM Plex Mono', monospace; }
-        .verdict-conds { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.1rem; }
-        .verdict-cond {
-            display: flex; align-items: baseline; gap: .6rem; font-size: .85rem;
-            padding: .6rem .85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
-        }
-        .verdict-cond .ck { font-weight: 700; flex: none; font-size: .95rem; }
-        .verdict-cond.ok .ck { color: var(--down); }
-        .verdict-cond.no .ck { color: var(--up); }
-        .verdict-cond .ct { color: var(--ink); font-weight: 600; flex: none; }
-        .verdict-cond .cd { color: var(--muted); }
-        .verdict-group { display: flex; flex-direction: column; gap: .35rem; }
-        .verdict-mode-title {
-            font-size: .82rem; font-weight: 700; color: var(--muted); letter-spacing: .03em;
-            text-transform: uppercase; margin: .6rem .15rem .1rem;
-        }
-        .verdict-details { margin: .5rem .15rem 0; }
-        .verdict-details > summary {
-            cursor: pointer; user-select: none; font-size: .85rem; font-weight: 600; color: var(--ink);
-            padding: .55rem .85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
-            list-style: none;
-        }
-        .verdict-details > summary::-webkit-details-marker { display: none; }
-        .verdict-details > summary::before { content: "▸ "; color: var(--muted); }
-        .verdict-details[open] > summary::before { content: "▾ "; }
-        .verdict-detail-block { margin-top: .7rem; }
-        .verdict-detail-block .verdict-mode-title { margin-top: 0; }
-
-        /* ============ Footer ============ */
-        .footer {
-            margin-top: auto; border-top: 1px solid var(--border); padding: 1.1rem 0; text-align: center;
-            color: var(--muted); font-size: .76rem; font-family: 'IBM Plex Mono', monospace;
-        }
-
-        @media (max-width: 768px) {
-            .header-title { font-size: 1.25rem; }
-            .header-bar { flex-direction: column; }
-            .stat-value { font-size: 1.12rem; }
-            .nav-tabs .nav-link { padding: .55rem .7rem; font-size: .8rem; }
-            .chart-grid { grid-template-columns: 1fr !important; }
-        }
-        @media (max-width: 1024px) { .stat-grid { grid-template-columns: repeat(2, 1fr) !important; } }
-        @media (max-width: 520px) { .stat-grid { grid-template-columns: 1fr !important; } }
-        """
+        self.base_css = REPORT_CSS
 
     def add_custom_css(self, css: str) -> HtmlReportBuilder:
         """添加自定义 CSS 样式
@@ -331,15 +75,15 @@ class HtmlReportBuilder:
         """
         badges_html = ""
         for key, value in params.items():
-            badges_html += f'                        <span class="param-badge">{key} <b>{value}</b></span>\n'
+            badges_html += f'                        <span class="param-badge">{html.escape(key)} <b>{html.escape(value)}</b></span>\n'
 
-        subtitle_html = f'<p class="header-subtitle">{subtitle}</p>' if subtitle else ""
+        subtitle_html = f'<p class="header-subtitle">{html.escape(subtitle)}</p>' if subtitle else ""
         header_html = f"""    <!-- 头部区域 -->
-    <div class="header-section">
+    <header class="header-section">
         <div class="container">
             <div class="header-bar">
                 <div>
-                    <h1 class="header-title"><span class="brand-mark"></span>{self.title}</h1>
+                    <h1 class="header-title">{html.escape(self.title)}</h1>
                     {subtitle_html}
                 </div>
                 <div class="theme-switch" role="group" aria-label="主题切换">
@@ -350,7 +94,7 @@ class HtmlReportBuilder:
             <div class="param-badges">
 {badges_html}            </div>
         </div>
-    </div>
+    </header>
 """
 
         self.sections.append(("header", header_html))
@@ -410,13 +154,14 @@ class HtmlReportBuilder:
         tab_button = f"""                        <li class="nav-item">
                             <button class="nav-link {"active" if active else ""}"
                                     data-bs-toggle="tab" data-bs-target="#{tab_id}"
-                                    type="button" role="tab">
+                                    type="button" role="tab" id="{tab_id}-button"
+                                    aria-controls="{tab_id}" aria-selected="{str(active).lower()}" tabindex="{0 if active else -1}">
                                 <i class="bi {icon}"></i> {name}
                             </button>
                         </li>"""
 
         tab_content = f"""                        <div class="tab-pane fade {"show active" if active else ""}"
-                                          id="{tab_id}" role="tabpanel">
+                                          id="{tab_id}" role="tabpanel" aria-labelledby="{tab_id}-button" tabindex="0">
                             <div class="chart-body">
                                 {chart_html}
                             </div>
@@ -453,20 +198,21 @@ class HtmlReportBuilder:
             else:
                 sub_title, chart_html = chart[0], chart[1]
                 full_width = chart[2] if len(chart) == 3 else False
-            title_html = f'<div class="chart-grid-title">{sub_title}</div>' if sub_title else ""
+            title_html = f'<h3 class="chart-grid-title">{html.escape(sub_title)}</h3>' if sub_title else ""
             item_class = "chart-grid-item full-width" if full_width else "chart-grid-item"
             items_html += f'                                <div class="{item_class}">{title_html}{chart_html}</div>\n'
 
         tab_button = f"""                        <li class="nav-item">
                             <button class="nav-link {"active" if active else ""}"
                                     data-bs-toggle="tab" data-bs-target="#{tab_id}"
-                                    type="button" role="tab">
+                                    type="button" role="tab" id="{tab_id}-button"
+                                    aria-controls="{tab_id}" aria-selected="{str(active).lower()}" tabindex="{0 if active else -1}">
                                 <i class="bi {icon}"></i> {name}
                             </button>
                         </li>"""
 
         tab_content = f"""                        <div class="tab-pane fade {"show active" if active else ""}"
-                                          id="{tab_id}" role="tabpanel">
+                                          id="{tab_id}" role="tabpanel" aria-labelledby="{tab_id}-button" tabindex="0">
                             <div class="chart-grid" style="grid-template-columns: repeat({cols}, 1fr);">
 {items_html}                            </div>
                         </div>"""
@@ -638,43 +384,38 @@ class HtmlReportBuilder:
     <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{self.title}</title>
+    <title>{html.escape(self.title)}</title>
 
     <!-- 主题初始化（首屏前执行，避免闪烁）：localStorage 优先，默认深色 -->
     <script>
         (function () {{
-            var t = 'dark';
-            try {{ t = localStorage.getItem('wbt-theme') || 'dark'; }} catch (e) {{}}
+            var t = '{self.theme if self.theme in ("light", "dark") else "light"}';
+            try {{ t = localStorage.getItem('wbt-theme') || t; }} catch (e) {{}}
+            if (t !== 'light' && t !== 'dark') t = 'light';
             document.documentElement.setAttribute('data-theme', t);
         }})();
     </script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
     <style>
 {all_css}
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#report-content">跳至报告正文</a>
 {header_html}
-    <div class="container main-content">
+    <main class="container main-content" id="report-content" tabindex="-1">
 {main_body_html}
-    </div>
+    </main>
 {footer_html}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // ---- Plotly 主题同步：图表底色/网格/字体/表格跟随明暗主题 ----
         function wbtPlotlyColors(theme) {{
             return theme === 'dark'
-                ? {{ font: '#aab2c5', grid: 'rgba(230,233,239,0.07)', zero: 'rgba(230,233,239,0.16)',
-                     line: '#2b3346', cell: '#cfd5e2', bar: 'rgba(170,178,197,0.7)', active: '#5b8cff' }}
-                : {{ font: '#46505f', grid: 'rgba(14,17,22,0.07)', zero: 'rgba(14,17,22,0.16)',
-                     line: '#cfd6e0', cell: '#1a1f29', bar: 'rgba(70,80,95,0.55)', active: '#2f5fef' }};
+                ? {{ font: '#a6b7cb', grid: '#314359', zero: '#566c86',
+                     line: '#566c86', bar: '#a6b7cb', active: '#94c9ef' }}
+                : {{ font: '#52647a', grid: '#dde4ec', zero: '#b9c6d5',
+                     line: '#b9c6d5', bar: '#52647a', active: '#174d75' }};
         }}
         function wbtApplyPlotlyTheme(theme) {{
             if (typeof Plotly === 'undefined') return;
@@ -693,15 +434,6 @@ class HtmlReportBuilder:
                     }}
                 }});
                 try {{ Plotly.relayout(d, up); }} catch (e) {{}}
-                try {{
-                    (d.data || []).forEach(function (tr, i) {{
-                        if (tr.type === 'table') Plotly.restyle(d, {{
-                            'cells.font.color': c.cell, 'cells.line.color': c.line,
-                            'header.line.color': c.line
-                        }}, [i]);
-                        if (tr.type === 'table' && d.clientWidth) Plotly.Plots.resize(d);
-                    }});
-                }} catch (e) {{}}
             }});
         }}
 
@@ -710,6 +442,7 @@ class HtmlReportBuilder:
             try {{ localStorage.setItem('wbt-theme', t); }} catch (e) {{}}
             document.querySelectorAll('.theme-switch button').forEach(function (b) {{
                 b.classList.toggle('active', b.getAttribute('data-theme') === t);
+                b.setAttribute('aria-pressed', String(b.getAttribute('data-theme') === t));
             }});
             wbtApplyPlotlyTheme(t);
         }}
@@ -718,6 +451,7 @@ class HtmlReportBuilder:
             var theme = document.documentElement.getAttribute('data-theme') || 'dark';
             document.querySelectorAll('.theme-switch button').forEach(function (b) {{
                 b.classList.toggle('active', b.getAttribute('data-theme') === theme);
+                b.setAttribute('aria-pressed', String(b.getAttribute('data-theme') === theme));
                 b.addEventListener('click', function () {{ wbtSetTheme(b.getAttribute('data-theme')); }});
             }});
 
@@ -725,9 +459,50 @@ class HtmlReportBuilder:
                 if (!pane || typeof Plotly === 'undefined') return;
                 pane.querySelectorAll('.plotly-graph-div').forEach(function (d) {{ Plotly.Plots.resize(d); }});
             }}
+            function updateTableHints() {{
+                document.querySelectorAll('.fin-wrap').forEach(function (region) {{
+                    if (region.clientWidth) region.dataset.overflow = String(region.scrollWidth > region.clientWidth);
+                }});
+            }}
             function resizeActivePanes() {{
                 document.querySelectorAll('.tab-pane.active').forEach(resizePane);
+                updateTableHints();
             }}
+            document.querySelectorAll('details').forEach(function (details) {{
+                details.addEventListener('toggle', updateTableHints);
+            }});
+            document.querySelectorAll('[role="tablist"]').forEach(function (list) {{
+                var tabs = Array.from(list.querySelectorAll('[role="tab"]'));
+                function activate(target) {{
+                    tabs.forEach(function (tab) {{
+                        var selected = tab === target;
+                        tab.classList.toggle('active', selected);
+                        tab.setAttribute('aria-selected', String(selected));
+                        tab.tabIndex = selected ? 0 : -1;
+                        var pane = document.getElementById(tab.getAttribute('aria-controls'));
+                        pane.classList.toggle('active', selected);
+                        pane.classList.toggle('show', selected);
+                        pane.hidden = !selected;
+                    }});
+                    target.scrollIntoView({{ block: 'nearest', inline: 'nearest' }});
+                    target.dispatchEvent(new Event('shown.bs.tab'));
+                    updateTableHints();
+                }}
+                tabs.forEach(function (tab, index) {{
+                    tab.addEventListener('click', function () {{ activate(tab); }});
+                    tab.addEventListener('keydown', function (event) {{
+                        var next;
+                        if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+                        else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+                        else if (event.key === 'Home') next = 0;
+                        else if (event.key === 'End') next = tabs.length - 1;
+                        else return;
+                        event.preventDefault();
+                        activate(tabs[next]);
+                        tabs[next].focus({{ preventScroll: true }});
+                    }});
+                }});
+            }});
             document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(function (el) {{
                 el.addEventListener('shown.bs.tab', function (ev) {{
                     resizePane(document.querySelector(ev.target.getAttribute('data-bs-target')));

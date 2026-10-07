@@ -35,11 +35,20 @@ def _cell(key: str, v: object) -> str:
     return text
 
 
-def _fin_table(headers: list[str], rows: list[list[str]]) -> str:
+def _fin_table(headers: list[str], rows: list[list[str]], caption: str = "回测数据") -> str:
     """生成 .fin-table 原生表格（首列左对齐标签，其余右对齐数值，单元格已是 HTML）。"""
-    head = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
-    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
-    return f'<div class="fin-wrap"><table class="fin-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+    head = "".join(f'<th scope="col">{html.escape(h)}</th>' for h in headers)
+    body = "".join(
+        '<tr><th scope="row">' + row[0] + "</th>" + "".join(f"<td>{cell}</td>" for cell in row[1:]) + "</tr>"
+        for row in rows
+    )
+    label = html.escape(caption, quote=True)
+    classes = "fin-table key-value-table" if len(headers) == 2 else "fin-table"
+    return (
+        f'<div class="fin-wrap" role="region" aria-label="{label}" tabindex="0">'
+        f'<table class="{classes}"><caption>{label}</caption><thead><tr>{head}</tr></thead>'
+        f"<tbody>{body}</tbody></table></div>"
+    )
 
 
 def _conds_html(conds: list[tuple[str, str, str]]) -> str:
@@ -91,15 +100,19 @@ def history_verdict_card_html(v: dict) -> str:
                     _cell("超额收益", m.get("alpha_return")),
                     fmt_value("超额回撤", m.get("alpha_max_drawdown")),
                     fmt_value("交易日数", m.get("days")),
+                    fmt_value("完整年度", m.get("is_complete_year")),
                     badge,
                 ]
             )
-        table_html = _fin_table(["年份", "绝对收益", "超额收益", "超额回撤", "交易日数", "达标"], rows)
+        table_html = _fin_table(
+            ["年份", "绝对收益", "超额收益", "超额回撤", "交易日数", "完整年度", "达标"], rows, "年度审核明细"
+        )
 
     return (
         '<div class="verdict">'
         f"{_verdict_head(bool(v.get('is_good')), f'{ny_txt} 个完整年度')}"
         f'<div class="verdict-conds">{_conds_html(conds)}</div>'
+        f'<p class="verdict-reason">{html.escape(str(v.get("reason") or ""))}</p>'
         f"{table_html}</div>"
     )
 
@@ -128,19 +141,18 @@ def recent_verdict_card_html(v: dict) -> str:
         conds.append(("no", "alpha 退化", "多头或基准波动率为 0，超额无法定义"))
 
     rows = [
-        [
-            _cell("绝对收益", v.get("recent_abs_return")),
-            _cell("超额收益", v.get("recent_alpha_return")),
-            fmt_value("近期超额回撤", v.get("recent_alpha_max_drawdown")),
-            fmt_value("历史超额回撤", v.get("history_alpha_max_drawdown_excl_recent")),
-        ]
+        ["近期绝对收益", _cell("绝对收益", v.get("recent_abs_return"))],
+        ["近期超额收益", _cell("超额收益", v.get("recent_alpha_return"))],
+        ["近期超额回撤", fmt_value("近期超额回撤", v.get("recent_alpha_max_drawdown"))],
+        ["历史超额回撤(剔除近期)", fmt_value("历史超额回撤", v.get("history_alpha_max_drawdown_excl_recent"))],
     ]
-    table_html = _fin_table(["近期绝对收益", "近期超额收益", "近期超额回撤", "历史超额回撤(剔除近期)"], rows)
+    table_html = _fin_table(["近期指标", "数值"], rows, "近期窗口指标")
 
     return (
         '<div class="verdict">'
         f"{_verdict_head(bool(v.get('is_good')), sub)}"
         f'<div class="verdict-conds">{_conds_html(conds)}</div>'
+        f'<p class="verdict-reason">{html.escape(str(v.get("reason") or ""))}</p>'
         f"{table_html}</div>"
     )
 
@@ -148,16 +160,14 @@ def recent_verdict_card_html(v: dict) -> str:
 # 详情面板逐字段展示用的字段顺序与中文标签（key 名英文，对人友好的标签在右）。
 
 
-def _detail_kv_grid(v: dict) -> str:
-    items = ""
-    for key, label in _DETAIL_LABELS.items():
-        if key not in v:
+def _detail_kv_grid(v: dict, caption: str) -> str:
+    rows = []
+    keys = [*_DETAIL_LABELS, *(key for key in v if key not in _DETAIL_LABELS)]
+    for key in keys:
+        if key not in v or key == "yearly_metrics":
             continue
-        items += (
-            f'<div class="kv"><span class="kv-k">{html.escape(label)}</span>'
-            f'<span class="kv-v">{_cell(key, v[key])}</span></div>'
-        )
-    return f'<div class="kv-grid">{items}</div>'
+        rows.append([html.escape(_DETAIL_LABELS.get(key, key)), _cell(key, v[key])])
+    return _fin_table(["判定字段", "结果"], rows, caption)
 
 
 def verdict_section_html(result: BacktestResult) -> str:
@@ -167,9 +177,9 @@ def verdict_section_html(result: BacktestResult) -> str:
     details = (
         '<details class="verdict-details"><summary>查看详细判定信息</summary>'
         '<div class="verdict-detail-block"><div class="verdict-mode-title">history（逐年）</div>'
-        f"{_detail_kv_grid(history)}</div>"
+        f"{_detail_kv_grid(history, 'history · 完整判定字段')}</div>"
         '<div class="verdict-detail-block"><div class="verdict-mode-title">recent（近期窗口）</div>'
-        f"{_detail_kv_grid(recent)}</div></details>"
+        f"{_detail_kv_grid(recent, 'recent · 完整判定字段')}</div></details>"
     )
     return (
         '<div class="verdict-group">'
@@ -182,16 +192,9 @@ def verdict_section_html(result: BacktestResult) -> str:
 
 
 def stats_kv_html(result: BacktestResult) -> str:
-    """完整绩效指标：紧凑的 label/value 键值网格（取代高瘦的彩色表）。"""
-    skip = {"开始日期", "结束日期"}
-    items = ""
-    for k, val in result.stats.items():
-        if k in skip:
-            continue
-        items += (
-            f'<div class="kv"><span class="kv-k">{html.escape(k)}</span><span class="kv-v">{_cell(k, val)}</span></div>'
-        )
-    return f'<div class="kv-grid">{items}</div>'
+    """完整绩效指标：语义化键值表，保留全部指标与样本起止日期。"""
+    rows = [[html.escape(key), _cell(key, value)] for key, value in result.stats.items()]
+    return _fin_table(["指标", "数值"], rows, "完整绩效指标 · 含样本起止日期")
 
 
 def stats_comparison_html(result: BacktestResult) -> str:
@@ -199,7 +202,7 @@ def stats_comparison_html(result: BacktestResult) -> str:
     sides = {"多空": result.stats, **result.stats_by_side}
     order = [s for s in COMPARE_SIDES if s in sides]
     rows = [[m, *[_cell(m, _mget(sides[s], m)) for s in order]] for m in _CMP_METRICS]
-    return _fin_table(["指标", *order], rows)
+    return _fin_table(["指标", *order], rows, "多空与基准 · 关键指标对比")
 
 
 def segment_comparison_html(result: BacktestResult) -> str:
@@ -207,7 +210,7 @@ def segment_comparison_html(result: BacktestResult) -> str:
     seg = result.segment_comparison
     order = [s for s in ("全样本", "近1年") if s in seg]
     rows = [[m, *[_cell(m, _mget(seg[s], m)) for s in order]] for m in _CMP_METRICS]
-    return _fin_table(["指标", *order], rows)
+    return _fin_table(["指标", *order], rows, "全样本与近一年 · 分段比较")
 
 
 def drawdowns_table_html(result: BacktestResult) -> str:
@@ -217,4 +220,4 @@ def drawdowns_table_html(result: BacktestResult) -> str:
         return '<div class="fin-wrap"><p class="verdict-sub" style="padding:1rem">暂无回撤记录</p></div>'
     headers = list(rows_data[0].keys())
     rows = [[_cell(h, r.get(h)) for h in headers] for r in rows_data]
-    return _fin_table(headers, rows)
+    return _fin_table(headers, rows, "最大回撤明细 · Top 10")

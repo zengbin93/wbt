@@ -124,12 +124,3 @@ def apply_default_layout(fig: go.Figure, title: str | None = None, height: int =
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
         margin={"l": 60, "r": 40, "t": 60, "b": 60},
     )
-    tables = [trace for trace in fig.data if trace.type == "table"]
-    if tables:
-        for table in tables:
-            table.update(header_height=32, cells_height=30, header_font_size=13, cells_font_size=13)
-        row_count = max((len(column) for table in tables for column in table.cells.values), default=0)
-        fig.update_layout(
-            height=32 + 30 * row_count + (60 if title else 20) + 20,
-            margin={"l": 20, "r": 20, "t": 60 if title else 20, "b": 20},
-        )
