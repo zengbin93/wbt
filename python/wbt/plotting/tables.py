@@ -288,4 +288,6 @@ def plot_verdict(
 
     apply_default_layout(fig, title=title, height=max(380, 28 * (len(yearly) + reason_lines) + 120))
     fig.update_layout(margin={"l": 40, "r": 40, "t": 40 + 18 * reason_lines, "b": 40})
+    if fig.data:
+        fig.update_layout(height=40 + 18 * reason_lines + 32 + 30 * len(yearly) + 40)
     return figure_to_html(fig) if to_html else fig

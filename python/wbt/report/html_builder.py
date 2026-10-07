@@ -693,7 +693,10 @@ class HtmlReportBuilder:
                 try {{ Plotly.relayout(d, up); }} catch (e) {{}}
                 try {{
                     (d.data || []).forEach(function (tr, i) {{
-                        if (tr.type === 'table') Plotly.restyle(d, {{ 'cells.font.color': c.cell }}, [i]);
+                        if (tr.type === 'table') Plotly.restyle(d, {{
+                            'cells.font.color': c.cell, 'cells.line.color': c.line,
+                            'header.line.color': c.line
+                        }}, [i]);
                     }});
                 }} catch (e) {{}}
             }});
