@@ -51,8 +51,8 @@ button, a, summary, [tabindex] { -webkit-tap-highlight-color: transparent; }
 .nav-link.active { background: var(--panel); box-shadow: inset 0 -2px var(--accent); color: var(--accent); font-weight: 650; }
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
-.chart-grid { display: grid; gap: 24px; padding-top: 24px; }
-.chart-grid-item { min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.chart-grid { display: grid; gap: 28px; padding-top: 24px; }
+.chart-grid-item { min-width: 0; background: var(--panel); border: 0; border-radius: 4px; overflow: hidden; }
 .chart-grid-item.full-width { grid-column: 1 / -1; }
 .chart-grid-title { margin: 0; padding: 18px 24px; font-size: 15px; font-weight: 650; border-bottom: 1px solid var(--border); }
 .chart-grid-item .plotly-graph-div { width: 100% !important; }
@@ -90,6 +90,24 @@ button, a, summary, [tabindex] { -webkit-tap-highlight-color: transparent; }
 .footer { border-top: 1px solid var(--border); padding: 24px 0; color: var(--muted); font-size: 12px; }
 .footer p { margin: 0; }
 .bi { display: none; }
+.analysis-note { margin: 18px 24px 24px; max-width: 78ch; color: var(--muted); font-size: 13px; }
+.heatmap-scroll { overflow-x: auto; }
+.heatmap-scroll .plotly-graph-div { min-width: 680px; }
+.heatmap-scroll::before { content: "月份完整显示 · 窄屏可左右滚动"; display: block; padding: 12px 24px 0; color: var(--muted); font-size: 12px; }
+.sample-profile { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 24px; gap: 20px; }
+.sample-profile dt { font-size: 12px; color: var(--muted); }
+.sample-profile dd { margin: 4px 0 0; font-size: 22px; font-variant-numeric: tabular-nums; }
+.stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 0; background: var(--panel); border-bottom: 1px solid var(--border-strong); }
+.stat-tile { border: 0; border-radius: 0; background: none; border-right: 1px solid var(--border); }
+.stat-tile:last-child { border-right: 0; }
+.stat-value { font-size: 30px; font-weight: 550; letter-spacing: -.03em; }
+@media (min-width: 1100px) {
+    .chart-card { display: grid; grid-template-columns: 164px minmax(0, 1fr); gap: 32px; align-items: start; }
+    .nav-tabs { flex-direction: column; top: 24px; overflow: visible; border: 0; padding: 24px 0; }
+    .nav-link { width: 100%; text-align: left; padding: 14px 16px; }
+    .nav-link.active { box-shadow: inset 3px 0 var(--accent); }
+    .header-section { padding-top: 44px; }
+}
 @media (max-width: 800px) {
     .container { width: calc(100% - 32px); }
     .chart-grid { grid-template-columns: minmax(0, 1fr) !important; }
@@ -106,6 +124,8 @@ button, a, summary, [tabindex] { -webkit-tap-highlight-color: transparent; }
     .verdict-mode-title, .verdict-details summary { padding-inline: 16px; }
     .verdict-cond { grid-template-columns: 16px 1fr; }
     .verdict-cond .cd { grid-column: 2; }
+    .sample-profile { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 16px; }
+    .analysis-note { margin-inline: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 @media print {

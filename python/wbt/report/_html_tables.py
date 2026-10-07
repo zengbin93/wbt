@@ -51,6 +51,78 @@ def _fin_table(headers: list[str], rows: list[list[str]], caption: str = "回测
     )
 
 
+def sample_profile_html(result: BacktestResult) -> str:
+    items = [
+        ("观测交易日", str(len(result.dates))),
+        ("覆盖标的", str(result.symbol_count)),
+        ("权重模式", str(result.weight_type)),
+        ("年化交易日", str(result.yearly_days)),
+    ]
+    fields = "".join(f"<div><dt>{label}</dt><dd>{html.escape(value)}</dd></div>" for label, value in items)
+    return (
+        f'<dl class="sample-profile">{fields}</dl>'
+        '<p class="analysis-note">阅读路径：先比较策略与基准，再检查回撤和交易样本，最后核对全历史与近期判定。'
+        "累计收益为日收益的算术累加，不是复利净值；本报告不提供投资建议。</p>"
+    )
+
+
+def return_details_html(result: BacktestResult) -> str:
+    observed = {(str(date)[:4], str(date)[5:7]) for date in result.dates}
+    monthly_rows = [
+        [
+            str(year),
+            *[
+                _cell("收益", result.monthly.z[index][column]) if (str(year), f"{month:02d}") in observed else "—"
+                for column, month in enumerate(result.monthly.months)
+            ],
+        ]
+        for index, year in enumerate(result.monthly.years)
+    ]
+    symbol_rows = [
+        [html.escape(str(symbol)), _cell("收益", value)]
+        for symbol, value in zip(result.symbol_returns.symbols, result.symbol_returns.values, strict=True)
+    ]
+    return (
+        '<p class="analysis-note">月收益为已观测日收益之和；未观测月份显示 —。品种收益是各品种日收益之和，'
+        "不是加权组合贡献。</p>"
+        + _fin_table(
+            ["年份", *[f"{month}月" for month in result.monthly.months]], monthly_rows, "观测月度收益 · 算术累加"
+        )
+        + _fin_table(["品种", "累计收益"], symbol_rows, "品种收益 · 非组合贡献")
+    )
+
+
+def key_trades_html(result: BacktestResult) -> str:
+    rows = []
+    for label, groups in (("最赚", result.key_trades.best), ("最亏", result.key_trades.worst)):
+        for year, trades in groups.items():
+            for trade in trades:
+                rows.append(
+                    [
+                        str(year),
+                        label,
+                        html.escape(trade.symbol),
+                        html.escape(trade.direction),
+                        html.escape(trade.open_dt),
+                        html.escape(trade.close_dt),
+                        _cell("收益", trade.pnl),
+                        str(trade.hold_bars),
+                        str(trade.count),
+                    ]
+                )
+    if not rows:
+        return '<p class="analysis-note">暂无已平仓关键交易样本。</p>'
+    return (
+        '<p class="analysis-note">每年最赚与最亏的聚合开平记录；可能出现重复记录，不代表完整交易流水。'
+        "持仓长度单位为 K 线。结果快照未提供逐日仓位，不能据此推断当前持仓。</p>"
+        + _fin_table(
+            ["年份", "选样", "品种", "方向", "开仓时间", "平仓时间", "收益", "持仓K线", "原始笔数"],
+            rows,
+            "关键交易 · 聚合开平记录",
+        )
+    )
+
+
 def _conds_html(conds: list[tuple[str, str, str]]) -> str:
     """条件清单：(状态 ok/no, 标题, 说明) → .verdict-cond 行。"""
     return "".join(
