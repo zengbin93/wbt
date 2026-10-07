@@ -289,7 +289,9 @@ def mock_report(monkeypatch):
                 include_plotlyjs=index == 0,
                 config={"responsive": True, "displayModeBar": "hover", "displaylogo": False, "scrollZoom": True},
             )
-            plot_id = re.search(r'<div id="([^"]+)" class="plotly-graph-div"', fragment)[1]
+            match = re.search(r'<div id="([^"]+)" class="plotly-graph-div"', fragment)
+            assert match is not None
+            plot_id = match[1]
             if figure.data[0].type == "table":
                 trace = figure.to_plotly_json()["data"][0]
                 expected[plot_id] = trace
