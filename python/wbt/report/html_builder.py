@@ -193,6 +193,8 @@ class HtmlReportBuilder:
         }
         .chart-grid-item.full-width { grid-column: 1 / -1; }
         .chart-grid-item .plotly-graph-div { width: 100% !important; }
+        div:has(> .plotly-graph-div .table) { overflow-x: auto; }
+        .plotly-graph-div:has(.table) { min-width: 1000px; }
         .chart-grid-title {
             font-size: .8rem; font-weight: 600; letter-spacing: .01em; color: var(--ink);
             padding: .65rem .9rem; border-bottom: 1px solid var(--border); background: var(--panel-2);
@@ -697,6 +699,7 @@ class HtmlReportBuilder:
                             'cells.font.color': c.cell, 'cells.line.color': c.line,
                             'header.line.color': c.line
                         }}, [i]);
+                        if (tr.type === 'table' && d.clientWidth) Plotly.Plots.resize(d);
                     }});
                 }} catch (e) {{}}
             }});
