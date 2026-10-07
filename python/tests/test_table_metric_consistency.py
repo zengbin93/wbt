@@ -28,10 +28,7 @@ def test_rendered_metric_cells_agree(stats, segment):
     )
     plot = plot_segment_comparison(result) if segment else plot_stats_comparison(result)
     markup = segment_comparison_html(result) if segment else stats_comparison_html(result)
-    body = re.search(r"<tbody>(.*?)</tbody>", markup).group(1)
-    html_cells = [
-        html.unescape(re.sub(r"<[^>]+>", "", cell)) for cell in re.findall(r"<(?:td|th)[^>]*>(.*?)</(?:td|th)>", body)
-    ]
+    html_cells = [html.unescape(re.sub(r"<[^>]+>", "", cell)) for cell in re.findall(r"<td>(.*?)</td>", markup)]
     columns = plot.data[0].cells.values
     plot_cells = [cell for row in zip(*columns, strict=True) for cell in row]
     assert html_cells == plot_cells

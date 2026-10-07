@@ -47,15 +47,15 @@ def get_performance_metrics_cards(stats: dict[str, Any]) -> list[dict[str, Any]]
     return [
         {"label": "年化收益率", "value": f"{g('年化收益'):.2%}", "is_positive": g("年化收益") > 0},
         {"label": "绝对收益", "value": f"{g('绝对收益'):.2%}", "is_positive": g("绝对收益") > 0},
-        {"label": "夏普", "value": f"{g('夏普比率'):.2f}", "neutral": True, "is_positive": g("夏普比率") > 0},
-        {"label": "卡玛", "value": f"{g('卡玛比率'):.2f}", "neutral": True, "is_positive": g("卡玛比率") > 0},
-        {"label": "最大回撤", "value": f"{g('最大回撤'):.2%}", "neutral": True, "is_positive": False},
+        {"label": "夏普", "value": f"{g('夏普比率'):.2f}", "is_positive": g("夏普比率") > 0},
+        {"label": "卡玛", "value": f"{g('卡玛比率'):.2f}", "is_positive": g("卡玛比率") > 0},
+        {"label": "最大回撤", "value": f"{g('最大回撤'):.2%}", "is_positive": False},
         {"label": "年化波动率", "value": f"{g('年化波动率'):.2%}", "neutral": True, "is_positive": False},
         {"label": "下行波动率", "value": f"{g('下行波动率'):.2%}", "neutral": True, "is_positive": False},
         {"label": "单笔收益(BP)", "value": f"{g('单笔收益'):.2f}", "is_positive": g("单笔收益") > 0},
-        {"label": "单笔盈亏比", "value": f"{g('单笔盈亏比'):.2f}", "neutral": True, "is_positive": g("单笔盈亏比") > 1},
-        {"label": "交易胜率", "value": f"{g('交易胜率'):.2%}", "neutral": True, "is_positive": g("交易胜率") > 0.5},
-        {"label": "日胜率", "value": f"{g('日胜率'):.2%}", "neutral": True, "is_positive": g("日胜率") > 0.5},
+        {"label": "单笔盈亏比", "value": f"{g('单笔盈亏比'):.2f}", "is_positive": g("单笔盈亏比") > 1},
+        {"label": "交易胜率", "value": f"{g('交易胜率'):.2%}", "is_positive": g("交易胜率") > 0.5},
+        {"label": "日胜率", "value": f"{g('日胜率'):.2%}", "is_positive": g("日胜率") > 0.5},
         {"label": "持仓K线数", "value": f"{g('持仓K线数'):.0f}", "neutral": True, "is_positive": True},
         {"label": "多头占比", "value": f"{g('多头占比'):.2%}", "neutral": True, "is_positive": True},
         {"label": "空头占比", "value": f"{g('空头占比'):.2%}", "neutral": True, "is_positive": True},
@@ -89,7 +89,7 @@ def _build_report_params(result: BacktestResult, config: dict[str, Any]) -> dict
     }
 
 
-_PLOT_CONFIG = {"responsive": True, "displayModeBar": "hover", "displaylogo": False, "scrollZoom": True}
+_PLOT_CONFIG = {"responsive": True, "displayModeBar": True, "scrollZoom": True}
 
 
 def _err_div(name: str, e: Exception) -> str:
@@ -100,25 +100,8 @@ def _safe_fig(name: str, build, *, include_plotlyjs: bool) -> str:
     """plotly 图表面板 → HTML；失败降级为错误 div，不拖垮整份报告。"""
     try:
         fig = build()
-        if not fig.data:
-            return '<p class="analysis-note">暂无可绘制样本；可能尚未达到该指标的观测要求。</p>'
-        note = ""
-        if name == "日收益分布":
-            note = " · ".join(str(annotation.text) for annotation in fig.layout.annotations)
-            fig.update_layout(annotations=[])
-        elif name == "波动率归一累计收益":
-            note = (
-                "使用结果快照中的波动率归一曲线，不代表实际收益；多头超额为归一多头减基准，空头超额为归一空头加基准。"
-            )
-        elif name.startswith("年度收益"):
-            note = "年度数据来自引擎快照；首尾年份可能不是完整年度，完整年度标识见策略诊断。"
-        elif name in ("盈亏比例分布", "持仓K线数分布"):
-            note = "基于聚合成交对的样本分布，不等同于原始成交笔数。"
-        fig.update_layout(autosize=True, font={"family": "system-ui, -apple-system, Segoe UI, sans-serif", "size": 12})
-        markup = fig.to_html(include_plotlyjs=include_plotlyjs, full_html=False, config=_PLOT_CONFIG)
-        if any(trace.type == "heatmap" for trace in fig.data):
-            return f'<div class="heatmap-scroll" tabindex="0" role="region" aria-label="月度图表，可左右滚动">{markup}</div>'
-        return markup + (f'<p class="analysis-note">{html.escape(note)}</p>' if note else "")
+        fig.update_layout(autosize=True)
+        return fig.to_html(include_plotlyjs=include_plotlyjs, full_html=False, config=_PLOT_CONFIG)
     except Exception as e:  # noqa: BLE001 — 面板级隔离
         return _err_div(name, e)
 
@@ -131,27 +114,6 @@ def _safe_html(name: str, build) -> str:
         return _err_div(name, e)
 
 
-def _monthly_figure(result: BacktestResult):
-    figure = plot_monthly_heatmap(result, title="")
-    if figure.data:
-        observed = {(str(date)[:4], str(date)[5:7]) for date in result.dates}
-        figure.data[0].z = [
-            [
-                float(result.monthly.z[index][column]) if (str(year), f"{month:02d}") in observed else None
-                for column, month in enumerate(result.monthly.months)
-            ]
-            for index, year in enumerate(result.monthly.years)
-        ]
-        figure.data[0].text = [
-            [
-                str(result.monthly.text[index][column]) if (str(year), f"{month:02d}") in observed else "—"
-                for column, month in enumerate(result.monthly.months)
-            ]
-            for index, year in enumerate(result.monthly.years)
-        ]
-    return figure
-
-
 # 面板定义：(标签名, [(小标题, make(include_plotlyjs)->html, 是否整行, 是否 plotly 图), ...])
 def _tab_specs(result: BacktestResult):
     def fig(title, build, fw=True):
@@ -162,57 +124,54 @@ def _tab_specs(result: BacktestResult):
 
     return [
         (
-            "概览",
+            "回测概览",
             [
-                fig("累计收益（原始）", lambda: plot_cumulative_returns(result, keys=["多空", "基准"], title="")),
-                tbl("样本与阅读指南", lambda: ht.sample_profile_html(result)),
-            ],
-        ),
-        (
-            "收益表现",
-            [
-                fig(
-                    "收益来源 · 多空与基准",
-                    lambda: plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"], title=""),
-                ),
-                fig("月度收益热力图 · 未观测月份留空", lambda: _monthly_figure(result), fw=False),
-                fig("年度收益（绝对 vs 超额）", lambda: plot_yearly_returns(result, title=""), fw=False),
-                fig("品种收益分布 · 非组合贡献", lambda: plot_symbol_returns(result, title="")),
-                tbl("收益数据明细", lambda: ht.return_details_html(result)),
-                tbl("关键指标对比", lambda: ht.stats_comparison_html(result)),
-            ],
-        ),
-        (
-            "风险回撤",
-            [
-                fig("回撤路径", lambda: plot_drawdown(result, title="")),
-                tbl("回撤明细（Top 10）", lambda: ht.drawdowns_table_html(result)),
+                fig("回撤分析", lambda: plot_drawdown(result, title="")),
                 fig("日收益分布", lambda: plot_daily_return_dist(result, title="")),
-                fig("滚动指标（252日窗口，最少100日）", lambda: plot_rolling_metrics(result, title="")),
+                fig("月度收益热力图", lambda: plot_monthly_heatmap(result, title="")),
+                fig("品种收益分布", lambda: plot_symbol_returns(result, title="")),
             ],
         ),
         (
-            "交易与持仓",
-            [
-                fig("盈亏比例分布", lambda: plot_pairs_pnl_dist(result, title=""), fw=False),
-                fig("持仓K线数分布", lambda: plot_pairs_hold_dist(result, title=""), fw=False),
-                fig("关键交易（每年最赚/最亏 · hover 查看开平与持仓详情）", lambda: plot_key_trades(result, title="")),
-                tbl("关键交易明细", lambda: ht.key_trades_html(result)),
-            ],
-        ),
-        (
-            "策略诊断",
+            "策略审核",
             [
                 tbl("策略判定（history + recent）", lambda: ht.verdict_section_html(result)),
+                tbl("回撤明细（Top 10）", lambda: ht.drawdowns_table_html(result)),
+                tbl("完整绩效指标", lambda: ht.stats_kv_html(result)),
+            ],
+        ),
+        (
+            "稳健性分析",
+            [
+                fig("年度收益（绝对 vs 超额）", lambda: plot_yearly_returns(result, title="")),
+                fig("滚动指标（252日：年化收益/波动率/夏普）", lambda: plot_rolling_metrics(result, title="")),
                 tbl("分段对比（近1年 vs 全样本）", lambda: ht.segment_comparison_html(result)),
+            ],
+        ),
+        (
+            "多空对比",
+            [
+                fig(
+                    "累计收益（原始）",
+                    lambda: plot_cumulative_returns(result, keys=["多空", "多头", "空头", "基准"], title=""),
+                    fw=False,
+                ),
                 fig(
                     "波动率归一累计收益",
                     lambda: plot_cumulative_returns(
                         result, keys=["多空", "多头", "空头", "基准", "多头超额", "空头超额"], voladj=True, title=""
                     ),
-                    fw=True,
+                    fw=False,
                 ),
-                tbl("完整绩效指标", lambda: ht.stats_kv_html(result)),
+                tbl("关键指标对比", lambda: ht.stats_comparison_html(result)),
+            ],
+        ),
+        (
+            "交易分析",
+            [
+                fig("盈亏比例分布", lambda: plot_pairs_pnl_dist(result, title=""), fw=False),
+                fig("持仓K线数分布", lambda: plot_pairs_hold_dist(result, title=""), fw=False),
+                fig("关键交易（每年最赚/最亏 · hover 查看开平与持仓详情）", lambda: plot_key_trades(result, title="")),
             ],
         ),
     ]
@@ -236,21 +195,13 @@ def _generate_chart_tabs(result: BacktestResult) -> list[tuple[str, list[tuple[s
 
 def _render_backtest_report(result: BacktestResult, config: dict[str, Any], output_path: str, title: str) -> str:
     """将已有回测结果组装并保存为 HTML 报告。"""
-    metrics = [
-        {"label": label, "value": ht.fmt_value(key, result.stats.get(key)), "neutral": True}
-        for label, key in (
-            ("绝对收益", "绝对收益"),
-            ("年化收益率", "年化收益"),
-            ("夏普比率", "夏普比率"),
-            ("最大回撤", "最大回撤"),
-        )
-    ]
+    metrics = get_performance_metrics_cards(result.stats)
     tabs = _generate_chart_tabs(result)
     icons = ["bi-grid-1x2", "bi-clipboard-check", "bi-activity", "bi-arrows-collapse", "bi-star"]
 
     builder = HtmlReportBuilder(title=title)
-    builder.add_header(_build_report_params(result, config), subtitle="从收益轨迹到交易证据 · 权重策略研究报告")
-    builder.add_metrics(metrics, title="全样本摘要")
+    builder.add_header(_build_report_params(result, config), subtitle="基于权重策略的回测分析与绩效评估")
+    builder.add_metrics(metrics)
     for i, (tab_name, items) in enumerate(tabs):
         builder.add_chart_grid_tab(
             tab_name, items, cols=2, icon=icons[i] if i < len(icons) else "bi-graph-up", active=(i == 0)
