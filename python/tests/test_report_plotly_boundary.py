@@ -97,6 +97,106 @@ def test_conversion_retains_cell_background_and_empty_table():
     assert "<tbody></tbody>" in replace_plotly_tables(figure.to_html(full_html=False, include_plotlyjs=False))
 
 
+@pytest.mark.parametrize("section", ["header", "cells"])
+@pytest.mark.parametrize("attribute,value", [("format", [".2%"]), ("prefix", ["¥"]), ("suffix", ["元"])])
+def test_explicit_display_modifiers_keep_original_fragment(section, attribute, value):
+    figure = go.Figure(go.Table(header={"values": ["字段"]}, cells={"values": [["0.1234"]]}))
+    figure.data[0][section][attribute] = value
+    fragment = figure.to_html(full_html=False, include_plotlyjs=False)
+    assert replace_plotly_tables(fragment) == fragment
+
+
+def _compatibility_figures():
+    figures = {
+        "formatted": go.Figure(
+            go.Table(
+                header={"values": ["百分比", "金额"]},
+                cells={
+                    "values": [[0.1234], [1234.5]],
+                    "format": [".2%", ",.2f"],
+                    "prefix": ["", "¥"],
+                    "suffix": ["", "元"],
+                },
+            )
+        ),
+        "header_format": go.Figure(
+            go.Table(
+                header={"values": [0.1234], "format": [".1%"], "prefix": ["前"], "suffix": ["后"]},
+                cells={"values": [["SAFE"]]},
+            )
+        ),
+        "affixes": go.Figure(
+            go.Table(
+                header={"values": ["字段"]},
+                cells={"values": [["SAFE"]], "prefix": ["前"], "suffix": ["后"]},
+            )
+        ),
+    }
+    for name in (
+        "hidden",
+        "legendonly",
+        "hidden_note",
+        "annotation_defaults",
+        "annotation_opacity",
+        "annotation_click",
+        "annotation_template",
+        "update_menu",
+        "columnorder",
+        "domain",
+        "raw_number",
+        "template_format",
+        "template_visible",
+        "template_annotation",
+    ):
+        figure = go.Figure(go.Table(header={"values": ["字段"]}, cells={"values": [["SAFE"]]}))
+        if name in ("hidden", "legendonly"):
+            figure.data[0].visible = False if name == "hidden" else "legendonly"
+            figure.data[0].cells.values = [["HIDDEN_TABLE"]]
+        elif name == "hidden_note":
+            figure.update_layout(annotations=[{"text": "HIDDEN_NOTE", "visible": False}])
+        elif name == "annotation_defaults":
+            figure.update_layout(annotations=[{"text": "DEFAULT_NOTE"}], annotationdefaults={"visible": False})
+        elif name == "annotation_opacity":
+            figure.update_layout(annotations=[{"text": "TRANSPARENT_NOTE", "opacity": 0}])
+        elif name == "annotation_click":
+            figure.update_layout(annotations=[{"text": "CLICK_NOTE", "clicktoshow": "onoff"}])
+        elif name == "annotation_template":
+            figure.update_layout(annotations=[{"text": "TEMPLATE_NOTE", "templateitemname": "note"}])
+        elif name == "update_menu":
+            figure.update_layout(
+                updatemenus=[{"buttons": [{"label": "隐藏", "method": "restyle", "args": [{"visible": False}]}]}]
+            )
+        elif name == "columnorder":
+            figure.data[0].columnorder = [0]
+        elif name == "domain":
+            figure.data[0].domain = {"x": [0.2, 0.8]}
+        elif name == "raw_number":
+            figure.data[0].cells.values = [[0.123456789]]
+        elif name == "template_format":
+            figure.update_layout(template={"data": {"table": [{"cells": {"suffix": ["元"]}}]}})
+        elif name == "template_visible":
+            figure.update_layout(template={"data": {"table": [{"visible": False}]}})
+        elif name == "template_annotation":
+            figure.update_layout(template={"layout": {"annotations": [{"text": "模板说明", "name": "note"}]}})
+        figures[name] = figure
+    return figures
+
+
+@pytest.mark.parametrize("name", list(_compatibility_figures()))
+def test_unsupported_display_semantics_keep_original_fragment(name):
+    figure = _compatibility_figures()[name]
+    fragment = figure.to_html(full_html=False, include_plotlyjs=False)
+    assert replace_plotly_tables(fragment) == fragment
+
+
+def test_explicit_default_visibility_still_converts():
+    figure = go.Figure(go.Table(visible=True, header={"values": ["字段"]}, cells={"values": [["SAFE"]]}))
+    figure.update_layout(annotations=[{"text": "可见说明", "visible": True}])
+    assert 'class="plotly-table-panel"' in replace_plotly_tables(
+        figure.to_html(full_html=False, include_plotlyjs=False)
+    )
+
+
 @pytest.fixture
 def mock_report(monkeypatch):
     rng = np.random.default_rng(905)
@@ -222,6 +322,70 @@ def _inline_dependencies(markup, assets):
         '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>',
         "<script>" + (assets / "bootstrap.js").read_text() + "</script>",
     )
+
+
+def test_display_compatibility_browser(tmp_path, monkeypatch):
+    playwright = pytest.importorskip("playwright.sync_api")
+    if not os.environ.get("WBT_BROWSER_ASSETS"):
+        pytest.skip("Set WBT_BROWSER_ASSETS to locally cached official report dependencies")
+    assets = Path(os.environ["WBT_BROWSER_ASSETS"])
+    artifacts = Path(os.environ.get("WBT_BROWSER_ARTIFACTS", tmp_path))
+    artifacts.mkdir(parents=True, exist_ok=True)
+    builder = HtmlReportBuilder(title="模拟数据 · 显示兼容性回归")
+    builder.add_header({}, subtitle="固定模拟数据；验证格式化与隐藏内容的保守回退")
+    figures = _compatibility_figures()
+    for index, (name, figure) in enumerate(figures.items()):
+        figure.update_layout(height=260)
+        fragment = figure.to_html(full_html=False, include_plotlyjs=index == 0, div_id=name)
+        builder.add_section(name, fragment)
+    with monkeypatch.context() as baseline:
+        baseline.setattr("wbt.report.html_builder.replace_plotly_tables", lambda content: content)
+        before = builder.render()
+    after = builder.render()
+    for name, content in (("compatibility-before", before), ("mock-compatibility", after)):
+        (artifacts / f"{name}.html").write_text(_inline_dependencies(content, assets))
+    errors, external, records = [], [], []
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(executable_path=os.environ.get("WBT_BROWSER_EXECUTABLE"))
+        source, target = browser.new_page(), browser.new_page()
+        for name, page in (("compatibility-before", source), ("mock-compatibility", target)):
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.route(re.compile(r"^https?://"), lambda route: (external.append("blocked"), route.abort()))
+            page.goto((artifacts / f"{name}.html").resolve().as_uri(), wait_until="networkidle")
+        assert target.locator(".plotly-table-panel").count() == 0
+        for width in (1440, 390, 320):
+            for theme in ("light", "dark"):
+                for page in (source, target):
+                    page.set_viewport_size({"width": width, "height": 1000})
+                    page.locator(f'.theme-switch button[data-theme="{theme}"]').click()
+                    page.wait_for_timeout(150)
+                for name in figures:
+                    texts = []
+                    for page in (source, target):
+                        graph = page.locator(f'[id="{name}"]')
+                        texts.append(graph.locator(".cell-text, .annotation-text").all_text_contents())
+                    assert texts[0] == texts[1]
+                    assert "HIDDEN_TABLE" not in texts[1] and "HIDDEN_NOTE" not in texts[1]
+                    if name == "formatted":
+                        assert "12.34%" in texts[1] and "¥1,234.50元" in texts[1]
+                    elif name == "header_format":
+                        assert "前12.3%后" in texts[1]
+                    elif name == "affixes":
+                        assert "前SAFE后" in texts[1]
+                    elif name in ("hidden", "legendonly", "template_visible"):
+                        assert texts[1] == []
+                    elif name == "annotation_opacity":
+                        assert (
+                            target.locator(f'[id="{name}"] .annotation').evaluate(
+                                "node => getComputedStyle(node).opacity"
+                            )
+                            == "0"
+                        )
+                    records.append({"width": width, "theme": theme, "scenario": name, "text": texts[1]})
+                target.screenshot(path=str(artifacts / f"compatibility-{width}-{theme}.png"), full_page=True)
+        assert errors == [] and external == []
+        browser.close()
+    (artifacts / "compatibility-results.json").write_text(json.dumps(records, ensure_ascii=False, indent=2))
 
 
 def test_mock_report_browser_boundary(mock_report, tmp_path):

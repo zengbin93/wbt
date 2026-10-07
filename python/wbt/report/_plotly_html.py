@@ -57,6 +57,47 @@ def _background(value: object, column: int, row: int) -> str:
     return "transparent"
 
 
+def _unsupported_annotation(annotation: dict) -> bool:
+    return (
+        annotation.get("visible", True) is not True
+        or annotation.get("opacity", 1) != 1
+        or annotation.get("clicktoshow", False) is not False
+        or "templateitemname" in annotation
+    )
+
+
+def _unsupported_display(trace: dict, layout: dict) -> bool:
+    template = layout.get("template", {})
+    if not isinstance(template, dict):
+        return True
+    template_data, template_layout = template.get("data", {}), template.get("layout", {})
+    if not isinstance(template_data, dict) or not isinstance(template_layout, dict):
+        return True
+    tables = template_data.get("table", [])
+    if not isinstance(tables, list):
+        return True
+    for table in [trace, *tables]:
+        if not isinstance(table, dict) or table.get("visible", True) is not True:
+            return True
+        if any(key in table for key in ("columnorder", "domain")):
+            return True
+        for key in ("header", "cells"):
+            section = table.get(key, {})
+            if not isinstance(section, dict) or any(
+                section.get(modifier) is not None for modifier in ("format", "prefix", "suffix")
+            ):
+                return True
+    if template_layout.get("annotations"):
+        return True
+    for settings in (layout, template_layout):
+        defaults = settings.get("annotationdefaults", {})
+        if not isinstance(defaults, dict) or _unsupported_annotation(defaults):
+            return True
+        if settings.get("updatemenus") or settings.get("sliders"):
+            return True
+    return False
+
+
 def _table_fragment(match: re.Match[str]) -> str:
     script = match["script"]
     call = re.search(r"Plotly\.newPlot\(", script)
@@ -88,6 +129,8 @@ def _table_fragment(match: re.Match[str]) -> str:
     trace = traces[0]
     if not isinstance(trace, dict) or trace.get("type") != "table" or not isinstance(layout, dict):
         return match[0]
+    if _unsupported_display(trace, layout):
+        return match[0]
     header, cells = trace.get("header"), trace.get("cells")
     if not isinstance(header, dict) or not isinstance(cells, dict):
         return match[0]
@@ -96,12 +139,18 @@ def _table_fragment(match: re.Match[str]) -> str:
         return match[0]
     if any(not isinstance(column, list) for column in columns) or len({len(column) for column in columns}) != 1:
         return match[0]
+    if any(not isinstance(value, str) for value in headers) or any(
+        not isinstance(value, str) for column in columns for value in column
+    ):
+        return match[0]
     title_config = layout.get("title", {})
     annotations = layout.get("annotations", [])
     fill_config = cells.get("fill", {})
     if not isinstance(title_config, dict) or not isinstance(fill_config, dict) or not isinstance(annotations, list):
         return match[0]
     if any(not isinstance(annotation, dict) for annotation in annotations):
+        return match[0]
+    if any(_unsupported_annotation(annotation) for annotation in annotations):
         return match[0]
     title = title_config.get("text", "")
     notes = "".join(
