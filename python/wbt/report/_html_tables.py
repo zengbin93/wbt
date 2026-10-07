@@ -35,11 +35,29 @@ def _cell(key: str, v: object) -> str:
     return text
 
 
-def _fin_table(headers: list[str], rows: list[list[str]]) -> str:
+def _fin_table(
+    headers: list[str], rows: list[list[str]], *, label: str | None = None, backgrounds: list[list[str]] | None = None
+) -> str:
     """生成 .fin-table 原生表格（首列左对齐标签，其余右对齐数值，单元格已是 HTML）。"""
-    head = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
-    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
-    return f'<div class="fin-wrap"><table class="fin-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+    if label is None:
+        head = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+        body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
+        attributes = ""
+    else:
+        head = "".join(f'<th scope="col">{html.escape(header)}</th>' for header in headers)
+        body = ""
+        for row_index, row in enumerate(rows):
+            cells = []
+            for column, value in enumerate(row):
+                tag, scope = ("th", ' scope="row"') if column == 0 else ("td", "")
+                color = backgrounds[row_index][column] if backgrounds is not None else "transparent"
+                cells.append(f'<{tag}{scope} style="background:{html.escape(color, quote=True)}">{value}</{tag}>')
+            body += "<tr>" + "".join(cells) + "</tr>"
+        attributes = f' role="region" aria-label="{html.escape(label, quote=True)}" tabindex="0"'
+    return (
+        f'<div class="fin-wrap"{attributes}><table class="fin-table"><thead><tr>{head}</tr></thead>'
+        f"<tbody>{body}</tbody></table></div>"
+    )
 
 
 def _conds_html(conds: list[tuple[str, str, str]]) -> str:

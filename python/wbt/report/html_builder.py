@@ -14,6 +14,8 @@ from typing import Any
 
 import pandas as pd
 
+from ._plotly_html import replace_plotly_tables
+
 
 class HtmlReportBuilder:
     """HTML 报告构建器
@@ -230,6 +232,18 @@ class HtmlReportBuilder:
         .fin-table tbody tr:hover td { background: var(--panel-2); }
         .fin-table .t-up { color: var(--up); }
         .fin-table .t-down { color: var(--down); }
+        .plotly-table-panel { padding: 20px; }
+        div:has(> .plotly-table-panel) { height: auto !important; }
+        .plotly-table-panel .plotly-table-title { color: var(--ink); font-size: 1rem; margin-bottom: 16px; }
+        .plotly-table-panel .plotly-table-notes { color: var(--ink); font: 13px/1.6 'IBM Plex Sans', sans-serif; margin: 0 0 20px; overflow-wrap: anywhere; }
+        .plotly-table-panel .fin-wrap { padding: 0; }
+        .plotly-table-panel .fin-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .plotly-table-panel .fin-table { font: 12px/1.6 'IBM Plex Sans', sans-serif; }
+        .plotly-table-panel .fin-table th, .plotly-table-panel .fin-table td { padding: 8px 12px; white-space: nowrap; border: 1px solid var(--border-strong); color: var(--ink); font-weight: 400; font-family: inherit; text-align: right; }
+        .plotly-table-panel .fin-table thead th { color: white; background: #2f5fef; font-size: 13px; text-align: center; letter-spacing: normal; text-transform: none; }
+        .plotly-table-panel .fin-table tbody th { text-align: left; }
+        .plotly-table-panel .fin-table thead th:first-child { text-align: center; }
+        .plotly-table-panel .fin-table tbody tr:last-child > * { border-bottom: 1px solid var(--border-strong); }
         .badge { font-size: .68rem; padding: .14rem .55rem; border-radius: 4px; font-weight: 600; white-space: nowrap; }
         .badge-pass { color: #fff; background: var(--down); }
         .badge-fail { color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); }
@@ -628,6 +642,7 @@ class HtmlReportBuilder:
             else:
                 main_body_html += section_content + "\n"
 
+        main_body_html = replace_plotly_tables(main_body_html)
         custom_scripts_str = "\n".join(self.custom_scripts)
 
         return f"""<!DOCTYPE html>
