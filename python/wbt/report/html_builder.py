@@ -236,6 +236,30 @@ class HtmlReportBuilder:
         div:has(> .plotly-table-panel) { height: auto !important; }
         .plotly-table-panel .plotly-table-title { color: var(--ink); font-size: 1rem; margin-bottom: 16px; }
         .plotly-table-panel .plotly-table-notes { color: var(--ink); font: 13px/1.6 'IBM Plex Sans', sans-serif; margin: 0 0 20px; overflow-wrap: anywhere; }
+        .plotly-table-panel .verdict-review { font-size: 14px; line-height: 1.7; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); }
+        .verdict-review .review-states { display: flex; flex-wrap: wrap; gap: 24px; padding: 20px; border-bottom: 1px solid var(--border-strong); }
+        .verdict-review .review-state { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 180px; }
+        .verdict-review .review-state svg { width: 44px; height: 44px; flex-shrink: 0; fill: none; stroke: var(--ink); stroke-width: 2; }
+        .verdict-review .review-state span { display: block; color: var(--muted); }
+        .verdict-review .review-state strong { display: block; font-size: 18px; }
+        .verdict-review .review-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 32px; padding: 20px; }
+        .verdict-review .review-metric > div { display: flex; justify-content: space-between; gap: 12px; }
+        .verdict-review .review-metric strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .verdict-review .review-metric svg { display: block; width: 100%; height: 28px; overflow: visible; }
+        .verdict-review .metric-track { stroke: var(--border-strong); stroke-width: 2; }
+        .verdict-review .metric-bar { stroke: var(--accent); stroke-width: 6; }
+        .verdict-review .metric-zero { stroke: var(--muted); stroke-width: 1; }
+        .verdict-review .metric-threshold { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 2; }
+        .verdict-review .metric-point { fill: var(--ink); }
+        .verdict-review small { display: block; text-align: right; color: var(--muted); }
+        .verdict-review .review-original { padding: 0 20px 20px; overflow-wrap: anywhere; }
+        @media (max-width: 520px) { .verdict-review .review-metrics { grid-template-columns: minmax(0, 1fr); } }
+        .verdict-review summary { padding: 18px 20px; cursor: pointer; color: var(--ink); font-size: 15px; font-weight: 600; }
+        .verdict-review summary::marker { color: var(--accent); }
+        .verdict-review summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 6px; }
+        @media (max-width: 520px) {
+            .verdict-review summary { padding: 16px; }
+        }
         .plotly-table-panel .fin-wrap { padding: 0; }
         .plotly-table-panel .fin-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
         .plotly-table-panel .fin-table { font: 12px/1.6 'IBM Plex Sans', sans-serif; }

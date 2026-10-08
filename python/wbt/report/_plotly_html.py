@@ -48,6 +48,80 @@ def _rich_text(value: object) -> str:
     return "".join(parser.parts)
 
 
+def _verdict_notes(value: object) -> str:
+    text = _rich_text(value)
+    match = re.fullmatch(
+        r"<b>(history（逐年）：[^<]*)</b><br>(.*?)<b>(recent（近期窗口）：[^<]*)</b><br>(.*)",
+        text,
+        re.DOTALL,
+    )
+    if match is None:
+        return f'<p class="plotly-table-notes">{text}</p>'
+    history, _history_reason, recent, recent_content = match.groups()
+    lines = recent_content.split("<br>")
+    fields = []
+    while lines and "：" in lines[0] and "<" not in lines[0]:
+        label, value = lines.pop(0).split("：", 1)
+        fields.append((label, value))
+    sections = []
+    for title in (history, recent):
+        label, status = title.split("：", 1)
+        if status not in ("✅ 可用", "❌ 不可用"):
+            return f'<p class="plotly-table-notes">{text}</p>'
+        symbol = "M9 16l4 4 10-12" if status == "✅ 可用" else "M10 10l12 12M22 10L10 22"
+        sections.append(
+            '<div class="review-state">'
+            f'<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14"/>'
+            f'<path d="{symbol}"/></svg><div><span>{label}</span><strong>{status}</strong></div></div>'
+        )
+    metrics = []
+    for label, value in fields:
+        if label not in ("近期绝对收益", "近期超额收益", "近期超额回撤", "历史超额回撤(剔除近期)"):
+            continue
+        if re.fullmatch(r"-?\d+(?:\.\d+)?%", value) is None:
+            continue
+        number = float(value[:-1])
+        signed = "收益" in label
+        if not (-100 <= number <= 100 if signed else 0 <= number <= 100):
+            continue
+        position = 100 + number if signed else number * 2
+        origin = 100 if signed else 0
+        start, end = sorted((origin, position))
+        axis = "−100% · 0 · +100%" if signed else "0 · 100%"
+        threshold_graph = ""
+        threshold_label = ""
+        reason = " ".join(lines)
+        threshold_match = re.search(
+            r"(?:^|[(,;])\s*alpha_max_drawdown=([0-9]+\.[0-9]+) ≥ threshold ([0-9]+\.[0-9]+)"
+            r"(?=\s*(?:$|[);]))",
+            reason,
+        )
+        if len(re.findall(r"alpha_max_drawdown\s*=", reason)) != 1:
+            threshold_match = None
+        if label == "近期超额回撤" and threshold_match is not None:
+            reported, threshold = map(float, threshold_match.groups())
+            if 0 <= reported <= 1 and f"{reported * 100:.2f}%" == value and 0 <= threshold <= 1:
+                threshold_graph = (
+                    f'<path class="metric-threshold" data-threshold="{threshold:g}" d="M{threshold * 200:g} 0V20"/>'
+                )
+                threshold_label = f" · 原文阈值 {threshold * 100:g}%"
+        metrics.append(
+            f'<div class="review-metric"><div><span>{label}</span><strong>{value}</strong></div>'
+            f'<svg viewBox="0 0 200 20" role="img" aria-label="{label}：{value}，刻度 {axis}">'
+            '<path class="metric-track" d="M0 10H200"/>'
+            f'<path class="metric-bar" d="M{start:g} 10H{end:g}"/>'
+            f'<path class="metric-zero" d="M{origin} 2V18"/>'
+            f'{threshold_graph}<circle class="metric-point" cx="{position:g}" cy="10" r="3"/></svg>'
+            f"<small>{axis}{threshold_label}</small></div>"
+        )
+    return (
+        '<div class="plotly-table-notes verdict-review">'
+        f'<div class="review-states">{"".join(sections)}</div><div class="review-metrics">{"".join(metrics)}</div>'
+        '<details class="review-section"><summary>完整判定与窗口详情</summary>'
+        f'<div class="review-original">{text}</div></details></div>'
+    )
+
+
 def _background(value: object, column: int, row: int) -> str:
     for position in (column, row):
         if isinstance(value, list) and value:
@@ -153,9 +227,7 @@ def _table_fragment(match: re.Match[str]) -> str:
     if any(_unsupported_annotation(annotation) for annotation in annotations):
         return match[0]
     title = title_config.get("text", "")
-    notes = "".join(
-        f'<p class="plotly-table-notes">{_rich_text(annotation.get("text", ""))}</p>' for annotation in annotations
-    )
+    notes = "".join(_verdict_notes(annotation.get("text", "")) for annotation in annotations)
     rows = [[_rich_text(value) for value in row] for row in zip(*columns, strict=True)]
     fill = fill_config.get("color")
     backgrounds = [[_background(fill, column, row) for column in range(len(headers))] for row in range(len(rows))]

@@ -445,7 +445,12 @@ def test_mock_report_browser_boundary(mock_report, tmp_path):
                                 const element = document.createElement('div'); element.innerHTML = annotation.text;
                                 return element.textContent;
                             })""")
-                        assert panel.locator(".plotly-table-notes").all_text_contents() == notes
+                        assert (
+                            panel.locator(".plotly-table-notes").evaluate_all(
+                                "nodes => nodes.map(node => (node.querySelector('.review-original') || node).textContent)"
+                            )
+                            == notes
+                        )
                         assert table.evaluate("""table => {
                             const inside = (inner, outer) => inner.left >= outer.left - 1 && inner.right <= outer.right + 1 && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
                             const bounds = table.getBoundingClientRect(), cells = [...table.querySelectorAll('th,td')];
@@ -460,9 +465,16 @@ def test_mock_report_browser_boundary(mock_report, tmp_path):
                             }) && inside(table.querySelector('tbody tr:last-child').getBoundingClientRect(), bounds);
                         }""")
                         assert panel.locator(".plotly-table-notes").evaluate_all("""notes => notes.every(note => {
-                            const range = document.createRange(); range.selectNodeContents(note);
-                            const text = range.getBoundingClientRect(), box = note.getBoundingClientRect(), table = note.parentElement.querySelector('table').getBoundingClientRect();
-                            return text.left >= box.left - 1 && text.right <= box.right + 1 && text.bottom <= box.bottom + 1 && text.bottom < table.top;
+                            const box = note.getBoundingClientRect(), table = note.parentElement.querySelector('table').getBoundingClientRect();
+                            const walker = document.createTreeWalker(note, NodeFilter.SHOW_TEXT);
+                            let node;
+                            while (node = walker.nextNode()) {
+                                if (!node.textContent.trim() || !node.parentElement.checkVisibility()) continue;
+                                const range = document.createRange(); range.selectNodeContents(node);
+                                const text = range.getBoundingClientRect();
+                                if (text.left < box.left - 1 || text.right > box.right + 1 || text.bottom > box.bottom + 1) return false;
+                            }
+                            return box.bottom < table.top;
                         })""")
                         wrapper = table.locator("..")
                         wrapper.focus()
