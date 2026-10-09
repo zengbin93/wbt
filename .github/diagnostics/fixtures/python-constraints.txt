@@ -1,0 +1,8 @@
+loguru==0.7.3
+numpy==2.5.3
+pandas==3.0.6
+plotly==7.1.0
+polars==2.0.0
+polars-runtime-32==2.0.0
+pyarrow==25.0.1
+pytest==9.1.1

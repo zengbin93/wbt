@@ -1,0 +1,116 @@
+name: macOS Wheel Diagnostic (SKZ-905)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/diagnostics/**"
+      - ".github/workflows/wheel-probe.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wheel-probe:
+    name: ${{ matrix.os }} / ${{ matrix.variant }} / Rust 1.97.1
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15]
+        variant: [original, unstripped]
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_RELEASE_STRIP: ${{ matrix.variant == 'original' && 'symbols' || 'none' }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      PIP_CONSTRAINT: ${{ github.workspace }}/.github/diagnostics/fixtures/python-constraints.txt
+      EVIDENCE: ${{ github.workspace }}/wheel-evidence
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wheel-probe-${{ matrix.os }}-${{ matrix.variant }}-rust-1.97.1
+          cache-bin: "false"
+      - name: Record actual runner and tools
+        run: |
+          mkdir -p "$EVIDENCE"
+          {
+            sw_vers
+            uname -m
+            printf 'image=%s\n' "$ImageVersion"
+            git rev-parse HEAD HEAD:src HEAD:python
+            rustc -vV
+            cargo -V
+            cc --version
+            clang --version
+            xcrun ld -v
+            xcrun --show-sdk-version
+            xcodebuild -version
+            python --version
+            printf 'variant=%s strip_profile=%s deployment_target=%s\n' '${{ matrix.variant }}' "$CARGO_PROFILE_RELEASE_STRIP" "$MACOSX_DEPLOYMENT_TARGET"
+            printf 'cargo_jobs=%s rustflags=%s\n' "$CARGO_BUILD_JOBS" "${RUSTFLAGS:-}"
+          } > "$EVIDENCE/runner-tools.txt" 2>&1
+          cat "$EVIDENCE/runner-tools.txt"
+          test "$(uname -m)" = arm64
+          git diff --exit-code 6c19303f4689037e618a2622819592a415b71496 HEAD -- Cargo.toml src python .github/workflows/release.yml .github/workflows/release-crate.yml
+          cp .github/diagnostics/fixtures/candidate-cargo.lock Cargo.lock
+          shasum -a 256 Cargo.lock >> "$EVIDENCE/runner-tools.txt"
+      - name: Install isolated diagnostic tools
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-tools"
+          "$RUNNER_TEMP/wheel-tools/bin/python" -m pip install maturin==1.15.0
+          "$RUNNER_TEMP/wheel-tools/bin/maturin" --version >> "$EVIDENCE/runner-tools.txt"
+          "$RUNNER_TEMP/wheel-tools/bin/python" .github/diagnostics/test_probe_wheel.py
+      - name: Load identical local failed wheel
+        if: matrix.variant == 'original'
+        run: |
+          "$RUNNER_TEMP/wheel-tools/bin/python" .github/diagnostics/probe_wheel.py \
+            --wheel .github/diagnostics/fixtures/local-failed/wbt-0.9.1-cp310-abi3-macosx_11_0_arm64.whl \
+            --expected-sha256 446e374bb8605ee36efb1ac44f2e437080d16ba2352236b367fafdcad6838412 \
+            --case local-failed --output "$EVIDENCE/local-failed"
+      - name: Build real wheel with diagnostic strip setting
+        working-directory: python
+        env:
+          STRIP: ${{ matrix.variant == 'original' && 'true' || 'false' }}
+        run: |
+          set -o pipefail
+          printf 'maturin build --release --locked --verbose --strip=%s -i isolated-python --out isolated-dist\n' "$STRIP" >> "$EVIDENCE/runner-tools.txt"
+          "$RUNNER_TEMP/wheel-tools/bin/maturin" build --release --locked --verbose --strip="$STRIP" \
+            -i "$RUNNER_TEMP/wheel-tools/bin/python" --out "$EVIDENCE/dist" 2>&1 | tee "$EVIDENCE/build.log"
+      - name: Install final wheel, import, test, and inspect Mach-O
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          control=()
+          if [[ "$VARIANT" == unstripped ]]; then control=(--require-success); fi
+          "$RUNNER_TEMP/wheel-tools/bin/python" .github/diagnostics/probe_wheel.py \
+            --wheel "$EVIDENCE"/dist/*.whl --case "$VARIANT" --output "$EVIDENCE/$VARIANT" "${control[@]}"
+      - name: Upload diagnostic evidence (not a release)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SKZ-905-diagnostic-${{ matrix.os }}-${{ matrix.variant }}
+          path: |
+            wheel-evidence/runner-tools.txt
+            wheel-evidence/build.log
+            wheel-evidence/dist/*.whl
+            wheel-evidence/original/**
+            wheel-evidence/unstripped/**
+            wheel-evidence/local-failed/**
+          if-no-files-found: error
+          retention-days: 7
