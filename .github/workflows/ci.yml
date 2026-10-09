@@ -55,6 +55,8 @@ jobs:
         working-directory: python
       - run: uv run ruff check . --no-fix
         working-directory: python
+      - run: uv run --no-sync python ../.github/release/test_validate_artifacts.py
+        working-directory: python
 
   python-typecheck:
     name: Python Type Check
