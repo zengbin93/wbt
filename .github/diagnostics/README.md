@@ -8,7 +8,9 @@ The local-failed wheel is an unpublished candidate built from public main at
 `6c19303f4689037e618a2622819592a415b71496`, still carrying version 0.9.1 metadata.
 Its SHA-256 is `446e374bb8605ee36efb1ac44f2e437080d16ba2352236b367fafdcad6838412`.
 It contains no production inputs or credentials. Do not install it outside isolated
-diagnostic environments. The lock fixture preserves the original dependency set.
+diagnostic environments. The lock fixture preserves the original Rust dependency
+set; Python constraints pin the direct runtime dependencies and pytest from the
+successful local control, avoiding newly published package versions in the comparison.
 
 Two ARM64 runner labels each build the same source with Rust 1.97.1 and maturin
 1.15.0: original release stripping and explicitly disabled stripping. The actual
